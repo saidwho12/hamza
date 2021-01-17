@@ -47,7 +47,7 @@ guru_ctx_t *
 guru_ctx_create(guru_face_t *face);
 
 typedef struct guru_shaped_glyph_t {
-    guru_id_t id;
+    guru_id id;
     guru_float32 x0;
     guru_float32 y0;
     guru_float32 x1;
@@ -55,7 +55,7 @@ typedef struct guru_shaped_glyph_t {
 } guru_shaped_glyph_t;
 
 guru_status_t
-guru_shape(guru_ctx_t *ctx, guru_buf_t *buf);
+guru_shape(guru_ctx_t *ctx, guru_run_t *run);
 
 #ifdef __cplusplus
 };

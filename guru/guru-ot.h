@@ -335,19 +335,24 @@ typedef enum guru_dir_t {
     GURU_DIR_RTL,
 } guru_dir_t;
 
-typedef struct guru_buf_t {
+typedef struct guru_run_t {
     guru_unicode *text;
     guru_uint16 len;
-} guru_buf_t;
+
+    guru_id *id_arr;
+    uint16_t id_count;
+
+    unsigned int flags;
+} guru_run_t;
 
 static void
-guru_buf_push_code(guru_buf_t *buf, guru_unicode code) {
-    guru_uint16 new_size = ++buf->len * sizeof(guru_unicode);
+guru_run_push_code(guru_run_t *run, guru_unicode code) {
+    guru_uint16 new_size = ++run->len * sizeof(guru_unicode);
 
-    if (buf->text == NULL) buf->text = (guru_unicode *) malloc(new_size);
-    else buf->text = (guru_unicode *) realloc(buf->text, new_size);
+    if (run->text == NULL) run->text = (guru_unicode *) malloc(new_size);
+    else run->text = (guru_unicode *) realloc(run->text, new_size);
 
-    buf->text[buf->len - 1] = code;
+    run->text[run->len - 1] = code;
 }
 
 static guru_language_t
@@ -358,12 +363,12 @@ guru_lang(const char *s) {
 
 #define GURU_LANG(lang_str) guru_lang(lang_str)
 
-static guru_buf_t *
-guru_buf_create(void) {
-    guru_buf_t *buf = (guru_buf_t *) malloc(sizeof(guru_buf_t));
-    buf->text = NULL;
-    buf->len = 0;
-    return buf;
+static guru_run_t *
+guru_run_create(void) {
+    guru_run_t *run = (guru_run_t *) malloc(sizeof(guru_run_t));
+    run->text = NULL;
+    run->len = 0;
+    return run;
 }
 
 typedef struct {
@@ -456,14 +461,14 @@ static size_t guru_strlen8(guru_char *text) {
 }
 
 static void
-guru_buf_load_utf8(guru_buf_t *buf, const guru_char *text, size_t len) {
+guru_run_load_utf8(guru_run_t *run, const guru_char *text, size_t len) {
     guru_unicode code;
     int ch;
 
-    if (buf->text != NULL && buf->len > 0) {
-        free(buf->text);
-        buf->text = NULL;
-        buf->len = 0;
+    if (run->text != NULL && run->len > 0) {
+        free(run->text);
+        run->text = NULL;
+        run->len = 0;
     }
 
     guru_utf8_dec_t dec;
@@ -474,13 +479,13 @@ guru_buf_load_utf8(guru_buf_t *buf, const guru_char *text, size_t len) {
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = guru_utf8_next(&dec)) > 0) {
         code = (guru_unicode) ch;
-        guru_buf_push_code(buf, code);
+        guru_run_push_code(run, code);
     }
 }
 
 static void
-guru_buf_load_utf8_zt(guru_buf_t *buf, const guru_char *text) {
-    guru_buf_load_utf8(buf, text, UINT64_MAX);
+guru_run_load_utf8_zt(guru_run_t *run, const guru_char *text) {
+    guru_run_load_utf8(run, text, UINT64_MAX);
 }
 
 
@@ -590,12 +595,12 @@ typedef struct guru_lookup_table_t {
 typedef struct guru_coverage_format1_t {
     guru_uint16 coverageFormat; /* Format identifier — format = 1 */
     guru_uint16 glyphCount; /* Number of glyphs in the glyph array */
-    guru_id_t *glyphArray; /* Array of glyph IDs — in numerical order */
+    guru_id *glyphArray; /* Array of glyph IDs — in numerical order */
 } guru_coverage_format1_t;
 
 typedef struct guru_range_rec_t {
-    guru_id_t startGlyphID;
-    guru_id_t endGlyphID;
+    guru_id startGlyphID;
+    guru_id endGlyphID;
     guru_uint16 startCoverageIndex;
 } guru_range_rec_t;
 
@@ -608,14 +613,14 @@ typedef struct guru_coverage_format2_t {
 
 struct guru_class_def_format1_t {
     guru_uint16 format; /* Format identifier — format = 1 */
-    guru_id_t startGID; /* First glyph ID of the classValueArray */
+    guru_id startGID; /* First glyph ID of the classValueArray */
     guru_uint16 glyphCount; /* Size of the classValueArray */
     guru_uint16 *classValues; /* Array of Class Values — one per glyph ID */
 };
 
 struct guru_class_range_rec_t {
-    guru_id_t startGlyphID;
-    guru_id_t endGlyphID;
+    guru_id startGlyphID;
+    guru_id endGlyphID;
     guru_uint16 classValue;
 };
 

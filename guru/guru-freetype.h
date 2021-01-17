@@ -5,6 +5,7 @@
 #include FT_FREETYPE_H
 #include FT_OPENTYPE_VALIDATE_H
 #include FT_GLYPH_H
+#include FT_TRUETYPE_TABLES_H
 
 #include "guru.h"
 
@@ -32,6 +33,17 @@ guru_ft_face_create(FT_Face ft_face) {
         GURU_LOG("%s\n", "Failed to load GSUB table.");
 
     face->GSUB = (guru_byte *) GSUB;
+
+    {
+        /* Load cmap table into buffer */
+        FT_ULong tag = FT_MAKE_TAG('c','m','a','p');
+
+        FT_Load_Sfnt_Table(ft_face, tag, 0, NULL, &face->cmap_buf.len);
+
+        face->cmap_buf.data = (uint8_t *) GURU_MALLOC(face->cmap_buf.len);
+
+        FT_Load_Sfnt_Table(ft_face, tag, 0, face->cmap_buf.data, &face->cmap_buf.len);
+    }
 
     return face;
 }

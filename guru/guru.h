@@ -58,7 +58,7 @@ guru_status_t
 guru_shape(guru_ctx_t *ctx, guru_run_t *run);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* GURU_H */

@@ -20,7 +20,7 @@ target_include_directories(guru PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
 find_package(Freetype REQUIRED)
 
-target_link_libraries(guru PUBLIC dl ${FREETYPE_LIBRARIES})
+target_link_libraries(guru PUBLIC ${FREETYPE_LIBRARIES})
 target_include_directories(guru PUBLIC ${FREETYPE_INCLUDE_DIRS})
 
 

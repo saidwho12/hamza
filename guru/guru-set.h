@@ -37,7 +37,7 @@ guru_bool
 guru_set_is_empty(const guru_set_t *set);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* GURU_SET_H */

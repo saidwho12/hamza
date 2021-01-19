@@ -1,7 +1,6 @@
 #ifndef GURU_BASE_H
 #define GURU_BASE_H
 
-#ifndef NDEBUG
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +12,7 @@
 #define GURU_MALLOC(size) malloc(size)
 #define GURU_FREE(p) free(p)
 #define GURU_REALLOC(p, size) realloc(p, size)
-#endif
+
 
 #define GURU_PACKED __attribute__((__packed__))
 

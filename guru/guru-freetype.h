@@ -59,7 +59,7 @@ guru_ft_face_destroy(guru_face_t *face) {
 
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* GURU_FREETYPE_H */

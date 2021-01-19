@@ -455,11 +455,6 @@ guru_utf8_next(guru_utf8_dec_t *dec) {
     return GURU_UTF8_ERROR;
 }
 
-static size_t guru_strlen8(guru_char *text) {
-    uint64_t len = UINT64_MAX;
-
-}
-
 static void
 guru_run_load_utf8(guru_run_t *run, const guru_char *text, size_t len) {
     guru_unicode code;
@@ -821,7 +816,7 @@ guru_tag
 guru_ot_language_to_tag(guru_language_t language);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* GURU_OT_H */

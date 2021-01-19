@@ -15,12 +15,12 @@ guru_ctx_set_features(guru_ctx_t *ctx, guru_bitset_t *features)
 guru_ctx_t *
 guru_ctx_create(guru_face_t *face)
 {
-    guru_ctx_t *context = GURU_ALLOC(guru_ctx_t);
+    guru_ctx_t *ctx = GURU_ALLOC(guru_ctx_t);
 
-    context->face = face;
-    context->features = guru_bitset_create(GURU_FEATURE_COUNT);
+    ctx->face = face;
+    ctx->features = guru_bitset_create(GURU_FEATURE_COUNT);
 
-    return context;
+    return ctx;
 }
 
 void
@@ -124,17 +124,18 @@ guru_cmap_unicode_to_id(guru_cmap_subtable_format4_t *st, guru_unicode c) {
     while (i < range_count) {
         uint16_t start_code = bswap16(st->start_code[i]);
         uint16_t end_code = bswap16(st->end_code[i]);
-        uint16_t id_delta = bswap16(st->id_delta[i]);
+        int16_t id_delta = bswap16(st->id_delta[i]);
         uint16_t id_range_offset = bswap16(st->id_range_offsets[i]);
 
         if (end_code >= c && start_code <= c) {
             guru_id id;
 
             if (id_range_offset != 0) {
-                id = *(&st->id_range_offsets[i] + (id_range_offset >> 1) + (c - start_code));
-                if (id != 0) id = (id + id_delta) % 65536;
+                uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
+                id = bswap16( raw_val );
+                if (id != 0) id += id_delta;
             } else
-                id = (id_delta + c) % 65536;
+                id = (id_delta + c);
 
             return id;
         }
@@ -212,7 +213,7 @@ guru_shape(guru_ctx_t *ctx, guru_run_t *run) {
                     GURU_LOG("entry_selector: %d\n", subtable.entry_selector);
                     GURU_LOG("range_shift: %d\n", subtable.range_shift);
 
-                    uint16_t seg_jmp = subtable.seg_count_x2;
+                    uint16_t seg_jmp = (subtable.seg_count_x2>>1) * sizeof(uint16_t);
 
                     uint8_t *curr_addr = subtable_stream.data + subtable_stream.offset;
                     subtable.end_code = (uint16_t *)curr_addr;
@@ -227,7 +228,6 @@ guru_shape(guru_ctx_t *ctx, guru_run_t *run) {
                     while (c_idx < run->len) {
                         guru_unicode c = run->text[c_idx];
                         run->id_arr[c_idx] = guru_cmap_unicode_to_id(&subtable, c);
-                        GURU_LOG("U+%04X ", run->id_arr[c_idx]);
                         ++c_idx;
                     }
                 }

@@ -1,5 +1,5 @@
-#include <guru/guru.h>
-#include <guru/guru-freetype.h>
+#include <hamim/hm.h>
+#include <hamim/hm-ft.h>
 
 int main(int argc, char *argv[]) {
     // Text string we want to shape
@@ -10,26 +10,26 @@ int main(int argc, char *argv[]) {
     FT_Init_FreeType(&ft_library);
 
     FT_Face ft_face;
-    FT_New_Face(ft_library, "../Changa-Regular.ttf", 0, &ft_face);
+    FT_New_Face(ft_library, "../Cairo-Regular.ttf", 0, &ft_face);
 
     // Setup shaping context and buffer
-    guru_face_t *face = guru_ft_face_create(ft_face);
-    guru_run_t *run = guru_run_create();
+    hm_face_t *face = hm_ft_face_create(ft_face);
+    hm_run_t *run = hm_run_create();
 
-    guru_context_t *ctx = guru_ctx_create(face);
-    guru_ctx_set_dir(ctx, GURU_DIR_RTL);
-    guru_ctx_set_script(ctx, GURU_SCRIPT_ARABIC);
-    guru_ctx_set_language(ctx, GURU_LANGUAGE_ARABIC);
+    hm_context_t *ctx = hm_ctx_create(face);
+    hm_ctx_set_dir(ctx, HM_DIR_RTL);
+    hm_ctx_set_script(ctx, HM_SCRIPT_ARABIC);
+    hm_ctx_set_language(ctx, HM_LANGUAGE_ARABIC);
 
     // Load utf8 string "_zt" stands for zero-terminated
-    guru_run_load_utf8_zt(run, (const guru_char *) text);
+    hm_run_load_utf8_zt(run, (const hm_char *) text);
 
-    for (size_t i = 0; i < guru_array_size(run->output); ++i) {
-        GURU_LOG("U+%04X ", guru_array_at(run->output, i));
+    for (size_t i = 0; i < hm_array_size(run->output); ++i) {
+        HM_LOG("U+%04X ", hm_array_at(run->output, i));
     }
-    GURU_LOG("\n");
+    HM_LOG("\n");
 
-    guru_shape(ctx, run);
+    hm_shape(ctx, run);
 
     return 0;
 }

@@ -1,2 +1,2 @@
-# Guru
-Guru is a **C89** text shaping engine.
+# Hamim
+Hamim is a ANSI C OpenType library primarily for Arabic (currently).

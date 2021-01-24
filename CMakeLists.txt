@@ -13,7 +13,10 @@ set(GURU_SOURCES
 		${CMAKE_CURRENT_LIST_DIR}/guru/guru.h
 		${CMAKE_CURRENT_LIST_DIR}/guru/guru-base.h
 		${CMAKE_CURRENT_LIST_DIR}/guru/guru-set.h
-		${CMAKE_CURRENT_LIST_DIR}/guru/guru-set.c main.cpp)
+		${CMAKE_CURRENT_LIST_DIR}/guru/guru-set.c
+		${CMAKE_CURRENT_LIST_DIR}/guru/guru-array.c
+		${CMAKE_CURRENT_LIST_DIR}/guru/guru-array.h
+		main.cpp)
 
 add_library(guru ${GURU_SOURCES})
 target_include_directories(guru PUBLIC ${CMAKE_CURRENT_LIST_DIR})

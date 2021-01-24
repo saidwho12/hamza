@@ -1,10 +1,5 @@
 #include "guru-set.h"
 
-struct guru_set_t {
-    guru_uint64 *values;
-    size_t count;
-};
-
 guru_set_t *
 guru_set_create(void)
 {
@@ -15,33 +10,33 @@ guru_set_create(void)
 }
 
 void
-guru_set_add(guru_set_t *set, guru_uint64 val)
+guru_set_add(guru_set_t *set, uint32_t val)
 {
     size_t new_count = set->count + 1;
 
     if (guru_set_is_empty(set))
-        set->values = (guru_uint64 *) GURU_MALLOC(sizeof(guru_uint64) * new_count);
+        set->values = (uint32_t *) GURU_MALLOC(sizeof(uint32_t) * new_count);
     else
-        set->values = (guru_uint64 *) GURU_REALLOC((void *)set->values,
-                                     new_count * sizeof(guru_uint64));
+        set->values = (uint32_t *) GURU_REALLOC((void *)set->values,
+                                     new_count * sizeof(uint32_t));
 
     set->values[new_count - 1] = val;
     set->count = new_count;
 }
 
 void
-guru_set_add_range(guru_set_t *set, guru_uint64 v1, guru_uint64 v2)
+guru_set_add_range(guru_set_t *set, uint32_t v1, uint32_t v2)
 {
-    guru_int64 del = (guru_int64)v2 - (guru_int64)v1;
+    int32_t del = (int32_t)v2 - (int32_t)v1;
     size_t len = del >= 0 ? del : -del;
     size_t new_count = set->count + len;
     size_t i = 0;
 
     if (guru_set_is_empty(set))
-        set->values = (guru_uint64 *) malloc(sizeof(guru_uint64) * new_count);
+        set->values = (uint32_t *) malloc(sizeof(uint32_t) * new_count);
     else
-        set->values = (guru_uint64 *) realloc((void *)set->values,
-                                     new_count * sizeof(guru_uint64));
+        set->values = (uint32_t *) realloc((void *)set->values,
+                                     new_count * sizeof(uint32_t));
 
     while (i < len) {
         set->values[set->count + i] = v1 + i;
@@ -58,13 +53,13 @@ guru_set_clear (guru_set_t *set)
 }
 
 void
-guru_set_del(guru_set_t *set, guru_uint64 val)
+guru_set_del(guru_set_t *set, uint32_t val)
 {
 
 }
 
 void
-guru_set_del_range(guru_set_t *set, guru_uint64 v1, guru_uint64 v2)
+guru_set_del_range(guru_set_t *set, uint32_t v1, uint32_t v2)
 {
 
 }
@@ -76,7 +71,7 @@ guru_set_destroy(guru_set_t *set)
 }
 
 guru_bool
-guru_set_has(const guru_set_t *set, guru_uint64 val)
+guru_set_has(const guru_set_t *set, uint32_t val)
 {
     size_t i = 0;
     if (guru_set_is_empty(set))

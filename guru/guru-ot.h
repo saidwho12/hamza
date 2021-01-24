@@ -3,6 +3,7 @@
 
 #include "guru-base.h"
 #include "guru-set.h"
+#include "guru-array.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -139,12 +140,12 @@ typedef enum guru_feature_t {
     GURU_FEATURE_COUNT
 } guru_feature_t;
 
-typedef struct guru_feature_ext_t {
+typedef struct guru_feature_info_t {
     guru_feature_t feature;
     guru_tag tag;
-} guru_feature_ext_t;
+} guru_feature_info_t;
 
-static const guru_feature_ext_t GURU_FEATURE_EXT_LUT[GURU_FEATURE_COUNT] = {
+static const guru_feature_info_t GURU_FEATURE_INFO_LUT[GURU_FEATURE_COUNT] = {
         {GURU_FEATURE_AALT, GURU_TAG('a', 'a', 'l', 't')}, /* Access All Alternates */
         {GURU_FEATURE_ABVF, GURU_TAG('a', 'b', 'v', 'f')}, /* Above-base forms */
         {GURU_FEATURE_ABVM, GURU_TAG('a', 'b', 'v', 'm')}, /* Above-base Mark Positioning */
@@ -336,24 +337,11 @@ typedef enum guru_dir_t {
 } guru_dir_t;
 
 typedef struct guru_run_t {
-    guru_unicode *text;
-    guru_uint16 len;
-
-    guru_id *id_arr;
-    uint16_t id_count;
+    guru_array_t *input;
+    guru_array_t *output;
 
     unsigned int flags;
 } guru_run_t;
-
-static void
-guru_run_push_code(guru_run_t *run, guru_unicode code) {
-    guru_uint16 new_size = ++run->len * sizeof(guru_unicode);
-
-    if (run->text == NULL) run->text = (guru_unicode *) malloc(new_size);
-    else run->text = (guru_unicode *) realloc(run->text, new_size);
-
-    run->text[run->len - 1] = code;
-}
 
 static guru_language_t
 guru_lang(const char *s) {
@@ -366,8 +354,8 @@ guru_lang(const char *s) {
 static guru_run_t *
 guru_run_create(void) {
     guru_run_t *run = (guru_run_t *) malloc(sizeof(guru_run_t));
-    run->text = NULL;
-    run->len = 0;
+    run->input = guru_array_create();
+    run->output = guru_array_create();
     return run;
 }
 
@@ -460,12 +448,6 @@ guru_run_load_utf8(guru_run_t *run, const guru_char *text, size_t len) {
     guru_unicode code;
     int ch;
 
-    if (run->text != NULL && run->len > 0) {
-        free(run->text);
-        run->text = NULL;
-        run->len = 0;
-    }
-
     guru_utf8_dec_t dec;
     dec.mem = (const guru_byte *) text;
     dec.length = len;
@@ -474,7 +456,7 @@ guru_run_load_utf8(guru_run_t *run, const guru_char *text, size_t len) {
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = guru_utf8_next(&dec)) > 0) {
         code = (guru_unicode) ch;
-        guru_run_push_code(run, code);
+        guru_array_push_back(run->input, code);
     }
 }
 
@@ -524,15 +506,15 @@ typedef struct GURU_PACKED guru_feature_list_t {
     guru_rec16_t *featureRecord;
 } guru_feature_list_t;
 
-typedef struct GURU_PACKED guru_feature_table_t {
+typedef struct guru_feature_table_t {
     /* = NULL (reserved for offset to FeatureParams) */
-    guru_offset16 featureParams;
+    guru_offset16 feature_params;
 
     /* Number of LookupList indices for this feature */
-    guru_uint16 lookupIndexCount;
+    uint16_t lookup_index_count;
 
     /* 	Array of indices into the LookupList — zero-based (first lookup is LookupListIndex = 0) */
-    guru_uint16 *lookupListIndices;
+//    uint16_t *lookup_list_indices;
 } guru_feature_table_t;
 
 
@@ -579,12 +561,23 @@ typedef enum guru_lookup_flag_t {
     GURU_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK = 0xFF00
 } guru_lookup_flag_t;
 
+typedef enum guru_gsub_lookup_type_t {
+    GURU_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION = 1,
+    GURU_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION = 2,
+    GURU_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION = 3,
+    GURU_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION = 4,
+    GURU_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION = 5,
+    GURU_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION = 6,
+    GURU_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION = 7,
+    GURU_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION = 8,
+} guru_gsub_lookup_type_t;
+
 typedef struct guru_lookup_table_t {
-    guru_uint16 lookupType;
-    guru_uint16 lookupFlag;
-    guru_uint16 subtableCount;
-    //GURU_Offset16 *subtableOffsets;
-    guru_uint16 markFilteringSet;
+    uint16_t lookup_type;
+    uint16_t lookup_flag;
+    uint16_t subtable_count;
+    guru_offset32 *subtable_offsets;
+    uint16_t mark_filtering_set;
 } guru_lookup_table_t;
 
 typedef struct guru_coverage_format1_t {
@@ -730,8 +723,8 @@ typedef struct GURU_PACKED guru_feature_table_substitution_table_t {
 } guru_feature_table_substitution_table_t;
 
 typedef struct guru_bitset_t {
-    guru_byte *data;
-    guru_uint16 bit_count;
+    uint8_t *data;
+    uint16_t bit_count;
 } guru_bitset_t;
 
 static guru_uint64 guru_next_pow2m1(guru_uint64 x) {
@@ -745,22 +738,22 @@ static guru_uint64 guru_next_pow2m1(guru_uint64 x) {
 }
 
 static guru_bitset_t *
-guru_bitset_create(guru_uint16 bit_count) {
+guru_bitset_create(uint16_t bit_count) {
     guru_bitset_t *bitset = (guru_bitset_t *) malloc(sizeof(guru_bitset_t));
 
     bitset->bit_count = bit_count;
-    guru_uint16 byte_count = bit_count >> 3;
+    uint16_t byte_count = (bit_count / 8) + 1;
 
-    bitset->data = (guru_byte *) calloc(1, byte_count);
+    bitset->data = (uint8_t *) calloc(byte_count, 1);
 
     return bitset;
 }
 
 static guru_bool
-guru_bitset_set(guru_bitset_t *bitset, guru_uint16 index, guru_bool value) {
+guru_bitset_set(guru_bitset_t *bitset, uint16_t index, guru_bool value) {
     if (index < bitset->bit_count) {
-        guru_byte *byte = bitset->data + (index >> 3);
-        guru_byte mask = 1 << (index & 0x7);
+        uint8_t *byte = bitset->data + (index / 8);
+        uint8_t mask = 1 << (index % 8);
 
         if (value == GURU_TRUE)
             *byte |= mask;
@@ -774,12 +767,12 @@ guru_bitset_set(guru_bitset_t *bitset, guru_uint16 index, guru_bool value) {
 }
 
 static guru_bool
-guru_bitset_check(guru_bitset_t *bitset, guru_uint16 index) {
+guru_bitset_check(const guru_bitset_t *bitset, uint16_t index) {
     guru_bool value = GURU_FALSE;
 
     if (index < bitset->bit_count) {
-        guru_byte byte = *(bitset->data + (index >> 3));
-        guru_byte mask = 1 << (index & 0x7);
+        uint8_t byte = *(bitset->data + (index / 8));
+        uint8_t mask = 1 << (index % 8);
 
         if (byte & mask)
             value = GURU_TRUE;
@@ -789,26 +782,53 @@ guru_bitset_check(guru_bitset_t *bitset, guru_uint16 index) {
 }
 
 static void
-guru_bitset_copy(guru_bitset_t *dst, guru_bitset_t *src) {
-    size_t byte_count = src->bit_count >> 3;
+guru_bitset_copy(guru_bitset_t *dst, const guru_bitset_t *src) {
+    size_t byte_count = src->bit_count / 8;
     GURU_ASSERT(src->bit_count == dst->bit_count);
-
-    if (dst->data != NULL)
-        free(dst->data);
 
     memcpy(dst->data, src->data, byte_count);
 }
 
 
 #define GURU_OT_TAG_GSUB GURU_TAG('G','S','U','B')
-#define GURU_OT_TAG_GPOS guru_tag('G','P','O','S')
+#define GURU_OT_TAG_GPOS GURU_TAG('G','P','O','S')
+#define GURU_OT_TAG_GDEF GURU_TAG('G','D','E','F')
+#define GURU_OT_TAG_JSTF GURU_TAG('J','S','T','F')
+
+
+guru_feature_t
+guru_ot_feature_from_tag(guru_tag tag);
+
 
 void
 guru_ot_layout_collect_lookups(guru_face_t *face,
                              guru_tag table_tag,
-                             guru_tag language, guru_tag script,
+                             guru_tag script,
+                             guru_tag language,
                              const guru_bitset_t *feature_bits,
                              guru_set_t *lookup_indices);
+
+
+void
+guru_ot_layout_lookups_substitute_closure(guru_face_t *face,
+                                          const guru_set_t *lookups,
+                                          guru_set_t *glyphs);
+
+
+guru_bool
+guru_ot_layout_lookup_would_substitute(guru_face_t *face,
+                                       unsigned int lookup_index,
+                                       const guru_id *glyphs,
+                                       unsigned int glyph_count,
+                                       guru_bool zero_context);
+
+
+void
+guru_ot_layout_apply_lookup(guru_face_t *face,
+                            guru_tag table_tag,
+                            uint16_t lookup_index,
+                            guru_array_t *glyph_array);
+
 guru_tag
 guru_ot_script_to_tag(guru_script_t script);
 

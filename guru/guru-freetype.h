@@ -32,7 +32,7 @@ guru_ft_face_create(FT_Face ft_face) {
     if (GSUB == NULL)
         GURU_LOG("%s\n", "Failed to load GSUB table.");
 
-    face->GSUB = (guru_byte *) GSUB;
+    face->gsub_table = (uint8_t *) GSUB;
 
     {
         /* Load cmap table into buffer */
@@ -50,11 +50,11 @@ guru_ft_face_create(FT_Face ft_face) {
 
 static void
 guru_ft_face_destroy(guru_face_t *face) {
-    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->BASE);
-    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->GDEF);
-    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->GPOS);
-    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->GSUB);
-    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->JSTF);
+    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->base_table);
+    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->gdef_table);
+    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->gpos_table);
+    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->gsub_table);
+    FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->jstf_table);
 }
 
 

@@ -85,11 +85,11 @@ typedef struct guru_buf_t {
 } guru_buf_t;
 
 typedef struct guru_face_t {
-    guru_byte *BASE;
-    guru_byte *GSUB;
-    guru_byte *GPOS;
-    guru_byte *GDEF;
-    guru_byte *JSTF;
+    guru_byte *base_table;
+    guru_byte *gsub_table;
+    guru_byte *gpos_table;
+    guru_byte *gdef_table;
+    guru_byte *jstf_table;
     guru_buf_t cmap_buf;
     void *handle; /* freetype handle */
 } guru_face_t;
@@ -105,20 +105,20 @@ typedef enum guru_status_t {
 #define GURU_STREAM_OVERFLOW 0
 
 typedef struct guru_stream_t {
-    guru_byte *data;
-    guru_size length;
-    guru_size offset;
-    guru_uint8 flags;
+    uint8_t *data;
+    size_t length;
+    size_t offset;
+    uint8_t flags;
 } guru_stream_t;
 
-static guru_stream_t
-guru_stream_create(guru_byte *data, guru_size length, guru_uint8 flags)
+static guru_stream_t *
+guru_stream_create(uint8_t *data, size_t length, uint8_t flags)
 {
-    guru_stream_t stream;
-    stream.offset = 0;
-    stream.data = data;
-    stream.length = length;
-    stream.flags = flags;
+    guru_stream_t *stream = (guru_stream_t *) GURU_MALLOC(sizeof(guru_stream_t));
+    stream->offset = 0;
+    stream->data = data;
+    stream->length = length;
+    stream->flags = flags;
     return stream;
 }
 
@@ -172,6 +172,11 @@ guru_stream_read32(guru_stream_t *stream, uint32_t *val) {
     *val = tmpval;
     stream->offset += 4;
     return 4;
+}
+
+static void
+guru_stream_seek(guru_stream_t *stream, int offset) {
+    stream->offset += offset;
 }
 
 #endif /* GURU_BASE_H */

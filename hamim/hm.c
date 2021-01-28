@@ -151,41 +151,115 @@ hm_cmap_unicode_to_id(hm_cmap_subtable_format4_t *st, hm_unicode c) {
     uint16_t end_code = bswap16(st->end_code[i]);
     int16_t id_delta = bswap16(st->id_delta[i]);
     uint16_t id_range_offset = bswap16(st->id_range_offsets[i]);
-    HM_ASSERT(start_code == 0xFFFF && end_code == 0xFFFF);
+//    HM_ASSERT(start_code == 0xFFFF && end_code == 0xFFFF);
+//
+//    if (id_range_offset != 0) {
+//        uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
+//        id = bswap16( raw_val );
+//        if (id != 0) id += id_delta;
+//    } else
+//        id = id_delta + c;
 
-    if (id_range_offset != 0) {
-        uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
-        id = bswap16( raw_val );
-        if (id != 0) id += id_delta;
-    } else
-        id = id_delta + c;
-
-    return id;
+    return 0;
 }
 
 void
 hm_context_collect_required_glyphs(hm_context_t *ctx,
                                      hm_set_t *glyphs)
 {
-    hm_tag script_tag = ctx->script;
-    hm_tag language_tag = ctx->language;
-    hm_set_t *lookup_indices = hm_set_create();
+//    hm_tag script_tag = ctx->script;
+//    hm_tag language_tag = ctx->language;
+//    hm_set_t *lookup_indices = hm_set_create();
+//
+//    if (!hm_set_is_empty(glyphs))
+//        hm_set_clear(glyphs);
+//
+//    hm_ot_layout_collect_lookups(ctx->face, HM_OT_TAG_GSUB,
+//                                   script_tag,
+//                                   language_tag,
+//                                   ctx->features,
+//                                   lookup_indices);
 
-    if (!hm_set_is_empty(glyphs))
-        hm_set_clear(glyphs);
+}
 
-    hm_ot_layout_collect_lookups(ctx->face, HM_OT_TAG_GSUB,
-                                   script_tag,
-                                   language_tag,
-                                   ctx->features,
-                                   lookup_indices);
+hm_id
+hm_face_cmap_unicode_to_id(hm_face_t *face, hm_unicode c)
+{
+    /* Parse cmap table and convert unicode run to GID run */
+    hm_buf_t *cmap_buf = &face->cmap_buf;
+    hm_stream_t *cmap_table = hm_stream_create(cmap_buf->data, cmap_buf->len, HM_STREAM_BOUND_FLAG);
 
+    uint16_t version;
+    hm_stream_read16(cmap_table, &version);
+
+    /* Table version number must be 0 */
+    HM_ASSERT(version == 0);
+
+    uint16_t num_encodings, enc_idx;
+    hm_stream_read16(cmap_table, &num_encodings);
+
+//    HM_LOG("cmap table encoding count: %d\n", num_encodings);
+
+    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx) {
+        hm_cmap_encoding_t enc = {};
+        hm_stream_read16(cmap_table, &enc.platform_id);
+        hm_stream_read16(cmap_table, &enc.encoding_id);
+        hm_stream_read32(cmap_table, &enc.subtable_offset);
+
+//        HM_LOG("platform: %s\n", hm_cmap_platform_to_string(enc.platform_id));
+//        HM_LOG("encoding: %d\n", enc.encoding_id);
+//        HM_LOG("subtable-offset: %d\n", enc.subtable_offset);
+
+        // TODO: Handle length properly with bounding
+        if (enc.platform_id == HM_CMAP_PLATFORM_UNICODE) {
+            uint16_t subtable_format = 0;
+            hm_stream_t *subtable_stream = hm_stream_create(cmap_buf->data + enc.subtable_offset,
+                                                            0, 0);
+            hm_stream_read16(subtable_stream, &subtable_format);
+
+//            HM_LOG("subtable_format: %d\n", subtable_format);
+
+            if (subtable_format == 4) {
+                /* Format 4: Segment mapping to delta values */
+                hm_cmap_subtable_format4_t subtable;
+                hm_stream_read16(subtable_stream, &subtable.length);
+                hm_stream_read16(subtable_stream, &subtable.language);
+                hm_stream_read16(subtable_stream, &subtable.seg_count_x2);
+                hm_stream_read16(subtable_stream, &subtable.search_range);
+                hm_stream_read16(subtable_stream, &subtable.entry_selector);
+                hm_stream_read16(subtable_stream, &subtable.range_shift);
+
+//                HM_LOG("length: %d\n", subtable.length);
+//                HM_LOG("language: %d\n", subtable.language);
+//                HM_LOG("seg_count_x2: %d\n", subtable.seg_count_x2);
+//                HM_LOG("search_range: %d\n", subtable.search_range);
+//                HM_LOG("entry_selector: %d\n", subtable.entry_selector);
+//                HM_LOG("range_shift: %d\n", subtable.range_shift);
+
+                uint16_t seg_jmp = (subtable.seg_count_x2>>1) * sizeof(uint16_t);
+
+                uint8_t *curr_addr = subtable_stream->data + subtable_stream->offset;
+                subtable.end_code = (uint16_t *)curr_addr;
+                subtable.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
+                subtable.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
+                subtable.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
+
+                /* map unicode characters to glyph indices in run */
+                return hm_cmap_unicode_to_id(&subtable, c);
+            }
+
+            /* Found encoding */
+            break;
+        }
+    }
+
+    return 0;
 }
 
 void
 hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
-                                hm_array_t *input,
-                                hm_array_t *output)
+                              hm_array_t *input,
+                              hm_array_t *output)
 {
     /* Parse cmap table and convert unicode run to GID run */
     hm_buf_t *cmap_buf = &ctx->face->cmap_buf;
@@ -276,27 +350,26 @@ hm_shape(hm_context_t *ctx, hm_run_t *run) {
     /* Map unicode characters to nominal glyph indices */
     hm_map_to_nominal_form_glyphs(ctx, run->input, run->output);
 
-    hm_set_t *lookup_indices = hm_set_create();
-    hm_ot_layout_collect_lookups(face, HM_OT_TAG_GSUB,
-                                   script_tag,
-                                   language_tag,
-                                   ctx->features,
-                                   lookup_indices);
+    hm_ot_layout_apply_features(face, script_tag,
+                                language_tag,
+                                ctx->features,
+                                run->output);
 
 
-    if (hm_set_is_empty(lookup_indices))
-        HM_LOG("No lookups collected!\n");
-
-
-    int i;
-    for (i = 0; i < lookup_indices->count; ++i) {
-        HM_LOG("%u\n", lookup_indices->values[i]);
-
-        /* Apply lookup */
-        hm_ot_layout_apply_lookup(face, HM_OT_TAG_GSUB,
-                                    lookup_indices->values[i],
-                                    run->output);
-    }
+//    if (hm_set_is_empty(lookup_indices))
+//        HM_LOG("No lookups collected!\n");
+//
+//
+//    int i;
+//    for (i = 0; i < lookup_indices->count; ++i) {
+//        HM_LOG("%u\n", lookup_indices->values[i]);
+//
+//        /* Apply lookup */
+//        hm_ot_layout_apply_lookup(face, HM_OT_TAG_GSUB,
+//                                    feature_set->values[i],
+//                                    lookup_indices->values[i],
+//                                    run->output);
+//    }
 
 
 

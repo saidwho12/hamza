@@ -50,6 +50,10 @@ void
 hm_context_collect_required_glyphs(hm_context_t *ctx,
                                    hm_set_t *glyphs);
 
+
+hm_id
+hm_face_cmap_unicode_to_id(hm_face_t *face, hm_unicode c);
+
 #ifdef __cplusplus
 }
 #endif

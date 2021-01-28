@@ -1,4 +1,5 @@
 #include "hm-ot.h"
+#include "hm-ot-shape-complex-arabic.h"
 
 hm_feature_t
 hm_ot_feature_from_tag(hm_tag tag) {
@@ -111,88 +112,37 @@ hm_ot_layout_parse_lang_sys() {
 
 
 void
-hm_ot_layout_feature_get_lookups(hm_face_t *face,
-                                   hm_tag table_tag,
-                                   uint16_t feature_index,
-                                   uint16_t *lookup_count,
-                                   uint16_t *lookup_indices) {
-    hm_stream_t *table;
-    uint8_t *table_data;
-    uint32_t ver;
-    uint16_t script_list_offset;
-    uint16_t feature_list_offset;
-    uint16_t lookup_list_offset;
-    hm_offset32 feature_variations_offset;
+hm_ot_layout_feature_get_lookups(uint8_t *data,
+                                 hm_array_t *lookup_indices)
+{
 
-    HM_ASSERT(table_tag == HM_OT_TAG_GSUB || table_tag == HM_OT_TAG_GPOS);
-
-    if (table_tag == HM_OT_TAG_GSUB)
-        table_data = face->gsub_table;
-    else if (table_tag == HM_OT_TAG_GPOS)
-        table_data = face->gpos_table;
-
-    table = hm_stream_create(table_data,0,0);
-    hm_stream_read32(table, &ver);
-
-    if (ver == 0x00010000) {
-        /* version 1.0 */
-        hm_stream_read16(table, &script_list_offset);
-        hm_stream_read16(table, &feature_list_offset);
-        hm_stream_read16(table, &lookup_list_offset);
-    } else if (ver == 0x00010001) {
-        /* version 1.1 */
-        hm_stream_read16(table, &script_list_offset);
-        hm_stream_read16(table, &feature_list_offset);
-        hm_stream_read16(table, &lookup_list_offset);
-        hm_stream_read32(table, &feature_variations_offset);
-    }
-
-    /* get feature at feature_index */
-    uint16_t feature_count;
-    hm_stream_t *feature_list = hm_stream_create(table_data + feature_list_offset,
-                                                     0,0);
-    hm_stream_read16(feature_list, &feature_count);
-    hm_stream_seek(feature_list, 6 * feature_index); /* sizeof(hm_rec16_t) * feature_index */
-
-    hm_tag tag;
-    uint16_t feature_offset;
-    hm_stream_read32(feature_list, &tag);
-    hm_stream_read16(feature_list, &feature_offset);
-    HM_LOG("TAG: %c%c%c%c\n", HM_UNTAG(tag));
-
-    hm_stream_t *subtable = hm_stream_create(feature_list->data + feature_offset,
-                                                             0, 0);
+    hm_stream_t *table = hm_stream_create(data,0,0);
     hm_feature_table_t feature_table;
-    hm_stream_read16(subtable, &feature_table.feature_params);
-    hm_stream_read16(subtable, &feature_table.lookup_index_count);
+    hm_stream_read16(table, &feature_table.feature_params);
+    hm_stream_read16(table, &feature_table.lookup_index_count);
 
-    HM_LOG("feature_params: 0x%04X\n", feature_table.feature_params);
-    HM_LOG("lookup_index_count: %u\n", feature_table.lookup_index_count);
+//    HM_LOG("feature_params: 0x%04X\n", feature_table.feature_params);
+//    HM_LOG("lookup_index_count: %u\n", feature_table.lookup_index_count);
 
-    if (lookup_indices == NULL) {
-        if (lookup_count != NULL)
-            *lookup_count = feature_table.lookup_index_count;
-    } else {
-        int i = 0;
-        while (i < feature_table.lookup_index_count) {
-            hm_stream_read16(subtable, &lookup_indices[i]);
-            ++i;
-        }
+    int i = 0;
+    while (i < feature_table.lookup_index_count) {
+        uint16_t lookup_index;
+        hm_stream_read16(table, &lookup_index);
+        hm_array_push_back(lookup_indices, lookup_index);
+        ++i;
     }
-
 }
 
 
-void
-hm_ot_layout_collect_lookups(hm_face_t *face,
-                               hm_tag table_tag,
-                               hm_tag script,
-                               hm_tag language,
-                               const hm_bitset_t *feature_bits,
-                               hm_set_t *lookup_indices)
+hm_bool
+hm_ot_layout_apply_features(hm_face_t *face,
+                            hm_tag script,
+                            hm_tag language,
+                            const hm_bitset_t *feature_bits,
+                            hm_array_t *glyph_array)
 {
     HM_ASSERT(face != NULL);
-    HM_ASSERT(lookup_indices != NULL);
+    HM_ASSERT(feature_bits != NULL);
 
     hm_byte *data = (hm_byte *) face->gsub_table;
     hm_stream_t *table = hm_stream_create(data, 0, 0);
@@ -213,7 +163,8 @@ hm_ot_layout_collect_lookups(hm_face_t *face,
         HM_LOG("script_list_offset: %u\n", script_list_offset);
         HM_LOG("feature_list_offset: %u\n", feature_list_offset);
         HM_LOG("lookup_list_offset: %u\n", lookup_list_offset);
-    } else if (ver == 0x00010001) {
+    }
+    else if (ver == 0x00010001) {
         hm_stream_read16(table, &script_list_offset);
         hm_stream_read16(table, &feature_list_offset);
         hm_stream_read16(table, &lookup_list_offset);
@@ -225,17 +176,18 @@ hm_ot_layout_collect_lookups(hm_face_t *face,
     }
 
     void *lsaddr = hm_ot_layout_choose_lang_sys(face,
-                                                  data + script_list_offset,
-                                                  script, language);
+                                                data + script_list_offset,
+                                                script, language);
+
     if (lsaddr == NULL) {
         /* Language system was not found */
         HM_ERROR("Language system was not found!\n");
-        return;
+        return HM_FALSE;
     }
 
     HM_LOG("Found language system!\n");
 
-    hm_set_t *lang_feature_indices = hm_set_create();
+    hm_array_t *lang_feature_indices = hm_array_create();
     hm_stream_t *lsbuf = hm_stream_create(lsaddr, 0, 0);
 
     hm_lang_sys_t langSys;
@@ -257,63 +209,63 @@ hm_ot_layout_collect_lookups(hm_face_t *face,
         uint16_t featureIndex;
         hm_stream_read16(lsbuf, &featureIndex);
         HM_LOG("[%u] = %u\n", loopIndex, featureIndex);
-        hm_set_add(lang_feature_indices, featureIndex);
+        hm_array_push_back(lang_feature_indices, featureIndex);
         ++loopIndex;
     }
 
+    hm_stream_t *lookup_list = hm_stream_create(data + lookup_list_offset, 0, 0);
+    hm_array_t *lookup_offsets = hm_array_create();
+    {
+        /* Read lookup offets to table */
+        uint16_t lookup_count;
+        uint16_t lookup_index = 0;
+        hm_stream_read16(lookup_list, &lookup_count);
+        while (lookup_index < lookup_count) {
+            uint16_t lookup_offset;
+            hm_stream_read16(lookup_list, &lookup_offset);
+            hm_array_push_back(lookup_offsets, lookup_offset);
+            ++lookup_index;
+        }
+    }
 
-    hm_set_t *feature_indices = hm_set_create();
+
+    hm_stream_t *feature_list = hm_stream_create(data + feature_list_offset, 0, 0);
+
 
     {
-        /* Parsing the FeatureList and accumulating selected Features */
-        hm_stream_t *subtable = hm_stream_create(data + feature_list_offset, 0, 0);
-
+        /* Parsing the FeatureList and applying selected Features */
         uint16_t feature_count;
         uint16_t feature_index = 0;
-        hm_stream_read16(subtable, &feature_count);
+        hm_stream_read16(feature_list, &feature_count);
         HM_LOG("feature_count: %u\n", feature_count);
 
         while (feature_index < feature_count) {
             hm_rec16_t rec;
-            hm_stream_read32(subtable, &rec.tag);
-            hm_stream_read16(subtable, &rec.offset);
+            hm_stream_read32(feature_list, &rec.tag);
+            hm_stream_read16(feature_list, &rec.offset);
             HM_LOG("[%u] = { \"%c%c%c%c\", %u }\n", feature_index,
                      HM_UNTAG(rec.tag), rec.offset);
-
 
             hm_feature_t feature = hm_ot_feature_from_tag(rec.tag);
 
             if (hm_bitset_check(feature_bits, feature) == HM_TRUE) {
                 /* Feature is requested and exists */
-                hm_set_add(feature_indices, feature_index);
+                hm_array_t *lookup_indices = hm_array_create();
+                hm_ot_layout_feature_get_lookups(feature_list->data + rec.offset, lookup_indices);
+
+                int i = 0;
+                while (i < hm_array_size(lookup_indices)) {
+                    uint16_t lookup_offset = hm_array_at(lookup_offsets, hm_array_at(lookup_indices, i));
+                    hm_stream_t *lookup_table = hm_stream_create(lookup_list->data + lookup_offset, 0, 0);
+                    hm_ot_layout_apply_lookup(face, lookup_table, feature, glyph_array);
+                    ++i;
+                }
+
+                hm_array_destroy(lookup_indices);
             }
 
             ++feature_index;
         }
-    }
-
-    /* Get lookups for selected features */
-    HM_LOG("feature count: %lu\n", feature_indices->count);
-
-    /* Gather all lookups for selected features */
-    int fii = 0;
-    while (fii < feature_indices->count) {
-        uint16_t lookup_count;
-        hm_ot_layout_feature_get_lookups(face, table_tag, feature_indices->values[fii],
-                                           &lookup_count, NULL);
-
-        uint16_t *feature_lookup_indices = (uint16_t *) HM_MALLOC(lookup_count);
-        hm_ot_layout_feature_get_lookups(face, table_tag, feature_indices->values[fii],
-                                           &lookup_count, feature_lookup_indices);
-
-        int lii = 0;
-        while (lii < lookup_count) {
-            hm_set_add(lookup_indices, feature_lookup_indices[lii]);
-            ++ lii;
-        }
-
-        HM_FREE(feature_lookup_indices);
-        ++fii;
     }
 }
 
@@ -327,118 +279,117 @@ hm_ot_layout_lookups_substitute_closure(hm_face_t *face,
 
 hm_bool
 hm_ot_layout_lookup_would_substitute(hm_face_t *face,
-                                       unsigned int lookup_index,
-                                       const hm_id *glyphs,
-                                       unsigned int glyph_count,
-                                       hm_bool zero_context)
+                                     unsigned int lookup_index,
+                                     const hm_id *glyphs,
+                                     unsigned int glyph_count,
+                                     hm_bool zero_context)
 {
 
 }
 
 
+hm_bool
+hm_ot_layout_parse_coverage(uint8_t *data,
+                            hm_array_t *coverage_glyphs)
+{
+    uint16_t coverage_format = 0;
+    hm_stream_t *table = hm_stream_create(data,0,0);
+
+    hm_stream_read16(table, &coverage_format);
+
+    switch (coverage_format) {
+        case 1: {
+            uint16_t coverage_idx = 0;
+            uint16_t coverage_glyph_count;
+            hm_stream_read16(table, &coverage_glyph_count);
+            while (coverage_idx < coverage_glyph_count) {
+                uint16_t glyph_index;
+                hm_stream_read16(table, &glyph_index);
+                hm_array_push_back(coverage_glyphs, glyph_index);
+                ++coverage_idx;
+            }
+
+            return HM_TRUE;
+        }
+
+        case 2: {
+            uint16_t range_index = 0, range_count;
+            hm_stream_read16(table, &range_count);
+
+            /* Assuming ranges are ordered from 0 to glyph_count in order */
+            while (range_index < range_count) {
+                hm_id glyph_id;
+                hm_range_rec_t range;
+
+                hm_stream_read16(table, &range.start_glyph_id);
+                hm_stream_read16(table, &range.end_glyph_id);
+                hm_stream_read16(table, &range.start_coverage_index);
+
+                glyph_id = range.start_glyph_id;
+                while (glyph_id < range.end_glyph_id) {
+                    hm_array_push_back(coverage_glyphs, glyph_id);
+                    ++glyph_id;
+                }
+
+                ++range_index;
+            }
+
+            return HM_TRUE;
+        }
+
+        default: return HM_FALSE;
+    }
+}
+
+
+
 void
 hm_ot_layout_apply_lookup(hm_face_t *face,
-                            hm_tag table_tag,
-                            uint16_t lookup_index,
-                            hm_array_t *glyph_array)
+                          hm_stream_t *table,
+                          hm_feature_t feature,
+                          hm_array_t *glyph_array)
 {
-    hm_stream_t *table;
-    uint8_t *table_data;
-    uint32_t ver;
-    uint16_t script_list_offset;
-    uint16_t feature_list_offset;
-    uint16_t lookup_list_offset;
-    hm_offset32 feature_variations_offset;
+    hm_lookup_table_t lookup;
+    hm_stream_read16(table, &lookup.lookup_type);
+    hm_stream_read16(table, &lookup.lookup_flag);
+    hm_stream_read16(table, &lookup.subtable_count);
 
-    HM_ASSERT(table_tag == HM_OT_TAG_GSUB || table_tag == HM_OT_TAG_GPOS);
+    HM_LOG("lookup_type: %d\n", lookup.lookup_type);
+    HM_LOG("lookup_flag: %d\n", lookup.lookup_flag);
+    HM_LOG("subtable_count: %d\n", lookup.subtable_count);
 
-    if (table_tag == HM_OT_TAG_GSUB)
-        table_data = face->gsub_table;
-    else if (table_tag == HM_OT_TAG_GPOS)
-        table_data = face->gpos_table;
+    uint16_t subtable_index = 0;
+    while (subtable_index < lookup.subtable_count) {
+        hm_offset16 offset;
+        hm_stream_read16(table, &offset);
+        hm_stream_t *subtable = hm_stream_create(table->data + offset, 0, 0);
+        uint16_t subst_format;
+        hm_stream_read16(subtable, &subst_format);
 
-    table = hm_stream_create(table_data,0,0);
-    hm_stream_read32(table, &ver);
-
-    if (ver == 0x00010000) {
-        /* version 1.0 */
-        hm_stream_read16(table, &script_list_offset);
-        hm_stream_read16(table, &feature_list_offset);
-        hm_stream_read16(table, &lookup_list_offset);
-    } else if (ver == 0x00010001) {
-        /* version 1.1 */
-        hm_stream_read16(table, &script_list_offset);
-        hm_stream_read16(table, &feature_list_offset);
-        hm_stream_read16(table, &lookup_list_offset);
-        hm_stream_read32(table, &feature_variations_offset);
-    }
-
-    uint8_t *lookup_list_addr = table_data + lookup_list_offset;
-    uint8_t *lookup_addr = lookup_list_addr + 2 + lookup_index * 2;
-    hm_offset16 lookup_offset = bswap16(*(uint16_t *)lookup_addr);
-
-//    HM_LOG("%d\n", lookup_offset);
-
-    hm_stream_t *lookup_table_stream = hm_stream_create(lookup_list_addr + lookup_offset, 0,0);
-    hm_lookup_table_t lookup_table;
-    hm_stream_read16(lookup_table_stream, &lookup_table.lookup_type);
-    hm_stream_read16(lookup_table_stream, &lookup_table.lookup_flag);
-    hm_stream_read16(lookup_table_stream, &lookup_table.subtable_count);
-
-    HM_LOG("lookup_type: %d\n", lookup_table.lookup_type);
-    HM_LOG("lookup_flag: %d\n", lookup_table.lookup_flag);
-    HM_LOG("subtable_count: %d\n", lookup_table.subtable_count);
-
-    switch (lookup_table.lookup_type) {
-        case HM_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
-            int i = 0;
-            while (i < lookup_table.subtable_count) {
-                hm_offset16 offset;
-                hm_stream_read16(lookup_table_stream, &offset);
-
-                uint8_t *subtable_data = lookup_list_addr + lookup_offset + offset;
-                hm_stream_t *subtable = hm_stream_create(subtable_data, 0, 0);
-                uint16_t format;
-                hm_stream_read16(subtable, &format);
-
-                if (format == 1) {
+        switch (lookup.lookup_type) {
+            case HM_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
+                if (subst_format == 1) {
                     hm_offset16 coverage_offset;
                     int16_t id_delta;
                     hm_stream_read16(subtable, &coverage_offset);
                     hm_stream_read16(subtable, (uint16_t *) &id_delta);
-
-
-
-                } else if (format == 2) {
+                    /* NOTE: Implement */
+                }
+                else if (subst_format == 2)
+                {
                     hm_offset16 coverage_offset;
                     uint16_t glyph_count;
                     hm_array_t *from = hm_array_create();
                     hm_array_t *to = hm_array_create();
-                    uint16_t glyph_index;
                     hm_stream_read16(subtable, &coverage_offset);
                     hm_stream_read16(subtable, &glyph_count);
 
                     /* Read coverage offset */
-                    uint16_t coverage_format;
-                    hm_stream_t *coverage = hm_stream_create(subtable->data + coverage_offset,0,0);
-                    hm_stream_read16(coverage, &coverage_format);
-
-                    if (coverage_offset == 1) {
-                        uint16_t coverage_idx = 0;
-                        hm_id start_id;
-                        uint16_t coverage_glyph_count;
-                        hm_stream_read16(coverage, &start_id);
-                        hm_stream_read16(coverage, &coverage_glyph_count);
-                        while (coverage_idx < coverage_glyph_count) {
-                            hm_array_push_back(from, start_id + coverage_idx);
-                            ++coverage_idx;
-                        }
-                    } else if (coverage_format == 2) {
-
-                    }
+                    hm_ot_layout_parse_coverage(subtable->data + coverage_offset, from);
 
                     /* Get destination glyph indices */
-                    for (glyph_index = 0; glyph_index < glyph_count; ++glyph_index) {
+                    uint16_t dst_gidx;
+                    for (dst_gidx = 0; dst_gidx < glyph_count; ++dst_gidx) {
                         hm_id substitute_glyph;
                         hm_stream_read16(subtable, &substitute_glyph);
                         hm_array_push_back(to, substitute_glyph);
@@ -447,10 +398,26 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                     /* Substitute glyphs */
                     size_t gidx = 0;
                     while (gidx < hm_array_size(glyph_array)) {
-                        hm_id curr_id = hm_array_at(glyph_array, gidx);
+                        hm_id curr_glyph = hm_array_at(glyph_array, gidx);
                         size_t val_idx;
-                        if (hm_array_has(from, curr_id, &val_idx)) {
-                            hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                        if (hm_array_has(from, curr_glyph, &val_idx)) {
+
+                            if (feature == HM_FEATURE_MEDI) {
+                                if (hm_ot_shape_complex_arabic_medi_cond(face, glyph_array, gidx)) {
+                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                                }
+                            } else if (feature == HM_FEATURE_INIT) {
+                                if (hm_ot_shape_complex_arabic_init_cond(face, glyph_array, gidx)) {
+                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                                }
+                            } else if (feature == HM_FEATURE_FINA) {
+                                if (hm_ot_shape_complex_arabic_fina_cond(face, glyph_array, gidx)) {
+                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                                }
+                            }
+                            else {
+                                hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                            }
                         }
 
                         ++gidx;
@@ -458,47 +425,120 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
 
                     hm_array_destroy(from);
                     hm_array_destroy(to);
-                } else {
-                    HM_LOG("Invalid substitution subtable format!\n");
-                    break;
+                }
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION: {
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION: {
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
+                hm_offset16 coverage_offset;
+                uint16_t ligature_set_count;
+                hm_array_t *from;
+                HM_ASSERT(subst_format == 1);
+
+                from = hm_array_create();
+                hm_stream_read16(subtable, &coverage_offset);
+                hm_stream_read16(subtable, &ligature_set_count);
+
+                /* Read coverage offset */
+                hm_ot_layout_parse_coverage(subtable->data + coverage_offset, from);
+
+                /* Substitute glyphs */
+                int gcount = hm_array_size(glyph_array);
+                int gidx = gcount - 1;
+                while (gidx >= 0) {
+                    hm_id curr_id = hm_array_at(glyph_array, gidx);
+                    size_t val_idx;
+                    if (hm_array_has(from, curr_id, &val_idx)) {
+                        HM_LOG("curr_id: 0x%04x\n", curr_id);
+
+                        uint16_t ligsetoff = bswap16(*(uint16_t *)(subtable->data + subtable->offset + val_idx * 2));
+                        /* LigatureSet table (all ligatures beginning with the same glyph) */
+                        hm_stream_t *ligature_set = hm_stream_create(subtable->data + ligsetoff,0,0);
+                        uint16_t ligcount;
+                        hm_stream_read16(ligature_set, &ligcount);
+                        /* Check each ligature and if any matches replace */
+                        uint16_t ligidx = 0;
+                        while (ligidx < ligcount) {
+                            hm_offset16 ligoff;
+                            hm_stream_read16(ligature_set, &ligoff);
+                            /* Ligature table */
+                            hm_stream_t *ligature = hm_stream_create(ligature_set->data + ligoff,0,0);
+                            uint16_t ligature_glyph;
+                            uint16_t component_count;
+                            hm_stream_read16(ligature, &ligature_glyph);
+                            hm_stream_read16(ligature, &component_count);
+                            uint16_t liglen = component_count + 1;
+
+                            /* Check if ligature is applicable */
+                            if (gcount - gidx >= liglen) {
+//                                uint8_t tmpbuf[1024];
+//                                hm_monotonic_alloc_t alloc = hm_monotonic_alloc_init(tmpbuf, 1024);
+//
+//                                hm_id *ligset = HM_MONOTONIC_ALLOC(uint16_t, component_count + 1);
+                                hm_array_t *ligarr = hm_array_create();
+                                hm_array_push_back(ligarr, curr_id);
+
+                                /* Gather all components */
+                                uint16_t component_index = 0;
+                                while (component_index < component_count) {
+                                    uint16_t glyph;
+                                    hm_stream_read16(ligature, &glyph);
+                                    hm_array_push_back(ligarr, glyph);
+                                    ++component_index;
+                                }
+
+                                if (hm_array_range_eq(ligarr, 0, glyph_array, gidx, liglen)) {
+                                    hm_array_pop_range_at(glyph_array, gidx, liglen);
+                                    hm_array_insert(glyph_array, gidx, ligature_glyph);
+                                    hm_array_destroy(ligarr);
+                                    goto skip_done_lig;
+                                }
+
+                                hm_array_destroy(ligarr);
+                            }
+
+                            ++ligidx;
+                        }
+                    }
+
+                    skip_done_lig:
+                    --gidx;
                 }
 
-                ++i;
+                hm_array_destroy(from);
+                break;
             }
-            break;
+
+            case HM_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION: {
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: {
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION: {
+                break;
+            }
+
+            case HM_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION: {
+                break;
+            }
+
+            default:
+                HM_LOG("Invalid GSUB lookup type!\n");
+                break;
         }
 
-        case HM_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION: {
-            break;
-        }
-
-        case HM_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION: {
-            break;
-        }
-
-        default:
-            HM_LOG("Invalid GSUB lookup type!\n");
-            break;
+        ++subtable_index;
     }
 }
 

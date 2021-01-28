@@ -7,6 +7,8 @@ set(CMAKE_C_STANDARD 90)
 set(HAMIM_SOURCES
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot.h
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic.c
+		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic.h
+		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic-joining-list.h
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot.c
         ${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ft.h
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm.c

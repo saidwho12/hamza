@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <wchar.h>
 #define HM_LOG(...) fprintf(stdout, __VA_ARGS__)
 #define HM_DBGLOG(...) fprintf(stdout, __VA_ARGS__)
 #define HM_ERROR(...) fprintf(stderr, __VA_ARGS__)

@@ -42,6 +42,12 @@ hm_array_has(hm_array_t *array, uint32_t val, size_t *val_idx);
 void
 hm_array_set(hm_array_t *array, size_t index, uint32_t val);
 
+
+hm_bool
+hm_array_range_eq(const hm_array_t *a_arr, size_t a_index,
+                  const hm_array_t *b_arr, size_t b_index,
+                  size_t len);
+
 #ifdef __cplusplus
 };
 #endif

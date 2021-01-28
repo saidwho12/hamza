@@ -466,22 +466,22 @@ hm_run_load_utf8_zt(hm_run_t *run, const hm_char *text) {
 }
 
 
-typedef struct HM_PACKED hm_rec16_t {
+typedef struct hm_rec16_t {
     hm_tag tag;
     hm_offset16 offset;
 } hm_rec16_t;
 
-typedef struct HM_PACKED hm_rec32_t {
+typedef struct hm_rec32_t {
     hm_tag tag;
     hm_offset32 offset;
 } hm_rec32_t;
 
-typedef struct HM_PACKED hm_script_list_t {
+typedef struct hm_script_list_t {
     hm_uint16 scriptCount;
     //hm_rec32_t *scriptRecords;
 } hm_script_list_t;
 
-typedef struct HM_PACKED hm_script_table_t {
+typedef struct hm_script_table_t {
     hm_offset16 defaultLangSys;
     hm_uint16 langSysCount;
     //hm_rec16_t *langSysRecords;
@@ -501,7 +501,7 @@ typedef struct hm_lang_sys_t {
     //HM_Uint16 *featureIndices;
 } hm_lang_sys_t;
 
-typedef struct HM_PACKED hm_feature_list_t {
+typedef struct hm_feature_list_t {
     hm_uint16 featureCount;
     hm_rec16_t *featureRecord;
 } hm_feature_list_t;
@@ -587,9 +587,9 @@ typedef struct hm_coverage_format1_t {
 } hm_coverage_format1_t;
 
 typedef struct hm_range_rec_t {
-    hm_id startGlyphID;
-    hm_id endGlyphID;
-    hm_uint16 startCoverageIndex;
+    hm_id start_glyph_id;
+    hm_id end_glyph_id;
+    uint16_t start_coverage_index;
 } hm_range_rec_t;
 
 typedef struct hm_coverage_format2_t {
@@ -800,13 +800,12 @@ hm_feature_t
 hm_ot_feature_from_tag(hm_tag tag);
 
 
-void
-hm_ot_layout_collect_lookups(hm_face_t *face,
-                             hm_tag table_tag,
-                             hm_tag script,
-                             hm_tag language,
-                             const hm_bitset_t *feature_bits,
-                             hm_set_t *lookup_indices);
+hm_bool
+hm_ot_layout_apply_features(hm_face_t *face,
+                            hm_tag script,
+                            hm_tag language,
+                            const hm_bitset_t *feature_bits,
+                            hm_array_t *glyph_array);
 
 
 void
@@ -825,9 +824,9 @@ hm_ot_layout_lookup_would_substitute(hm_face_t *face,
 
 void
 hm_ot_layout_apply_lookup(hm_face_t *face,
-                            hm_tag table_tag,
-                            uint16_t lookup_index,
-                            hm_array_t *glyph_array);
+                          hm_stream_t *table,
+                          hm_feature_t feature,
+                          hm_array_t *glyph_array);
 
 hm_tag
 hm_ot_script_to_tag(hm_script_t script);

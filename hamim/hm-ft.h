@@ -15,9 +15,11 @@ extern "C" {
 
 static hm_face_t *
 hm_ft_face_create(FT_Face ft_face) {
-    hm_face_t *face = (hm_face_t *) malloc(sizeof(hm_face_t));
+    hm_face_t *face = (hm_face_t *) HM_MALLOC(sizeof(hm_face_t));
     //face->handle = (mk_rawptr)malloc(sizeof(FT_Face));
     //memcpy(face->handle, &ft_face, sizeof(FT_Face));
+    face->cmap_buf.data = NULL;
+    face->cmap_buf.len = 0;
 
     FT_Bytes BASE = NULL;
     FT_Bytes GDEF = NULL;

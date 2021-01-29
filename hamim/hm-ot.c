@@ -17,7 +17,6 @@ hm_ot_feature_from_tag(hm_tag tag) {
     return -1;
 }
 
-
 hm_tag
 hm_ot_tag_from_feature(hm_feature_t feature) {
     /* loop over feature tag lookup table for it's id */
@@ -139,7 +138,7 @@ hm_ot_layout_apply_features(hm_face_t *face,
                             hm_tag script,
                             hm_tag language,
                             const hm_bitset_t *feature_bits,
-                            hm_array_t *glyph_array)
+                            hm_section_t *sect)
 {
     HM_ASSERT(face != NULL);
     HM_ASSERT(feature_bits != NULL);
@@ -257,7 +256,7 @@ hm_ot_layout_apply_features(hm_face_t *face,
                 while (i < hm_array_size(lookup_indices)) {
                     uint16_t lookup_offset = hm_array_at(lookup_offsets, hm_array_at(lookup_indices, i));
                     hm_stream_t *lookup_table = hm_stream_create(lookup_list->data + lookup_offset, 0, 0);
-                    hm_ot_layout_apply_lookup(face, lookup_table, feature, glyph_array);
+                    hm_ot_layout_apply_lookup(face, lookup_table, feature, sect);
                     ++i;
                 }
 
@@ -347,7 +346,7 @@ void
 hm_ot_layout_apply_lookup(hm_face_t *face,
                           hm_stream_t *table,
                           hm_feature_t feature,
-                          hm_array_t *glyph_array)
+                          hm_section_t *sect)
 {
     hm_lookup_table_t lookup;
     hm_stream_read16(table, &lookup.lookup_type);
@@ -396,31 +395,30 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                     }
 
                     /* Substitute glyphs */
-                    size_t gidx = 0;
-                    while (gidx < hm_array_size(glyph_array)) {
-                        hm_id curr_glyph = hm_array_at(glyph_array, gidx);
-                        size_t val_idx;
-                        if (hm_array_has(from, curr_glyph, &val_idx)) {
+                    hm_section_node_t *curr_node = sect->root;
 
-                            if (feature == HM_FEATURE_MEDI) {
-                                if (hm_ot_shape_complex_arabic_medi_cond(face, glyph_array, gidx)) {
-                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
+                    while (curr_node != NULL) {
+                        if (curr_node->data.id == curr_node->data.logical_id) {
+                            hm_id curr_glyph = curr_node->data.id;
+                            size_t val_idx;
+                            if (hm_array_has(from, curr_glyph, &val_idx)) {
+                                switch (feature) {
+                                    case HM_FEATURE_ISOL:
+                                    case HM_FEATURE_MEDI:
+                                    case HM_FEATURE_MED2:
+                                    case HM_FEATURE_INIT:
+                                    case HM_FEATURE_FINA:
+                                    case HM_FEATURE_FIN2:
+                                    case HM_FEATURE_FIN3:
+                                        if (hm_ot_shape_complex_arabic_join(feature, curr_node)) {
+                                            curr_node->data.id = hm_array_at(to, val_idx);
+                                        }
+                                        break;
                                 }
-                            } else if (feature == HM_FEATURE_INIT) {
-                                if (hm_ot_shape_complex_arabic_init_cond(face, glyph_array, gidx)) {
-                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
-                                }
-                            } else if (feature == HM_FEATURE_FINA) {
-                                if (hm_ot_shape_complex_arabic_fina_cond(face, glyph_array, gidx)) {
-                                    hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
-                                }
-                            }
-                            else {
-                                hm_array_set(glyph_array, gidx, hm_array_at(to, val_idx));
                             }
                         }
 
-                        ++gidx;
+                        curr_node = curr_node->next;
                     }
 
                     hm_array_destroy(from);
@@ -451,10 +449,9 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                 hm_ot_layout_parse_coverage(subtable->data + coverage_offset, from);
 
                 /* Substitute glyphs */
-                int gcount = hm_array_size(glyph_array);
-                int gidx = gcount - 1;
-                while (gidx >= 0) {
-                    hm_id curr_id = hm_array_at(glyph_array, gidx);
+                hm_section_node_t *curr_node = sect->root;
+                while (curr_node != NULL) {
+                    hm_id curr_id = curr_node->data.id;
                     size_t val_idx;
                     if (hm_array_has(from, curr_id, &val_idx)) {
                         HM_LOG("curr_id: 0x%04x\n", curr_id);
@@ -475,14 +472,10 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                             uint16_t component_count;
                             hm_stream_read16(ligature, &ligature_glyph);
                             hm_stream_read16(ligature, &component_count);
-                            uint16_t liglen = component_count + 1;
 
                             /* Check if ligature is applicable */
-                            if (gcount - gidx >= liglen) {
-//                                uint8_t tmpbuf[1024];
-//                                hm_monotonic_alloc_t alloc = hm_monotonic_alloc_init(tmpbuf, 1024);
-//
-//                                hm_id *ligset = HM_MONOTONIC_ALLOC(uint16_t, component_count + 1);
+                            size_t rem = hm_section_node_count(curr_node);
+                            if (rem >= component_count) {
                                 hm_array_t *ligarr = hm_array_create();
                                 hm_array_push_back(ligarr, curr_id);
 
@@ -495,10 +488,25 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                                     ++component_index;
                                 }
 
-                                if (hm_array_range_eq(ligarr, 0, glyph_array, gidx, liglen)) {
-                                    hm_array_pop_range_at(glyph_array, gidx, liglen);
-                                    hm_array_insert(glyph_array, gidx, ligature_glyph);
-                                    hm_array_destroy(ligarr);
+                                hm_bool is_eq = HM_TRUE;
+                                size_t comp_offset = 0;
+                                hm_section_node_t *tmp_node = curr_node;
+                                while (comp_offset < component_count) {
+                                    hm_id ligid = hm_array_at(ligarr, comp_offset);
+
+                                    if (tmp_node->data.id != ligid) {
+                                        is_eq = HM_FALSE;
+                                        break;
+                                    }
+
+                                    tmp_node = tmp_node->next;
+                                    ++comp_offset;
+                                }
+
+                                if (is_eq) {
+                                    /* Substitute nodes for single node */
+                                    hm_section_rem_n_next_nodes(curr_node, component_count-1);
+                                    curr_node->data.id = ligature_glyph;
                                     goto skip_done_lig;
                                 }
 
@@ -510,7 +518,7 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                     }
 
                     skip_done_lig:
-                    --gidx;
+                    curr_node = curr_node->next;
                 }
 
                 hm_array_destroy(from);

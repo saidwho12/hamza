@@ -336,12 +336,32 @@ typedef enum hm_dir_t {
     HM_DIR_RTL,
 } hm_dir_t;
 
-typedef struct hm_run_t {
-    hm_array_t *input;
-    hm_array_t *output;
+typedef struct hm_section_node_t hm_section_node_t;
 
+#define NODE_FLAG_ARABIC_CHAR_FORMED 0x01
+
+typedef struct hm_section_node_data_t {
+    hm_unicode codepoint;
+    /* nominal glyph id */
+    hm_id logical_id;
+    /* current glyph id */
+    hm_id id;
+    uint16_t dx;
+    uint16_t dy;
+    uint16_t ax;
+    uint16_t ay;
+    uint8_t flags;
+} hm_section_node_data_t;
+
+struct hm_section_node_t {
+    hm_section_node_t *prev, *next;
+    hm_section_node_data_t data;
+};
+
+typedef struct hm_section_t {
+    hm_section_node_t *root;
     unsigned int flags;
-} hm_run_t;
+} hm_section_t;
 
 static hm_language_t
 hm_lang(const char *s) {
@@ -351,12 +371,65 @@ hm_lang(const char *s) {
 
 #define HM_LANG(lang_str) hm_lang(lang_str)
 
-static hm_run_t *
-hm_run_create(void) {
-    hm_run_t *run = (hm_run_t *) malloc(sizeof(hm_run_t));
-    run->input = hm_array_create();
-    run->output = hm_array_create();
-    return run;
+static hm_section_t *
+hm_section_create(void) {
+    hm_section_t *sect = (hm_section_t *) HM_MALLOC(sizeof(hm_section_t));
+    sect->root = NULL;
+    return sect;
+}
+
+static void
+hm_section_add(hm_section_t *sect, const hm_section_node_data_t *node_data)
+{
+    hm_section_node_t *new_node = (hm_section_node_t *) HM_MALLOC(sizeof(hm_section_node_t));
+    new_node->data = *node_data;
+    new_node->prev = NULL;
+    new_node->next = NULL;
+
+    if (sect->root == NULL)
+        sect->root = new_node;
+    else {
+        hm_section_node_t *curr_node;
+        curr_node = sect->root;
+        while (curr_node->next != NULL) {
+            curr_node = curr_node->next;
+        }
+
+        curr_node->next = new_node;
+        new_node->prev = curr_node;
+    }
+}
+
+static size_t
+hm_section_node_count(hm_section_node_t *node) {
+    size_t count = 0;
+
+    while (node != NULL) {
+        ++count;
+        node = node->next;
+    }
+
+    return count;
+}
+
+static hm_bool
+hm_section_rem_n_next_nodes(hm_section_node_t *start, size_t n)
+{
+    /* assumes n passed in doesn't cause segfault :) */
+    hm_section_node_t *curr = start->next, *prev;
+    size_t i = 0;
+
+    while (i < n && curr != NULL) {
+        curr = curr->next;
+
+        if (curr == NULL) break;
+        prev = curr->prev;
+
+        ++i;
+    }
+
+    start->next = curr;
+    if (curr != NULL) curr->prev = start;
 }
 
 typedef struct {
@@ -443,8 +516,9 @@ hm_utf8_next(hm_utf8_dec_t *dec) {
     return HM_UTF8_ERROR;
 }
 
+
 static void
-hm_run_load_utf8(hm_run_t *run, const hm_char *text, size_t len) {
+hm_section_load_utf8(hm_section_t *sect, const hm_char *text, size_t len) {
     hm_unicode code;
     int ch;
 
@@ -455,14 +529,22 @@ hm_run_load_utf8(hm_run_t *run, const hm_char *text, size_t len) {
 
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = hm_utf8_next(&dec)) > 0) {
-        code = (hm_unicode) ch;
-        hm_array_push_back(run->input, code);
+        hm_section_node_data_t data;
+        data.codepoint = ch;
+        data.id = 0;
+        data.flags = 0;
+        data.logical_id = 0;
+        data.ax = 0;
+        data.ay = 0;
+        data.dx = 0;
+        data.dy = 0;
+        hm_section_add(sect, &data);
     }
 }
 
 static void
-hm_run_load_utf8_zt(hm_run_t *run, const hm_char *text) {
-    hm_run_load_utf8(run, text, UINT64_MAX);
+hm_section_load_utf8_zt(hm_section_t *sect, const hm_char *text) {
+    hm_section_load_utf8(sect, text, UINT64_MAX);
 }
 
 
@@ -805,7 +887,7 @@ hm_ot_layout_apply_features(hm_face_t *face,
                             hm_tag script,
                             hm_tag language,
                             const hm_bitset_t *feature_bits,
-                            hm_array_t *glyph_array);
+                            hm_section_t *sect);
 
 
 void
@@ -826,7 +908,7 @@ void
 hm_ot_layout_apply_lookup(hm_face_t *face,
                           hm_stream_t *table,
                           hm_feature_t feature,
-                          hm_array_t *glyph_array);
+                          hm_section_t *sect);
 
 hm_tag
 hm_ot_script_to_tag(hm_script_t script);

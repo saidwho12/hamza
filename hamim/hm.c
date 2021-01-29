@@ -258,8 +258,7 @@ hm_face_cmap_unicode_to_id(hm_face_t *face, hm_unicode c)
 
 void
 hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
-                              hm_array_t *input,
-                              hm_array_t *output)
+                              hm_section_t *sect)
 {
     /* Parse cmap table and convert unicode run to GID run */
     hm_buf_t *cmap_buf = &ctx->face->cmap_buf;
@@ -322,11 +321,11 @@ hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
                 subtable.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
 
                 /* map unicode characters to glyph indices in run */
-                int ch_index = 0;
-                while (ch_index < hm_array_size(input)) {
-                    hm_unicode c = hm_array_at(input, ch_index);
-                    hm_array_push_back(output, hm_cmap_unicode_to_id(&subtable, c));
-                    ++ch_index;
+                hm_section_node_t *curr_node = sect->root;
+
+                while (curr_node != NULL) {
+                    curr_node->data.id = curr_node->data.logical_id = hm_cmap_unicode_to_id(&subtable, curr_node->data.codepoint);
+                    curr_node = curr_node->next;
                 }
             }
 
@@ -338,7 +337,8 @@ hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
 
 
 hm_status_t
-hm_shape(hm_context_t *ctx, hm_run_t *run) {
+hm_shape_full(hm_context_t *ctx, hm_section_t *sect)
+{
     hm_face_t *face = ctx->face;
     hm_lookup_table_t *lookups = NULL;
     hm_tag script_tag = hm_ot_script_to_tag(ctx->script);
@@ -348,12 +348,12 @@ hm_shape(hm_context_t *ctx, hm_run_t *run) {
     HM_LOG("script: \"%c%c%c%c\"\n", HM_UNTAG(script_tag), script_tag);
 
     /* Map unicode characters to nominal glyph indices */
-    hm_map_to_nominal_form_glyphs(ctx, run->input, run->output);
+    hm_map_to_nominal_form_glyphs(ctx, sect);
 
     hm_ot_layout_apply_features(face, script_tag,
                                 language_tag,
                                 ctx->features,
-                                run->output);
+                                sect);
 
 
 //    if (hm_set_is_empty(lookup_indices))

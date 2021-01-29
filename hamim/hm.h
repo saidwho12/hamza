@@ -44,7 +44,7 @@ typedef struct hm_shaped_glyph_t {
 } hm_shaped_glyph_t;
 
 hm_status_t
-hm_shape(hm_context_t *ctx, hm_run_t *run);
+hm_shape_full(hm_context_t *ctx, hm_section_t *sect);
 
 void
 hm_context_collect_required_glyphs(hm_context_t *ctx,

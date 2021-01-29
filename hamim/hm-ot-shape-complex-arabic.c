@@ -5,8 +5,7 @@
 #define HM_ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
 
 hm_bool
-hm_ot_shape_complex_arabic_char_joining(hm_face_t *face,
-                                        hm_id char_id,
+hm_ot_shape_complex_arabic_char_joining(hm_unicode codepoint,
                                         hm_arabic_joining_entry_t *entry)
 {
     const hm_arabic_joining_entry_t *curr_entry = NULL;
@@ -14,9 +13,8 @@ hm_ot_shape_complex_arabic_char_joining(hm_face_t *face,
 
     while (index < HM_ARRAY_SIZE(hm_arabic_joining_list)) {
         curr_entry = &hm_arabic_joining_list[index];
-        hm_id entry_id = hm_face_cmap_unicode_to_id(face, curr_entry->codepoint);
 
-        if (entry_id == char_id) {
+        if (curr_entry->codepoint == codepoint) {
             /* Found entry for current harf */
             *entry = *curr_entry;
             return HM_TRUE;
@@ -29,136 +27,72 @@ hm_ot_shape_complex_arabic_char_joining(hm_face_t *face,
 }
 
 uint16_t
-hm_ot_shape_complex_arabic_prev(hm_face_t *face, hm_array_t *glyphs, size_t index)
+hm_ot_shape_complex_arabic_prev(hm_section_node_t *node)
 {
     hm_arabic_joining_entry_t entry;
-    hm_id char_id;
+    hm_unicode codepoint;
 
-    if (index == 0) {
-        goto no_prev;
-    }
+    if (node->prev == NULL)
+        goto no_adjacent;
 
-    char_id = hm_array_at(glyphs, index - 1);
-    if (hm_ot_shape_complex_arabic_char_joining(face, char_id, &entry)) {
+    codepoint = node->prev->data.codepoint;
+    if (hm_ot_shape_complex_arabic_char_joining(codepoint, &entry))
         return entry.joining;
-    }
 
-    no_prev:
-    /* No previous harf, return non-joining */
+    no_adjacent:
+    /* No next harf, return non-joining */
     return NO_JOINING_GROUP | JOINING_TYPE_T;
 }
 
 uint16_t
-hm_ot_shape_complex_arabic_next(hm_face_t *face, hm_array_t *glyphs, size_t index)
+hm_ot_shape_complex_arabic_next(hm_section_node_t *node)
 {
     hm_arabic_joining_entry_t entry;
-    hm_id char_id;
-    size_t len = hm_array_size(glyphs);
+    hm_unicode codepoint;
 
-    if (index >= len - 1) {
-        goto no_next;
-    }
+    if (node->next == NULL)
+        goto no_adjacent;
 
-    char_id = hm_array_at(glyphs, index + 1);
-    if (hm_ot_shape_complex_arabic_char_joining(face, char_id, &entry)) {
+    codepoint = node->next->data.codepoint;
+    if (hm_ot_shape_complex_arabic_char_joining(codepoint, &entry))
         return entry.joining;
-    }
 
-    no_next:
-    /* No previous harf, return non-joining */
+    no_adjacent:
+    /* No next harf, return non-joining */
     return NO_JOINING_GROUP | JOINING_TYPE_T;
 }
 
 hm_bool
-hm_ot_shape_complex_arabic_medi_cond(hm_face_t *face, hm_array_t *glyphs, size_t index)
+hm_ot_shape_complex_arabic_join(hm_feature_t feature, hm_section_node_t *node)
 {
-    uint16_t prev, curr, next;
-    hm_id curr_id;
+    uint16_t curr;
     hm_arabic_joining_entry_t curr_entry;
 
-    curr_id = hm_array_at(glyphs, index);
-    if (hm_ot_shape_complex_arabic_char_joining(face, curr_id, &curr_entry)) {
+    if (hm_ot_shape_complex_arabic_char_joining(node->data.codepoint, &curr_entry)) {
+        uint16_t prev, next;
         curr = curr_entry.joining;
+        prev = hm_ot_shape_complex_arabic_prev(node);
+        next = hm_ot_shape_complex_arabic_next(node);
 
-        prev = hm_ot_shape_complex_arabic_prev(face, glyphs, index);
-        next = hm_ot_shape_complex_arabic_next(face, glyphs, index);
+        /* Conditions for substitution */
+        hm_bool fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
+                       && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
 
-        /* Condition for substitution */
-        if (curr & JOINING_TYPE_D
-        && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-        && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C)) {
-            return HM_TRUE;
+        hm_bool medi = curr & JOINING_TYPE_D
+                       && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
+                       && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        hm_bool init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
+                       && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        if (feature == HM_FEATURE_FINA) {
+            return fina && !(medi || init);
         }
-    }
-
-    return HM_FALSE;
-}
-
-hm_bool
-hm_ot_shape_complex_arabic_init_cond(hm_face_t *face, hm_array_t *glyphs, size_t index)
-{
-    uint16_t curr, next;
-    hm_id curr_id;
-    hm_arabic_joining_entry_t curr_entry;
-
-    curr_id = hm_array_at(glyphs, index);
-    if (hm_ot_shape_complex_arabic_char_joining(face, curr_id, &curr_entry)) {
-        curr = curr_entry.joining;
-
-        next = hm_ot_shape_complex_arabic_next(face, glyphs, index);
-
-        /* Condition for substitution */
-        if (curr & (JOINING_TYPE_L | JOINING_TYPE_C)
-            && (next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C))) {
-            return HM_TRUE;
+        else if (feature == HM_FEATURE_MEDI) {
+            return medi;
         }
-    }
-
-    return HM_FALSE;
-}
-
-hm_bool
-hm_ot_shape_complex_arabic_fina_cond(hm_face_t *face, hm_array_t *glyphs, size_t index)
-{
-    uint16_t curr, prev;
-    hm_id curr_id;
-    hm_arabic_joining_entry_t curr_entry;
-
-    curr_id = hm_array_at(glyphs, index);
-    if (hm_ot_shape_complex_arabic_char_joining(face, curr_id, &curr_entry)) {
-        curr = curr_entry.joining;
-
-        prev = hm_ot_shape_complex_arabic_prev(face, glyphs, index);
-
-        /* Condition for substitution */
-        if (curr & (JOINING_TYPE_R | JOINING_TYPE_C)
-            && (prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C))) {
-            return HM_TRUE;
-        }
-    }
-
-    return HM_FALSE;
-}
-
-hm_bool
-hm_ot_shape_complex_arabic_isol_cond(hm_face_t *face, hm_array_t *glyphs, size_t index)
-{
-    uint16_t prev, curr, next;
-    hm_id curr_id;
-    hm_arabic_joining_entry_t curr_entry;
-
-    curr_id = hm_array_at(glyphs, index);
-    if (hm_ot_shape_complex_arabic_char_joining(face, curr_id, &curr_entry)) {
-        curr = curr_entry.joining;
-
-        prev = hm_ot_shape_complex_arabic_prev(face, glyphs, index);
-        next = hm_ot_shape_complex_arabic_next(face, glyphs, index);
-
-        /* Condition for substitution */
-        if (curr & JOINING_TYPE_D
-            && (prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C))
-            && (next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C))) {
-            return HM_TRUE;
+        else if (feature == HM_FEATURE_INIT) {
+            return init && !(fina || medi);
         }
     }
 

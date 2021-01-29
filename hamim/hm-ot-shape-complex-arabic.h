@@ -137,16 +137,7 @@ typedef struct hm_arabic_joining_entry_t {
 #include "hm-ot-shape-complex-arabic-joining-list.h"
 
 hm_bool
-hm_ot_shape_complex_arabic_medi_cond(hm_face_t *face, hm_array_t *glyphs, size_t index);
-
-hm_bool
-hm_ot_shape_complex_arabic_init_cond(hm_face_t *face, hm_array_t *glyphs, size_t index);
-
-hm_bool
-hm_ot_shape_complex_arabic_fina_cond(hm_face_t *face, hm_array_t *glyphs, size_t index);
-
-hm_bool
-hm_ot_shape_complex_arabic_isol_cond(hm_face_t *face, hm_array_t *glyphs, size_t index);
+hm_ot_shape_complex_arabic_join(hm_feature_t feature, hm_section_node_t *node);
 
 
 #endif /* HM_OT_SHAPE_COMPLEX_ARABIC_H */

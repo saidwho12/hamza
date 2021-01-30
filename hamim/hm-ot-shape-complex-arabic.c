@@ -26,39 +26,38 @@ hm_ot_shape_complex_arabic_char_joining(hm_unicode codepoint,
     return HM_FALSE;
 }
 
-uint16_t
-hm_ot_shape_complex_arabic_prev(hm_section_node_t *node)
+typedef enum hm_joining_dir_t {
+    JOINING_NEXT,
+    JOINING_PREV
+} hm_joining_dir_t;
+
+hm_section_node_t *
+hm_ot_shape_complex_arabic_adj_base_c(hm_section_node_t *node, hm_joining_dir_t dir)
 {
-    hm_arabic_joining_entry_t entry;
-    hm_unicode codepoint;
+    if (dir == JOINING_PREV)
+        return node->prev;
+    else if (dir == JOINING_NEXT)
+        return node->next;
 
-    if (node->prev == NULL)
-        goto no_adjacent;
-
-    codepoint = node->prev->data.codepoint;
-    if (hm_ot_shape_complex_arabic_char_joining(codepoint, &entry))
-        return entry.joining;
-
-    no_adjacent:
-    /* No next harf, return non-joining */
-    return NO_JOINING_GROUP | JOINING_TYPE_T;
+    return NULL;
 }
 
 uint16_t
-hm_ot_shape_complex_arabic_next(hm_section_node_t *node)
+hm_ot_shape_complex_arabic_adj_joining(hm_section_node_t *node, hm_joining_dir_t dir)
 {
     hm_arabic_joining_entry_t entry;
     hm_unicode codepoint;
+    hm_section_node_t *adj = hm_ot_shape_complex_arabic_adj_base_c(node, dir);
 
-    if (node->next == NULL)
+    if (adj == NULL)
         goto no_adjacent;
 
-    codepoint = node->next->data.codepoint;
+    codepoint = adj->data.codepoint;
     if (hm_ot_shape_complex_arabic_char_joining(codepoint, &entry))
         return entry.joining;
 
     no_adjacent:
-    /* No next harf, return non-joining */
+    /* No adjacent harf, return non-joining */
     return NO_JOINING_GROUP | JOINING_TYPE_T;
 }
 
@@ -71,8 +70,8 @@ hm_ot_shape_complex_arabic_join(hm_feature_t feature, hm_section_node_t *node)
     if (hm_ot_shape_complex_arabic_char_joining(node->data.codepoint, &curr_entry)) {
         uint16_t prev, next;
         curr = curr_entry.joining;
-        prev = hm_ot_shape_complex_arabic_prev(node);
-        next = hm_ot_shape_complex_arabic_next(node);
+        prev = hm_ot_shape_complex_arabic_adj_joining(node, JOINING_PREV);
+        next = hm_ot_shape_complex_arabic_adj_joining(node, JOINING_NEXT);
 
         /* Conditions for substitution */
         hm_bool fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)

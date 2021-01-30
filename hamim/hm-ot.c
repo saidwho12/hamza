@@ -1,5 +1,6 @@
 #include "hm-ot.h"
 #include "hm-ot-shape-complex-arabic.h"
+#include "hm-map.h"
 
 hm_feature_t
 hm_ot_feature_from_tag(hm_tag tag) {
@@ -289,7 +290,8 @@ hm_ot_layout_lookup_would_substitute(hm_face_t *face,
 
 hm_bool
 hm_ot_layout_parse_coverage(uint8_t *data,
-                            hm_array_t *coverage_glyphs)
+                            hm_map_t *map_subst,
+                            hm_array_t *subst)
 {
     uint16_t coverage_format = 0;
     hm_stream_t *table = hm_stream_create(data,0,0);
@@ -304,7 +306,8 @@ hm_ot_layout_parse_coverage(uint8_t *data,
             while (coverage_idx < coverage_glyph_count) {
                 uint16_t glyph_index;
                 hm_stream_read16(table, &glyph_index);
-                hm_array_push_back(coverage_glyphs, glyph_index);
+//                hm_array_push_back(coverage_glyphs, glyph_index);
+                hm_map_set_value(map_subst, glyph_index, hm_array_at(subst, coverage_idx));
                 ++coverage_idx;
             }
 
@@ -317,17 +320,23 @@ hm_ot_layout_parse_coverage(uint8_t *data,
 
             /* Assuming ranges are ordered from 0 to glyph_count in order */
             while (range_index < range_count) {
-                hm_id glyph_id;
+                hm_id from, to;
                 hm_range_rec_t range;
+                uint16_t range_offset;
+                uint32_t range_end;
 
                 hm_stream_read16(table, &range.start_glyph_id);
                 hm_stream_read16(table, &range.end_glyph_id);
                 hm_stream_read16(table, &range.start_coverage_index);
 
-                glyph_id = range.start_glyph_id;
-                while (glyph_id < range.end_glyph_id) {
-                    hm_array_push_back(coverage_glyphs, glyph_id);
-                    ++glyph_id;
+                range_offset = 0;
+                range_end = (range.end_glyph_id - range.start_glyph_id);
+                while (range_offset <= range_end) {
+                    from = range.start_glyph_id + range_offset;
+                    to = hm_array_at(subst, range.start_coverage_index + range_offset);
+                    hm_map_set_value(map_subst, from, to);
+                    HM_LOG("%d -> %d\n", from, to);
+                    ++range_offset;
                 }
 
                 ++range_index;
@@ -374,34 +383,33 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                     hm_stream_read16(subtable, (uint16_t *) &id_delta);
                     /* NOTE: Implement */
                 }
-                else if (subst_format == 2)
-                {
+                else if (subst_format == 2) {
+                    hm_map_t *map_subst = hm_map_create();
                     hm_offset16 coverage_offset;
                     uint16_t glyph_count;
-                    hm_array_t *from = hm_array_create();
-                    hm_array_t *to = hm_array_create();
+                    hm_array_t *subst = hm_array_create();
                     hm_stream_read16(subtable, &coverage_offset);
                     hm_stream_read16(subtable, &glyph_count);
-
-                    /* Read coverage offset */
-                    hm_ot_layout_parse_coverage(subtable->data + coverage_offset, from);
 
                     /* Get destination glyph indices */
                     uint16_t dst_gidx;
                     for (dst_gidx = 0; dst_gidx < glyph_count; ++dst_gidx) {
                         hm_id substitute_glyph;
                         hm_stream_read16(subtable, &substitute_glyph);
-                        hm_array_push_back(to, substitute_glyph);
+                        hm_array_push_back(subst, substitute_glyph);
                     }
+
+                    /* Read coverage offset */
+                    hm_ot_layout_parse_coverage(subtable->data + coverage_offset, map_subst, subst);
 
                     /* Substitute glyphs */
                     hm_section_node_t *curr_node = sect->root;
 
                     while (curr_node != NULL) {
                         if (curr_node->data.id == curr_node->data.logical_id) {
-                            hm_id curr_glyph = curr_node->data.id;
-                            size_t val_idx;
-                            if (hm_array_has(from, curr_glyph, &val_idx)) {
+                            hm_id curr_id = curr_node->data.id;
+
+                            if (hm_map_value_exists(map_subst, curr_id)) {
                                 switch (feature) {
                                     case HM_FEATURE_ISOL:
                                     case HM_FEATURE_MEDI:
@@ -411,7 +419,7 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                                     case HM_FEATURE_FIN2:
                                     case HM_FEATURE_FIN3:
                                         if (hm_ot_shape_complex_arabic_join(feature, curr_node)) {
-                                            curr_node->data.id = hm_array_at(to, val_idx);
+                                            curr_node->data.id = hm_map_get_value(map_subst, curr_id);
                                         }
                                         break;
                                 }
@@ -421,8 +429,8 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
                         curr_node = curr_node->next;
                     }
 
-                    hm_array_destroy(from);
-                    hm_array_destroy(to);
+                    hm_array_destroy(subst);
+                    hm_map_destroy(map_subst);
                 }
                 break;
             }
@@ -438,90 +446,92 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
             case HM_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
                 hm_offset16 coverage_offset;
                 uint16_t ligature_set_count;
-                hm_array_t *from;
+                hm_array_t *subst;
+                hm_map_t *map_subst;
                 HM_ASSERT(subst_format == 1);
 
-                from = hm_array_create();
+                subst = hm_array_create();
+                map_subst = hm_map_create();
                 hm_stream_read16(subtable, &coverage_offset);
                 hm_stream_read16(subtable, &ligature_set_count);
 
-                /* Read coverage offset */
-                hm_ot_layout_parse_coverage(subtable->data + coverage_offset, from);
+//                /* Read coverage offset */
+//                hm_ot_layout_parse_coverage(subtable->data + coverage_offset, map_subst, subst);
 
                 /* Substitute glyphs */
                 hm_section_node_t *curr_node = sect->root;
                 while (curr_node != NULL) {
                     hm_id curr_id = curr_node->data.id;
-                    size_t val_idx;
-                    if (hm_array_has(from, curr_id, &val_idx)) {
-                        HM_LOG("curr_id: 0x%04x\n", curr_id);
-
-                        uint16_t ligsetoff = bswap16(*(uint16_t *)(subtable->data + subtable->offset + val_idx * 2));
-                        /* LigatureSet table (all ligatures beginning with the same glyph) */
-                        hm_stream_t *ligature_set = hm_stream_create(subtable->data + ligsetoff,0,0);
-                        uint16_t ligcount;
-                        hm_stream_read16(ligature_set, &ligcount);
-                        /* Check each ligature and if any matches replace */
-                        uint16_t ligidx = 0;
-                        while (ligidx < ligcount) {
-                            hm_offset16 ligoff;
-                            hm_stream_read16(ligature_set, &ligoff);
-                            /* Ligature table */
-                            hm_stream_t *ligature = hm_stream_create(ligature_set->data + ligoff,0,0);
-                            uint16_t ligature_glyph;
-                            uint16_t component_count;
-                            hm_stream_read16(ligature, &ligature_glyph);
-                            hm_stream_read16(ligature, &component_count);
-
-                            /* Check if ligature is applicable */
-                            size_t rem = hm_section_node_count(curr_node);
-                            if (rem >= component_count) {
-                                hm_array_t *ligarr = hm_array_create();
-                                hm_array_push_back(ligarr, curr_id);
-
-                                /* Gather all components */
-                                uint16_t component_index = 0;
-                                while (component_index < component_count) {
-                                    uint16_t glyph;
-                                    hm_stream_read16(ligature, &glyph);
-                                    hm_array_push_back(ligarr, glyph);
-                                    ++component_index;
-                                }
-
-                                hm_bool is_eq = HM_TRUE;
-                                size_t comp_offset = 0;
-                                hm_section_node_t *tmp_node = curr_node;
-                                while (comp_offset < component_count) {
-                                    hm_id ligid = hm_array_at(ligarr, comp_offset);
-
-                                    if (tmp_node->data.id != ligid) {
-                                        is_eq = HM_FALSE;
-                                        break;
-                                    }
-
-                                    tmp_node = tmp_node->next;
-                                    ++comp_offset;
-                                }
-
-                                if (is_eq) {
-                                    /* Substitute nodes for single node */
-                                    hm_section_rem_n_next_nodes(curr_node, component_count-1);
-                                    curr_node->data.id = ligature_glyph;
-                                    goto skip_done_lig;
-                                }
-
-                                hm_array_destroy(ligarr);
-                            }
-
-                            ++ligidx;
-                        }
-                    }
+//                    if (hm_map_value_exists(map_subst, curr_id)) {
+//                        HM_LOG("curr_id: 0x%04x\n", curr_id);
+//
+//                        uint16_t ligsetoff = bswap16(*(uint16_t *)(subtable->data + subtable->offset + val_idx * 2));
+//                        /* LigatureSet table (all ligatures beginning with the same glyph) */
+//                        hm_stream_t *ligature_set = hm_stream_create(subtable->data + ligsetoff,0,0);
+//                        uint16_t ligcount;
+//                        hm_stream_read16(ligature_set, &ligcount);
+//                        /* Check each ligature and if any matches replace */
+//                        uint16_t ligidx = 0;
+//                        while (ligidx < ligcount) {
+//                            hm_offset16 ligoff;
+//                            hm_stream_read16(ligature_set, &ligoff);
+//                            /* Ligature table */
+//                            hm_stream_t *ligature = hm_stream_create(ligature_set->data + ligoff,0,0);
+//                            uint16_t ligature_glyph;
+//                            uint16_t component_count;
+//                            hm_stream_read16(ligature, &ligature_glyph);
+//                            hm_stream_read16(ligature, &component_count);
+//
+//                            /* Check if ligature is applicable */
+//                            size_t rem = hm_section_node_count(curr_node);
+//                            if (rem >= component_count) {
+//                                hm_array_t *ligarr = hm_array_create();
+//                                hm_array_push_back(ligarr, curr_id);
+//
+//                                /* Gather all components */
+//                                uint16_t component_index = 0;
+//                                while (component_index < component_count) {
+//                                    uint16_t glyph;
+//                                    hm_stream_read16(ligature, &glyph);
+//                                    hm_array_push_back(ligarr, glyph);
+//                                    ++component_index;
+//                                }
+//
+//                                hm_bool is_eq = HM_TRUE;
+//                                size_t comp_offset = 0;
+//                                hm_section_node_t *tmp_node = curr_node;
+//                                while (comp_offset < component_count) {
+//                                    hm_id ligid = hm_array_at(ligarr, comp_offset);
+//
+//                                    if (tmp_node->data.id != ligid) {
+//                                        is_eq = HM_FALSE;
+//                                        break;
+//                                    }
+//
+//                                    tmp_node = tmp_node->next;
+//                                    ++comp_offset;
+//                                }
+//
+//                                if (is_eq) {
+//                                    /* Substitute nodes for single node */
+//                                    hm_section_rem_n_next_nodes(curr_node, component_count-1);
+//                                    curr_node->data.id = ligature_glyph;
+//                                    goto skip_done_lig;
+//                                }
+//
+//                                hm_array_destroy(ligarr);
+//                            }
+//
+//                            ++ligidx;
+//                        }
+//                    }
 
                     skip_done_lig:
                     curr_node = curr_node->next;
                 }
 
-                hm_array_destroy(from);
+                hm_array_destroy(subst);
+                hm_map_destroy(map_subst);
                 break;
             }
 

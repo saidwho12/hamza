@@ -18,7 +18,7 @@ set(HAMIM_SOURCES
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-set.c
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-array.c
 		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-array.h
-		main.cpp)
+		main.cpp hamim/hm-map.h hamim/hm-map.c)
 
 add_library(hamim ${HAMIM_SOURCES})
 target_include_directories(hamim PUBLIC ${CMAKE_CURRENT_LIST_DIR})

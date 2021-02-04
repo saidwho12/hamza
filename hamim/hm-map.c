@@ -156,6 +156,23 @@ hm_map_value_exists(hm_map_t *map, uint32_t key)
 }
 
 
+hm_bool
+hm_map_set_value_for_keys(hm_map_t *map, uint32_t k0, uint32_t k1, uint32_t value)
+{
+    hm_bool any_set = HM_FALSE;
+    uint32_t k = k0;
+
+    while (k <= k1) {
+        if (hm_map_set_value(map, k, value))
+            any_set = HM_TRUE;
+
+        ++k;
+    }
+
+    return any_set;
+}
+
+
 
 
 

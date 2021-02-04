@@ -32,12 +32,32 @@ typedef enum hm_joining_dir_t {
 } hm_joining_dir_t;
 
 hm_section_node_t *
-hm_ot_shape_complex_arabic_adj_base_c(hm_section_node_t *node, hm_joining_dir_t dir)
+hm_ot_shape_complex_arabic_adj_harf(hm_section_node_t *node, hm_joining_dir_t dir)
 {
-    if (dir == JOINING_PREV)
-        return node->prev;
-    else if (dir == JOINING_NEXT)
-        return node->next;
+    if (dir == JOINING_PREV) {
+        hm_section_node_t *curr_node = node->prev;
+        while (curr_node != NULL) {
+            if (curr_node->data.g_class & (HM_GLYPH_CLASS_BASE_BIT | HM_GLYPH_CLASS_LIGATURE_BIT)
+            || curr_node->data.codepoint == 0x20)
+                break;
+
+            curr_node = curr_node->prev;
+        }
+
+        return curr_node;
+    }
+    else if (dir == JOINING_NEXT) {
+        hm_section_node_t *curr_node = node->next;
+        while (curr_node != NULL) {
+            if (curr_node->data.g_class & (HM_GLYPH_CLASS_BASE_BIT | HM_GLYPH_CLASS_LIGATURE_BIT)
+                || curr_node->data.codepoint == 0x20)
+                break;
+
+            curr_node = curr_node->next;
+        }
+
+        return curr_node;
+    }
 
     return NULL;
 }
@@ -47,7 +67,7 @@ hm_ot_shape_complex_arabic_adj_joining(hm_section_node_t *node, hm_joining_dir_t
 {
     hm_arabic_joining_entry_t entry;
     hm_unicode codepoint;
-    hm_section_node_t *adj = hm_ot_shape_complex_arabic_adj_base_c(node, dir);
+    hm_section_node_t *adj = hm_ot_shape_complex_arabic_adj_harf(node, dir);
 
     if (adj == NULL)
         goto no_adjacent;

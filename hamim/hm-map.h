@@ -26,5 +26,8 @@ hm_map_remove(hm_map_t *map, uint32_t key);
 hm_bool
 hm_map_value_exists(hm_map_t *map, uint32_t key);
 
+hm_bool
+hm_map_set_value_for_keys(hm_map_t *map, uint32_t k0, uint32_t k1, uint32_t value);
+
 
 #endif /* HM_MAP_H */

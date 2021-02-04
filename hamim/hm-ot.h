@@ -336,26 +336,31 @@ typedef enum hm_dir_t {
     HM_DIR_RTL,
 } hm_dir_t;
 
+typedef enum hm_glyph_class_t {
+    HM_GLYPH_CLASS_ZERO          = 0,
+    HM_GLYPH_CLASS_BASE_BIT      = 0x1,
+    HM_GLYPH_CLASS_LIGATURE_BIT  = 0x2,
+    HM_GLYPH_CLASS_MARK_BIT      = 0x4,
+    HM_GLYPH_CLASS_COMPONENT_BIT = 0x8,
+} hm_glyph_class_t;
+
+#define HM_GLYPH_CLASS_BIT_FIELD 4
+#define HM_BIT(x) (1 << (x))
+
+
 typedef struct hm_section_node_t hm_section_node_t;
 
-#define NODE_FLAG_ARABIC_CHAR_FORMED 0x01
-
-typedef struct hm_section_node_data_t {
+typedef struct hm_section_glyph_t {
     hm_unicode codepoint;
-    /* nominal glyph id */
-    hm_id logical_id;
-    /* current glyph id */
     hm_id id;
-    uint16_t dx;
-    uint16_t dy;
-    uint16_t ax;
-    uint16_t ay;
-    uint8_t flags;
-} hm_section_node_data_t;
+    uint16_t dx, dy;
+    uint16_t ax, ay;
+    uint8_t g_class: HM_GLYPH_CLASS_BIT_FIELD;
+} hm_section_glyph_t;
 
 struct hm_section_node_t {
     hm_section_node_t *prev, *next;
-    hm_section_node_data_t data;
+    hm_section_glyph_t data;
 };
 
 typedef struct hm_section_t {
@@ -379,7 +384,7 @@ hm_section_create(void) {
 }
 
 static void
-hm_section_add(hm_section_t *sect, const hm_section_node_data_t *node_data)
+hm_section_add(hm_section_t *sect, const hm_section_glyph_t *node_data)
 {
     hm_section_node_t *new_node = (hm_section_node_t *) HM_MALLOC(sizeof(hm_section_node_t));
     new_node->data = *node_data;
@@ -410,6 +415,15 @@ hm_section_node_count(hm_section_node_t *node) {
     }
 
     return count;
+}
+
+static hm_section_node_t *
+hm_section_last_node(hm_section_node_t *node) {
+    while (node->next != NULL) {
+        node = node->next;
+    }
+
+    return node;
 }
 
 static hm_bool
@@ -529,11 +543,10 @@ hm_section_load_utf8(hm_section_t *sect, const hm_char *text, size_t len) {
 
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = hm_utf8_next(&dec)) > 0) {
-        hm_section_node_data_t data;
+        hm_section_glyph_t data;
         data.codepoint = ch;
         data.id = 0;
-        data.flags = 0;
-        data.logical_id = 0;
+        data.g_class = HM_GLYPH_CLASS_ZERO;
         data.ax = 0;
         data.ay = 0;
         data.dx = 0;

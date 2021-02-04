@@ -35,6 +35,8 @@ hm_ft_face_create(FT_Face ft_face) {
         HM_LOG("%s\n", "Failed to load GSUB table.");
 
     face->gsub_table = (uint8_t *) GSUB;
+    face->gpos_table = (uint8_t *) GPOS;
+    face->gdef_table = (uint8_t *) GDEF;
 
     {
         /* Load cmap table into buffer */

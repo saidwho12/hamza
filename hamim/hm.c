@@ -1,5 +1,6 @@
 #include "hm.h"
 #include "hm-array.h"
+#include "hm-map.h"
 
 
 hm_bool
@@ -324,7 +325,7 @@ hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
                 hm_section_node_t *curr_node = sect->root;
 
                 while (curr_node != NULL) {
-                    curr_node->data.id = curr_node->data.logical_id = hm_cmap_unicode_to_id(&subtable, curr_node->data.codepoint);
+                    curr_node->data.id = hm_cmap_unicode_to_id(&subtable, curr_node->data.codepoint);
                     curr_node = curr_node->next;
                 }
             }
@@ -335,6 +336,84 @@ hm_map_to_nominal_form_glyphs(hm_context_t *ctx,
     }
 }
 
+
+void
+hm_ot_parse_gdef_table(hm_context_t *ctx, hm_section_t *sect)
+{
+    hm_stream_t *table;
+    uint32_t ver;
+
+    hm_offset16 glyph_class_def_offset;
+    hm_offset16 attach_list_offset;
+    hm_offset16 lig_caret_list_offset;
+    hm_offset16 mark_attach_class_def_offset;
+
+    table = hm_stream_create(ctx->face->gdef_table, 0, 0);
+    hm_stream_read32(table, &ver);
+
+    switch (ver) {
+        case 0x00010000: /* 1.0 */
+            hm_stream_read16(table, &glyph_class_def_offset);
+            hm_stream_read16(table, &attach_list_offset);
+            hm_stream_read16(table, &lig_caret_list_offset);
+            hm_stream_read16(table, &mark_attach_class_def_offset);
+            break;
+        case 0x00010002: /* 1.2 */
+            break;
+        case 0x00010003: /* 1.3 */
+            break;
+        default:
+            break;
+    }
+
+    if (glyph_class_def_offset != 0) {
+        /* glyph class def isn't nil */
+        hm_stream_t *subtable = hm_stream_create(table->data + glyph_class_def_offset, 0, 0);
+        hm_map_t *class_map = hm_map_create();
+        hm_section_node_t *curr_node = sect->root;
+        uint16_t class_format;
+        hm_stream_read16(subtable, &class_format);
+        switch (class_format) {
+            case 1:
+                break;
+            case 2: {
+                uint16_t range_index = 0, class_range_count;
+                hm_stream_read16(subtable, &class_range_count);
+
+                while (range_index < class_range_count) {
+                    uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                    hm_stream_read16(subtable, &start_glyph_id);
+                    hm_stream_read16(subtable, &end_glyph_id);
+                    hm_stream_read16(subtable, &glyph_class);
+                    HM_ASSERT(glyph_class >= 1 && glyph_class <= 4);
+                    hm_map_set_value_for_keys(class_map, start_glyph_id, end_glyph_id, HM_BIT(glyph_class - 1));
+
+                    ++range_index;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        /* set glyph class values if in map */
+        while (curr_node != NULL) {
+            hm_id gid = curr_node->data.id;
+            if (hm_map_value_exists(class_map, gid)) {
+                curr_node->data.g_class = hm_map_get_value(class_map, gid);
+            } else {
+                /* set default glyph class if current glyph id isn't found */
+
+            }
+
+            curr_node = curr_node->next;
+        }
+
+        hm_map_destroy(class_map);
+    }
+
+
+}
 
 hm_status_t
 hm_shape_full(hm_context_t *ctx, hm_section_t *sect)
@@ -349,6 +428,7 @@ hm_shape_full(hm_context_t *ctx, hm_section_t *sect)
 
     /* Map unicode characters to nominal glyph indices */
     hm_map_to_nominal_form_glyphs(ctx, sect);
+    hm_ot_parse_gdef_table(ctx, sect);
 
     hm_ot_layout_apply_features(face, script_tag,
                                 language_tag,

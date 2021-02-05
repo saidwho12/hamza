@@ -4,7 +4,7 @@
 
 
 hm_bool
-hm_ctx_set_features(hm_context_t *ctx, hm_bitset_t *features)
+hm_context_set_features(hm_context_t *ctx, hm_bitset_t *features)
 {
     ctx->features = features;
     if (features->bit_count == HM_FEATURE_COUNT) {
@@ -16,7 +16,7 @@ hm_ctx_set_features(hm_context_t *ctx, hm_bitset_t *features)
 }
 
 hm_context_t *
-hm_ctx_create(hm_face_t *face)
+hm_context_create(hm_face_t *face)
 {
     hm_context_t *ctx = HM_ALLOC(hm_context_t);
 
@@ -27,21 +27,27 @@ hm_ctx_create(hm_face_t *face)
 }
 
 void
-hm_ctx_set_script(hm_context_t *ctx, hm_script_t script)
+hm_context_set_script(hm_context_t *ctx, hm_script_t script)
 {
     ctx->script = script;
 }
 
 void
-hm_ctx_set_language(hm_context_t *ctx, hm_language_t language)
+hm_context_set_language(hm_context_t *ctx, hm_language_t language)
 {
     ctx->language = language;
 }
 
 void
-hm_ctx_set_dir(hm_context_t *ctx, hm_dir_t dir)
+hm_context_set_dir(hm_context_t *ctx, hm_dir_t dir)
 {
     ctx->dir = dir;
+}
+
+void
+hm_context_destroy(hm_context_t *ctx)
+{
+    free(ctx);
 }
 
 /* https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids */
@@ -403,7 +409,7 @@ hm_ot_parse_gdef_table(hm_context_t *ctx, hm_section_t *sect)
                 curr_node->data.g_class = hm_map_get_value(class_map, gid);
             } else {
                 /* set default glyph class if current glyph id isn't found */
-
+                curr_node->data.g_class = HM_GLYPH_CLASS_ZERO;
             }
 
             curr_node = curr_node->next;
@@ -430,28 +436,15 @@ hm_shape_full(hm_context_t *ctx, hm_section_t *sect)
     hm_map_to_nominal_form_glyphs(ctx, sect);
     hm_ot_parse_gdef_table(ctx, sect);
 
-    hm_ot_layout_apply_features(face, script_tag,
-                                language_tag,
-                                ctx->features,
-                                sect);
+    hm_ot_layout_apply_gsub_features(face, script_tag,
+                                     language_tag,
+                                     ctx->features,
+                                     sect);
 
-
-//    if (hm_set_is_empty(lookup_indices))
-//        HM_LOG("No lookups collected!\n");
-//
-//
-//    int i;
-//    for (i = 0; i < lookup_indices->count; ++i) {
-//        HM_LOG("%u\n", lookup_indices->values[i]);
-//
-//        /* Apply lookup */
-//        hm_ot_layout_apply_lookup(face, HM_OT_TAG_GSUB,
-//                                    feature_set->values[i],
-//                                    lookup_indices->values[i],
-//                                    run->output);
-//    }
-
-
+    hm_ot_layout_apply_gpos_features(face, script_tag,
+                                     language_tag,
+                                     ctx->features,
+                                     sect);
 
     return HM_SUCCESS;
 }

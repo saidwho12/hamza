@@ -135,11 +135,11 @@ hm_ot_layout_feature_get_lookups(uint8_t *data,
 
 
 hm_bool
-hm_ot_layout_apply_features(hm_face_t *face,
-                            hm_tag script,
-                            hm_tag language,
-                            const hm_bitset_t *feature_bits,
-                            hm_section_t *sect)
+hm_ot_layout_apply_gsub_features(hm_face_t *face,
+                                 hm_tag script,
+                                 hm_tag language,
+                                 const hm_bitset_t *feature_bits,
+                                 hm_section_t *sect)
 {
     HM_ASSERT(face != NULL);
     HM_ASSERT(feature_bits != NULL);
@@ -257,7 +257,7 @@ hm_ot_layout_apply_features(hm_face_t *face,
                 while (i < hm_array_size(lookup_indices)) {
                     uint16_t lookup_offset = hm_array_at(lookup_offsets, hm_array_at(lookup_indices, i));
                     hm_stream_t *lookup_table = hm_stream_create(lookup_list->data + lookup_offset, 0, 0);
-                    hm_ot_layout_apply_lookup(face, lookup_table, feature, sect);
+                    hm_ot_layout_apply_gsub_lookup(face, lookup_table, feature, sect);
                     ++i;
                 }
 
@@ -267,7 +267,143 @@ hm_ot_layout_apply_features(hm_face_t *face,
             ++feature_index;
         }
     }
+
+    return HM_TRUE;
 }
+
+hm_bool
+hm_ot_layout_apply_gpos_features(hm_face_t *face,
+                                 hm_tag script,
+                                 hm_tag language,
+                                 const hm_bitset_t *feature_bits,
+                                 hm_section_t *sect)
+{
+    HM_ASSERT(face != NULL);
+    HM_ASSERT(feature_bits != NULL);
+
+    hm_byte *data = (hm_byte *) face->gpos_table;
+    hm_stream_t *table = hm_stream_create(data, 0, 0);
+    uint32_t ver;
+    uint16_t script_list_offset;
+    uint16_t feature_list_offset;
+    uint16_t lookup_list_offset;
+    uint32_t feature_variations_offset;
+
+    hm_stream_read32(table, &ver);
+
+    HM_LOG("GPOS version: %u.%u\n", ver >> 16, ver & 0xFFFF);
+    switch (ver) {
+        case 0x00010000: /* 1.0 */
+            hm_stream_read16(table, &script_list_offset);
+            hm_stream_read16(table, &feature_list_offset);
+            hm_stream_read16(table, &lookup_list_offset);
+            break;
+        case 0x00010001: /* 1.1 */
+            hm_stream_read16(table, &script_list_offset);
+            hm_stream_read16(table, &feature_list_offset);
+            hm_stream_read16(table, &lookup_list_offset);
+            hm_stream_read32(table, &feature_variations_offset);
+            break;
+        default:
+            break;
+    }
+
+    void *lsaddr = hm_ot_layout_choose_lang_sys(face,
+                                                data + script_list_offset,
+                                                script, language);
+
+    if (lsaddr == NULL) {
+        /* Language system was not found */
+        HM_ERROR("Language system was not found!\n");
+        return HM_FALSE;
+    }
+
+    HM_LOG("Found language system!\n");
+
+    hm_array_t *lang_feature_indices = hm_array_create();
+    hm_stream_t *lsbuf = hm_stream_create(lsaddr, 0, 0);
+
+    hm_lang_sys_t langSys;
+    hm_stream_read16(lsbuf, &langSys.lookupOrder);
+    hm_stream_read16(lsbuf, &langSys.requiredFeatureIndex);
+    hm_stream_read16(lsbuf, &langSys.featureIndexCount);
+
+    /* lookupOrder should be (nil) */
+    HM_LOG("lookupOrder: %p\n", (void *) langSys.lookupOrder);
+    HM_LOG("requiredFeatureIndex: %u\n", langSys.requiredFeatureIndex);
+    HM_LOG("featureIndexCount: %u\n", langSys.featureIndexCount);
+
+    if (langSys.requiredFeatureIndex == 0xFFFF) {
+        HM_LOG("No required features!\n");
+    }
+
+    uint16_t loopIndex = 0;
+    while (loopIndex < langSys.featureIndexCount) {
+        uint16_t featureIndex;
+        hm_stream_read16(lsbuf, &featureIndex);
+        HM_LOG("[%u] = %u\n", loopIndex, featureIndex);
+        hm_array_push_back(lang_feature_indices, featureIndex);
+        ++loopIndex;
+    }
+
+    hm_stream_t *lookup_list = hm_stream_create(data + lookup_list_offset, 0, 0);
+    hm_array_t *lookup_offsets = hm_array_create();
+    {
+        /* Read lookup offets to table */
+        uint16_t lookup_count;
+        uint16_t lookup_index = 0;
+        hm_stream_read16(lookup_list, &lookup_count);
+        while (lookup_index < lookup_count) {
+            uint16_t lookup_offset;
+            hm_stream_read16(lookup_list, &lookup_offset);
+            hm_array_push_back(lookup_offsets, lookup_offset);
+            ++lookup_index;
+        }
+    }
+
+
+    hm_stream_t *feature_list = hm_stream_create(data + feature_list_offset, 0, 0);
+
+
+    {
+        /* Parsing the FeatureList and applying selected Features */
+        uint16_t feature_count;
+        uint16_t feature_index = 0;
+        hm_stream_read16(feature_list, &feature_count);
+        HM_LOG("feature_count: %u\n", feature_count);
+
+        while (feature_index < feature_count) {
+            hm_rec16_t rec;
+            hm_stream_read32(feature_list, &rec.tag);
+            hm_stream_read16(feature_list, &rec.offset);
+            HM_LOG("[%u] = { \"%c%c%c%c\", %u }\n", feature_index,
+                   HM_UNTAG(rec.tag), rec.offset);
+
+            hm_feature_t feature = hm_ot_feature_from_tag(rec.tag);
+
+            if (hm_bitset_check(feature_bits, feature) == HM_TRUE) {
+                /* Feature is requested and exists */
+                hm_array_t *lookup_indices = hm_array_create();
+                hm_ot_layout_feature_get_lookups(feature_list->data + rec.offset, lookup_indices);
+
+                int i = 0;
+                while (i < hm_array_size(lookup_indices)) {
+                    uint16_t lookup_offset = hm_array_at(lookup_offsets, hm_array_at(lookup_indices, i));
+                    hm_stream_t *lookup_table = hm_stream_create(lookup_list->data + lookup_offset, 0, 0);
+                    hm_ot_layout_apply_gpos_lookup(face, lookup_table, feature, sect);
+                    ++i;
+                }
+
+                hm_array_destroy(lookup_indices);
+            }
+
+            ++feature_index;
+        }
+    }
+
+    return HM_TRUE;
+}
+
 
 void
 hm_ot_layout_lookups_substitute_closure(hm_face_t *face,
@@ -352,10 +488,10 @@ hm_ot_layout_parse_coverage(uint8_t *data,
 
 
 void
-hm_ot_layout_apply_lookup(hm_face_t *face,
-                          hm_stream_t *table,
-                          hm_feature_t feature,
-                          hm_section_t *sect)
+hm_ot_layout_apply_gsub_lookup(hm_face_t *face,
+                               hm_stream_t *table,
+                               hm_feature_t feature,
+                               hm_section_t *sect)
 {
     hm_lookup_table_t lookup;
     hm_stream_read16(table, &lookup.lookup_type);
@@ -567,6 +703,95 @@ hm_ot_layout_apply_lookup(hm_face_t *face,
             default:
                 HM_LOG("Invalid GSUB lookup type!\n");
                 break;
+        }
+
+        ++subtable_index;
+    }
+}
+
+typedef struct hm_entry_exit_record_t {
+    hm_offset16 entry_anchor_offset, exit_anchor_offset;
+} hm_entry_exit_record_t;
+
+typedef struct hm_anchor_t {
+    int16_t x_coord, y_coord;
+} hm_anchor_t;
+
+void
+hm_ot_layout_apply_gpos_lookup(hm_face_t *face,
+                               hm_stream_t *table,
+                               hm_feature_t feature,
+                               hm_section_t *sect)
+{
+    hm_lookup_table_t lookup;
+    hm_stream_read16(table, &lookup.lookup_type);
+    hm_stream_read16(table, &lookup.lookup_flag);
+    hm_stream_read16(table, &lookup.subtable_count);
+
+    HM_LOG("lookup_type: %d\n", lookup.lookup_type);
+    HM_LOG("lookup_flag: %d\n", lookup.lookup_flag);
+    HM_LOG("subtable_count: %d\n", lookup.subtable_count);
+
+    uint16_t subtable_index = 0;
+    while (subtable_index < lookup.subtable_count) {
+        hm_offset16 offset;
+        hm_stream_read16(table, &offset);
+        hm_stream_t *subtable = hm_stream_create(table->data + offset, 0, 0);
+        uint16_t format;
+        hm_stream_read16(subtable, &format);
+
+        switch (lookup.lookup_type) {
+            case HM_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
+                if (format == 1) {
+                    hm_offset16 coverage_offset;
+                    uint16_t entry_exit_count, entry_exit_index;
+
+                    hm_stream_read16(subtable, &coverage_offset);
+                    hm_stream_read16(subtable, &entry_exit_count);
+
+                    entry_exit_index = 0;
+                    while (entry_exit_index < entry_exit_count) {
+                        hm_entry_exit_record_t rec;
+                        hm_stream_read16(subtable, &rec.entry_anchor_offset);
+                        hm_stream_read16(subtable, &rec.exit_anchor_offset);
+                        ++entry_exit_index;
+                    }
+
+                    hm_anchor_t entry, exit;
+
+                } else {
+                    /* error */
+                }
+
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING: {
+                break;
+            }
+            case HM_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING: {
+                break;
+            }
+            default: {
+                break;
+            }
         }
 
         ++subtable_index;

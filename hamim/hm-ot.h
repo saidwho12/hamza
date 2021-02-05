@@ -667,6 +667,18 @@ typedef enum hm_gsub_lookup_type_t {
     HM_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION = 8,
 } hm_gsub_lookup_type_t;
 
+typedef enum hm_gpos_lookup_type_t {
+    HM_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT = 1,
+    HM_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT = 2,
+    HM_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT = 3,
+    HM_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT = 4,
+    HM_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT = 5,
+    HM_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT = 6,
+    HM_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING = 7,
+    HM_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING = 8,
+    HM_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9,
+} hm_gpos_lookup_type_t;
+
 typedef struct hm_lookup_table_t {
     uint16_t lookup_type;
     uint16_t lookup_flag;
@@ -844,6 +856,11 @@ hm_bitset_create(uint16_t bit_count) {
     return bitset;
 }
 
+static void
+hm_bitset_destroy(hm_bitset_t *bitset) {
+    free(bitset);
+}
+
 static hm_bool
 hm_bitset_set(hm_bitset_t *bitset, uint16_t index, hm_bool value) {
     if (index < bitset->bit_count) {
@@ -896,12 +913,18 @@ hm_ot_feature_from_tag(hm_tag tag);
 
 
 hm_bool
-hm_ot_layout_apply_features(hm_face_t *face,
-                            hm_tag script,
-                            hm_tag language,
-                            const hm_bitset_t *feature_bits,
-                            hm_section_t *sect);
+hm_ot_layout_apply_gsub_features(hm_face_t *face,
+                                 hm_tag script,
+                                 hm_tag language,
+                                 const hm_bitset_t *feature_bits,
+                                 hm_section_t *sect);
 
+hm_bool
+hm_ot_layout_apply_gpos_features(hm_face_t *face,
+                                 hm_tag script,
+                                 hm_tag language,
+                                 const hm_bitset_t *feature_bits,
+                                 hm_section_t *sect);
 
 void
 hm_ot_layout_lookups_substitute_closure(hm_face_t *face,
@@ -918,10 +941,15 @@ hm_ot_layout_lookup_would_substitute(hm_face_t *face,
 
 
 void
-hm_ot_layout_apply_lookup(hm_face_t *face,
-                          hm_stream_t *table,
-                          hm_feature_t feature,
-                          hm_section_t *sect);
+hm_ot_layout_apply_gsub_lookup(hm_face_t *face,
+                               hm_stream_t *table,
+                               hm_feature_t feature,
+                               hm_section_t *sect);
+void
+hm_ot_layout_apply_gpos_lookup(hm_face_t *face,
+                               hm_stream_t *table,
+                               hm_feature_t feature,
+                               hm_section_t *sect);
 
 hm_tag
 hm_ot_script_to_tag(hm_script_t script);

@@ -1,33 +1,35 @@
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
-project(Hamim LANGUAGES C CXX)
+project(Hamza LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 90)
 
-set(HAMIM_SOURCES
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic.c
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot-shape-complex-arabic-joining-list.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ot.c
-        ${CMAKE_CURRENT_LIST_DIR}/hamim/hm-ft.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm.c
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-base.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-set.h
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-set.c
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-array.c
-		${CMAKE_CURRENT_LIST_DIR}/hamim/hm-array.h
-		main.cpp hamim/hm-map.h hamim/hm-map.c)
+set(HAMZA_SOURCES
+		src/hz-ot.h
+		src/hz-ot-shape-complex-arabic.c
+		src/hz-ot-shape-complex-arabic.h
+		src/hz-ot-shape-complex-arabic-joining-list.h
+		src/hz-ot.c
+		src/hz-ft.h
+		src/hz.c
+		src/hz.h
+		src/hz-base.h
+		src/hz-set.h
+		src/hz-set.c
+		src/hz-array.c
+		src/hz-array.h
+		src/hz-map.h
+		src/hz-map.c
+		main.cpp)
 
-add_library(hamim ${HAMIM_SOURCES})
-target_include_directories(hamim PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+add_library(hamza ${HAMZA_SOURCES})
+target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)
 
 find_package(Freetype REQUIRED)
 
-target_link_libraries(hamim PUBLIC ${FREETYPE_LIBRARIES})
-target_include_directories(hamim PUBLIC ${FREETYPE_INCLUDE_DIRS})
+target_link_libraries(hamza PUBLIC ${FREETYPE_LIBRARIES})
+target_include_directories(hamza PUBLIC ${FREETYPE_INCLUDE_DIRS})
 
 
-add_executable(hm-example main.cpp)
-target_link_libraries(hm-example PRIVATE hamim)
+add_executable(hamza-example main.cpp)
+target_link_libraries(hamza-example PRIVATE hamza)

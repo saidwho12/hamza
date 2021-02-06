@@ -14,13 +14,13 @@ def main():
         sys.exit(__doc__)
 
     files = [open(x, encoding="utf-8") for x in sys.argv[1:]]
-    file = open("hm-ot-shape-complex-arabic-joining-list.h", "w+", encoding="ascii")
+    file = open("hz-ot-shape-complex-arabic-joining-list.h", "w+", encoding="ascii")
 
-    file.write("#ifndef HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H\n")
-    file.write("#define HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H\n")
+    file.write("#ifndef HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H\n")
+    file.write("#define HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H\n")
 
     file.write("\n")
-    file.write("static const hm_arabic_joining_entry_t hm_arabic_joining_list[] = {\n")
+    file.write("static const hz_arabic_joining_entry_t hz_arabic_joining_list[] = {\n")
 
     for line in (line for line in files[0].readlines() if not line.startswith('#') and ';' in line):
         line = line.replace('\n', '')
@@ -40,7 +40,7 @@ def main():
 
     file.write("\n")
 
-    file.write("#endif /* HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H */")
+    file.write("#endif /* HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H */")
 
     return 0
 

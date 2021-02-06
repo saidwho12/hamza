@@ -1,5 +1,5 @@
-#ifndef HM_FT_H
-#define HM_FT_H
+#ifndef HZ_FT_H
+#define HZ_FT_H
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -7,15 +7,15 @@
 #include FT_GLYPH_H
 #include FT_TRUETYPE_TABLES_H
 
-#include "hm.h"
+#include "hz.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-static hm_face_t *
-hm_ft_face_create(FT_Face ft_face) {
-    hm_face_t *face = (hm_face_t *) HM_MALLOC(sizeof(hm_face_t));
+static hz_face_t *
+hz_ft_face_create(FT_Face ft_face) {
+    hz_face_t *face = (hz_face_t *) HZ_MALLOC(sizeof(hz_face_t));
     //face->handle = (mk_rawptr)malloc(sizeof(FT_Face));
     //memcpy(face->handle, &ft_face, sizeof(FT_Face));
     face->cmap_buf.data = NULL;
@@ -29,10 +29,10 @@ hm_ft_face_create(FT_Face ft_face) {
 
     FT_Error errorValidate = FT_OpenType_Validate(ft_face, FT_VALIDATE_OT, &BASE, &GDEF, &GPOS, &GSUB, &JSTF);
     if (errorValidate)
-        HM_LOG("%s\n", "Couldn't validate opentype datas");
+        HZ_LOG("%s\n", "Couldn't validate opentype datas");
 
     if (GSUB == NULL)
-        HM_LOG("%s\n", "Failed to load GSUB table.");
+        HZ_LOG("%s\n", "Failed to load GSUB table.");
 
     face->gsub_table = (uint8_t *) GSUB;
     face->gpos_table = (uint8_t *) GPOS;
@@ -44,7 +44,7 @@ hm_ft_face_create(FT_Face ft_face) {
 
         FT_Load_Sfnt_Table(ft_face, tag, 0, NULL, &face->cmap_buf.len);
 
-        face->cmap_buf.data = (uint8_t *) HM_MALLOC(face->cmap_buf.len);
+        face->cmap_buf.data = (uint8_t *) HZ_MALLOC(face->cmap_buf.len);
 
         FT_Load_Sfnt_Table(ft_face, tag, 0, face->cmap_buf.data, &face->cmap_buf.len);
     }
@@ -53,7 +53,7 @@ hm_ft_face_create(FT_Face ft_face) {
 }
 
 static void
-hm_ft_face_destroy(hm_face_t *face) {
+hz_ft_face_destroy(hz_face_t *face) {
     FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->base_table);
     FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->gdef_table);
     FT_OpenType_Free((FT_Face) face->handle, (FT_Bytes) face->gpos_table);
@@ -66,4 +66,4 @@ hm_ft_face_destroy(hm_face_t *face) {
 }
 #endif
 
-#endif /* HM_FT_H */
+#endif /* HZ_FT_H */

@@ -1,19 +1,19 @@
-#ifndef HM_OT_SHAPE_COMPLEX_ARABIC_H
-#define HM_OT_SHAPE_COMPLEX_ARABIC_H
+#ifndef HZ_OT_SHAPE_COMPLEX_ARABIC_H
+#define HZ_OT_SHAPE_COMPLEX_ARABIC_H
 
-#include "hm-base.h"
-#include "hm-array.h"
+#include "hz-base.h"
+#include "hz-array.h"
 
-typedef enum hm_arabic_joining_type_t {
+typedef enum hz_arabic_joining_type_t {
     JOINING_TYPE_R = 0x0100, /* Right-Joining */
     JOINING_TYPE_L = 0x0200, /* Left-Joining */
     JOINING_TYPE_D = 0x0400, /* Dual-Joining */
     JOINING_TYPE_C = 0x0800, /* Join-Causing */
     JOINING_TYPE_U = 0x1000, /* Non-Joining */
     JOINING_TYPE_T = 0x2000, /* Transparent */
-} hm_arabic_joining_type_t;
+} hz_arabic_joining_type_t;
 
-typedef enum hm_arabic_joining_group_t {
+typedef enum hz_arabic_joining_group_t {
     /* Arabic */
     NO_JOINING_GROUP = 0,
     JOINING_GROUP_ALEF = 1,
@@ -126,18 +126,18 @@ typedef enum hm_arabic_joining_group_t {
     JOINING_GROUP_HANIFI_ROHINGYA_PA,
     JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA,
 
-} hm_arabic_joining_group_t;
+} hz_arabic_joining_group_t;
 
-typedef struct hm_arabic_joining_entry_t {
-    hm_unicode codepoint;
+typedef struct hz_arabic_joining_entry_t {
+    hz_unicode codepoint;
     const char *name;
     uint16_t joining;
-} hm_arabic_joining_entry_t;
+} hz_arabic_joining_entry_t;
 
-#include "hm-ot-shape-complex-arabic-joining-list.h"
+#include "hz-ot-shape-complex-arabic-joining-list.h"
 
-hm_bool
-hm_ot_shape_complex_arabic_join(hm_feature_t feature, hm_section_node_t *node);
+hz_bool
+hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_section_node_t *node);
 
 
-#endif /* HM_OT_SHAPE_COMPLEX_ARABIC_H */
+#endif /* HZ_OT_SHAPE_COMPLEX_ARABIC_H */

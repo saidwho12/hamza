@@ -1,7 +1,7 @@
-#ifndef HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H
-#define HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H
+#ifndef HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H
+#define HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H
 
-static const hm_arabic_joining_entry_t hm_arabic_joining_list[] = {
+static const hz_arabic_joining_entry_t hz_arabic_joining_list[] = {
     { 0x0600, "ARABIC NUMBER SIGN", JOINING_TYPE_U | NO_JOINING_GROUP },
     { 0x0601, "ARABIC SIGN SANAH", JOINING_TYPE_U | NO_JOINING_GROUP },
     { 0x0602, "ARABIC FOOTNOTE MARKER", JOINING_TYPE_U | NO_JOINING_GROUP },
@@ -779,4 +779,4 @@ static const hm_arabic_joining_entry_t hm_arabic_joining_list[] = {
     { 0x1E94B, "ADLAM NASALIZATION MARK", JOINING_TYPE_T | NO_JOINING_GROUP },
 };
 
-#endif /* HM_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H */
+#endif /* HZ_OT_SHAPE_COMPLEX_ARABIC_JOINING_LIST_H */

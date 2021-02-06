@@ -1,2 +1,3 @@
-# Hamim
-Hamim is a ANSI C OpenType library primarily for Arabic (currently).
+# Hamza
+Hamza is a C90 OpenType library primarily for Arabic (currently).
+![img.png](img.png)

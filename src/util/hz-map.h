@@ -1,7 +1,7 @@
 #ifndef HZ_MAP_H
 #define HZ_MAP_H
 
-#include "hz-base.h"
+#include "../hz-base.h"
 
 typedef struct hz_map_t hz_map_t;
 

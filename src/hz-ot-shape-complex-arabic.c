@@ -35,7 +35,7 @@ hz_ot_shape_complex_arabic_adj_harf(hz_section_node_t *node, hz_joining_dir_t di
     if (dir == JOINING_PREV) {
         hz_section_node_t *curr_node = node->prev;
         while (curr_node != NULL) {
-            if (curr_node->data.g_class & (HZ_GLYPH_CLASS_BASE_BIT | HZ_GLYPH_CLASS_LIGATURE_BIT)
+            if (curr_node->data.clazz & (HZ_GLYPH_CLASS_BASE_BIT | HZ_GLYPH_CLASS_LIGATURE_BIT)
             || curr_node->data.codepoint == 0x20)
                 break;
 
@@ -47,7 +47,7 @@ hz_ot_shape_complex_arabic_adj_harf(hz_section_node_t *node, hz_joining_dir_t di
     else if (dir == JOINING_NEXT) {
         hz_section_node_t *curr_node = node->next;
         while (curr_node != NULL) {
-            if (curr_node->data.g_class & (HZ_GLYPH_CLASS_BASE_BIT | HZ_GLYPH_CLASS_LIGATURE_BIT)
+            if (curr_node->data.clazz & (HZ_GLYPH_CLASS_BASE_BIT | HZ_GLYPH_CLASS_LIGATURE_BIT)
                 || curr_node->data.codepoint == 0x20)
                 break;
 

@@ -1,6 +1,6 @@
 #include "hz.h"
-#include "hz-array.h"
-#include "hz-map.h"
+#include "util/hz-array.h"
+#include "util/hz-map.h"
 
 
 hz_bool
@@ -190,11 +190,10 @@ hz_context_collect_required_glyphs(hz_context_t *ctx,
 }
 
 hz_id
-hz_face_cmap_unicode_to_id(hz_face_t *face, hz_unicode c)
+hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode c)
 {
     /* Parse cmap table and convert unicode run to GID run */
-    hz_buf_t *cmap_buf = &face->cmap_buf;
-    hz_stream_t *cmap_table = hz_stream_create(cmap_buf->data, cmap_buf->len, HZ_STREAM_BOUND_FLAG);
+    hz_stream_t *cmap_table = hz_buf_to_stream(face->cmap_buf);
 
     uint16_t version;
     hz_stream_read16(cmap_table, &version);
@@ -220,7 +219,7 @@ hz_face_cmap_unicode_to_id(hz_face_t *face, hz_unicode c)
         // TODO: Handle length properly with bounding
         if (enc.platform_id == HZ_CMAP_PLATFORM_UNICODE) {
             uint16_t subtable_format = 0;
-            hz_stream_t *subtable_stream = hz_stream_create(cmap_buf->data + enc.subtable_offset,
+            hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
                                                             0, 0);
             hz_stream_read16(subtable_stream, &subtable_format);
 
@@ -264,12 +263,11 @@ hz_face_cmap_unicode_to_id(hz_face_t *face, hz_unicode c)
 }
 
 void
-hz_map_to_nominal_form_glyphs(hz_context_t *ctx,
-                              hz_section_t *sect)
+hz_map_to_nominal_forms(hz_context_t *ctx,
+                        hz_section_t *sect)
 {
     /* Parse cmap table and convert unicode run to GID run */
-    hz_buf_t *cmap_buf = &ctx->face->cmap_buf;
-    hz_stream_t *cmap_table = hz_stream_create(cmap_buf->data, cmap_buf->len, HZ_STREAM_BOUND_FLAG);
+    hz_stream_t *cmap_table = hz_buf_to_stream(ctx->face->cmap_buf);
 
     uint16_t version;
     hz_stream_read16(cmap_table, &version);
@@ -296,7 +294,7 @@ hz_map_to_nominal_form_glyphs(hz_context_t *ctx,
         // TODO: Handle length properly with bounding
         if (enc.platform_id == HZ_CMAP_PLATFORM_UNICODE) {
             uint16_t subtable_format = 0;
-            hz_stream_t *subtable_stream = hz_stream_create(cmap_buf->data + enc.subtable_offset,
+            hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
                                                                 0, 0);
             hz_stream_read16(subtable_stream, &subtable_format);
 
@@ -406,10 +404,10 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
         while (curr_node != NULL) {
             hz_id gid = curr_node->data.id;
             if (hz_map_value_exists(class_map, gid)) {
-                curr_node->data.g_class = hz_map_get_value(class_map, gid);
+                curr_node->data.clazz = hz_map_get_value(class_map, gid);
             } else {
                 /* set default glyph class if current glyph id isn't found */
-                curr_node->data.g_class = HZ_GLYPH_CLASS_ZERO;
+                curr_node->data.clazz = HZ_GLYPH_CLASS_ZERO;
             }
 
             curr_node = curr_node->next;
@@ -421,26 +419,99 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
 }
 
+
+typedef struct hz_long_hor_metric_t {
+    uint16_t aw; /* advance width */
+    int16_t lsb; /* left side bearing */
+} hz_long_hor_metric_t;
+
+//typedef struct hz_metrics_t {
+//    uint16_t x_advance;
+//    uint16_t y_advance;
+//    int16_t lsb;
+//    int16_t rsb;
+//    int16_t x_min;
+//    int16_t x_max;
+//    int16_t y_min;
+//    int16_t y_max;
+//} hz_metrics_t;
+
+void
+hz_read_h_metrics(hz_stream_t *table, size_t metrics_count, hz_long_hor_metric_t *metrics) {
+    size_t index = 0;
+
+    while (index < metrics_count) {
+        hz_long_hor_metric_t *metric = &metrics[ index ];
+        hz_stream_read16(table, &metric->aw);
+        hz_stream_read16(table, (uint16_t *) &metric->lsb);
+        ++index;
+    }
+}
+
+/*
+void
+hz_read_lv_metrics();
+*/
+
+void
+hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
+{
+    hz_long_hor_metric_t *h_metrics;
+    int16_t *left_side_bearings;
+
+    hz_stream_t *hmtx_table = hz_buf_to_stream(face->hmtx_buf);
+    //hz_stream_t *glyf_table = hz_buf_to_stream(face->glyf_buf);
+
+    size_t num_of_h_metrics = face->num_of_h_metrics;
+    size_t glyph_count = face->num_glyphs;
+    size_t num_lsb = glyph_count - num_of_h_metrics;
+
+    /* read long horizontal metrics */
+    h_metrics = malloc(sizeof(hz_long_hor_metric_t) * num_of_h_metrics);
+    hz_read_h_metrics(hmtx_table, num_of_h_metrics, h_metrics);
+    left_side_bearings = malloc(sizeof(int16_t) * num_lsb);
+    hz_stream_read16_n(hmtx_table, num_lsb, (uint16_t *)left_side_bearings);
+
+    /* apply the metrics to position the glyphs */
+    hz_section_node_t *curr_node = sect->root;
+    while (curr_node != NULL) {
+        hz_id id = curr_node->data.id;
+
+        if (id < num_of_h_metrics) {
+            hz_long_hor_metric_t *metric = &h_metrics[id];
+            curr_node->data.ax = metric->aw;
+        } else if (id < glyph_count) {
+            int16_t lsb = left_side_bearings[id];
+            curr_node->data.ax = lsb;
+        }
+
+        curr_node = curr_node->next;
+    }
+
+    free(h_metrics);
+}
+
+
 hz_status_t
 hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 {
     hz_face_t *face = ctx->face;
-    hz_lookup_table_t *lookups = NULL;
     hz_tag script_tag = hz_ot_script_to_tag(ctx->script);
     hz_tag language_tag = hz_ot_language_to_tag(ctx->language);
 
-    HZ_LOG("language: \"%c%c%c%c\"\n", HZ_UNTAG(language_tag), language_tag);
-    HZ_LOG("script: \"%c%c%c%c\"\n", HZ_UNTAG(script_tag), script_tag);
+    HZ_LOG("language: \"%c%c%c%c\"\n", HZ_UNTAG(language_tag));
+    HZ_LOG("script: \"%c%c%c%c\"\n", HZ_UNTAG(script_tag));
 
     /* Map unicode characters to nominal glyph indices */
-    hz_map_to_nominal_form_glyphs(ctx, sect);
+    hz_map_to_nominal_forms(ctx, sect);
     hz_ot_parse_gdef_table(ctx, sect);
-
     hz_ot_layout_apply_gsub_features(face, script_tag,
                                      language_tag,
                                      ctx->features,
                                      sect);
 
+    hz_apply_tt1_metrics(face, sect);
+//    hz_ot_adjust_gpos_features();
     hz_ot_layout_apply_gpos_features(face, script_tag,
                                      language_tag,
                                      ctx->features,
@@ -448,3 +519,81 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 
     return HZ_SUCCESS;
 }
+
+
+
+void
+hz_decode_maxp_table(hz_face_t *face, hz_buf_t *maxp_buf)
+{
+    HZ_Version16Dot16 ver;
+    uint16_t num_glyphs;
+
+    hz_stream_t *table = hz_buf_to_stream( maxp_buf );
+
+    hz_stream_read32(table, &ver);
+
+    switch (ver) {
+        case 0x00005000: {
+            /* version 0.5 */
+            hz_stream_read16(table, &num_glyphs);
+            break;
+        }
+        case 0x00010000: {
+            /* version 1.0 with full information */
+            hz_stream_read16(table, &num_glyphs);
+            break;
+        }
+        default:
+            /* error */
+            break;
+    }
+
+    face->num_glyphs = num_glyphs;
+}
+
+
+void
+hz_decode_hhea_table(hz_face_t *face, hz_buf_t *hhea_buf)
+{
+    hz_stream_t *table = hz_buf_to_stream( hhea_buf );
+
+    uint32_t version;
+    FWORD ascender, descender, line_gap;
+    UFWORD advance_width_max;
+    FWORD min_left_side_bearing;
+    FWORD min_right_side_bearing;
+    FWORD x_max_extent;
+    int16_t caret_slope_rise;
+    int16_t caret_slope_run;
+    int16_t caret_offset;
+    int16_t metric_data_format;
+    uint16_t num_of_h_metrics;
+
+    hz_stream_read32(table, &version);
+
+    if (version == 0x00010000) {
+        /* version 1.0 */
+        hz_stream_read16(table, (uint16_t *) &ascender);
+        hz_stream_read16(table, (uint16_t *) &descender);
+        hz_stream_read16(table, (uint16_t *) &line_gap);
+        hz_stream_read16(table, &advance_width_max);
+        hz_stream_read16(table, (uint16_t *) &min_left_side_bearing);
+        hz_stream_read16(table, (uint16_t *) &min_right_side_bearing);
+        hz_stream_read16(table, (uint16_t *) &x_max_extent);
+        hz_stream_read16(table, (uint16_t *) &caret_slope_rise);
+        hz_stream_read16(table, (uint16_t *) &caret_slope_run);
+        hz_stream_read16(table, (uint16_t *) &caret_offset);
+
+        /* skip over 4x2 bytes of reserved space */
+        hz_stream_seek(table, 8);
+
+        hz_stream_read16(table, (uint16_t *) &metric_data_format);
+        hz_stream_read16(table, &num_of_h_metrics);
+    } else {
+        /* error */
+    }
+
+    HZ_LOG("num_of_h_metrics: %d\n", num_of_h_metrics);
+    face->num_of_h_metrics = num_of_h_metrics;
+}
+

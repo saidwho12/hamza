@@ -14,13 +14,15 @@ set(HAMZA_SOURCES
 		src/hz.c
 		src/hz.h
 		src/hz-base.h
-		src/hz-set.h
-		src/hz-set.c
-		src/hz-array.c
-		src/hz-array.h
-		src/hz-map.h
-		src/hz-map.c
-		main.cpp)
+		src/util/hz-set.h
+		src/util/hz-set.c
+		src/util/hz-array.c
+		src/util/hz-array.h
+		src/util/hz-map.h
+		src/util/hz-map.c
+		src/util/hz-buf.h
+		src/util/hz-buf.c
+		src/cmas.h)
 
 add_library(hamza ${HAMZA_SOURCES})
 target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)

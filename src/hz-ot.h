@@ -1,13 +1,33 @@
 #ifndef HZ_OT_H
 #define HZ_OT_H
 
+#include "util/hz-buf.h"
+#include "util/hz-set.h"
+#include "util/hz-array.h"
 #include "hz-base.h"
-#include "hz-set.h"
-#include "hz-array.h"
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct hz_face_t {
+    hz_byte *base_table;
+    hz_byte *gsub_table;
+    hz_byte *gpos_table;
+    hz_byte *gdef_table;
+    hz_byte *jstf_table;
+    hz_buf_t *cmap_buf;
+    hz_buf_t *hmtx_buf;
+    hz_buf_t *glyf_buf;
+    hz_buf_t *CFF_buf;
+    hz_buf_t *CFF2_buf;
+    void *handle; /* freetype handle */
+
+    uint16_t num_glyphs;
+    uint16_t num_of_h_metrics;
+    uint16_t num_of_v_metrics;
+} hz_face_t;
 
 /*
  * Registered Features
@@ -355,7 +375,7 @@ typedef struct hz_section_glyph_t {
     hz_id id;
     uint16_t dx, dy;
     uint16_t ax, ay;
-    uint8_t g_class: HZ_GLYPH_CLASS_BIT_FIELD;
+    uint8_t clazz: HZ_GLYPH_CLASS_BIT_FIELD;
 } hz_section_glyph_t;
 
 struct hz_section_node_t {
@@ -444,6 +464,7 @@ hz_section_rem_n_next_nodes(hz_section_node_t *start, size_t n)
 
     start->next = curr;
     if (curr != NULL) curr->prev = start;
+    return HZ_TRUE;
 }
 
 typedef struct {
@@ -546,7 +567,7 @@ hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
         hz_section_glyph_t data;
         data.codepoint = ch;
         data.id = 0;
-        data.g_class = HZ_GLYPH_CLASS_ZERO;
+        data.clazz = HZ_GLYPH_CLASS_ZERO;
         data.ax = 0;
         data.ay = 0;
         data.dx = 0;

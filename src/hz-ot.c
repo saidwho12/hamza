@@ -1,6 +1,6 @@
 #include "hz-ot.h"
 #include "hz-ot-shape-complex-arabic.h"
-#include "hz-map.h"
+#include "util/hz-map.h"
 
 hz_feature_t
 hz_ot_feature_from_tag(hz_tag tag) {
@@ -146,7 +146,7 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
 
     hz_byte *data = (hz_byte *) face->gsub_table;
     hz_stream_t *table = hz_stream_create(data, 0, 0);
-    uint32_t ver;
+    HZ_Version16Dot16 ver;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
     uint16_t lookup_list_offset;
@@ -283,15 +283,15 @@ hz_ot_layout_apply_gpos_features(hz_face_t *face,
 
     hz_byte *data = (hz_byte *) face->gpos_table;
     hz_stream_t *table = hz_stream_create(data, 0, 0);
-    uint32_t ver;
+    HZ_Version16Dot16 ver;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
     uint16_t lookup_list_offset;
     uint32_t feature_variations_offset;
 
     hz_stream_read32(table, &ver);
-
     HZ_LOG("GPOS version: %u.%u\n", ver >> 16, ver & 0xFFFF);
+
     switch (ver) {
         case 0x00010000: /* 1.0 */
             hz_stream_read16(table, &script_list_offset);
@@ -304,7 +304,7 @@ hz_ot_layout_apply_gpos_features(hz_face_t *face,
             hz_stream_read16(table, &lookup_list_offset);
             hz_stream_read32(table, &feature_variations_offset);
             break;
-        default:
+        default: /* error */
             break;
     }
 
@@ -426,8 +426,8 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
 
 hz_bool
 hz_ot_layout_parse_coverage(uint8_t *data,
-                            hz_map_t *map_subst,
-                            hz_array_t *subst)
+                            hz_map_t *map,
+                            hz_array_t *id_arr)
 {
     uint16_t coverage_format = 0;
     hz_stream_t *table = hz_stream_create(data,0,0);
@@ -443,7 +443,11 @@ hz_ot_layout_parse_coverage(uint8_t *data,
                 uint16_t glyph_index;
                 hz_stream_read16(table, &glyph_index);
 //                hz_array_push_back(coverage_glyphs, glyph_index);
-                hz_map_set_value(map_subst, glyph_index, hz_array_at(subst, coverage_idx));
+                if (id_arr != NULL)
+                    hz_map_set_value(map, glyph_index, hz_array_at(id_arr, coverage_idx));
+                else
+                    hz_map_set_value(map, glyph_index, coverage_idx);
+
                 ++coverage_idx;
             }
 
@@ -469,9 +473,15 @@ hz_ot_layout_parse_coverage(uint8_t *data,
                 range_end = (range.end_glyph_id - range.start_glyph_id);
                 while (range_offset <= range_end) {
                     from = range.start_glyph_id + range_offset;
-                    to = hz_array_at(subst, range.start_coverage_index + range_offset);
-                    hz_map_set_value(map_subst, from, to);
-                    HZ_LOG("%d -> %d\n", from, to);
+
+                    if (id_arr != NULL)
+                        to = hz_array_at(id_arr, range.start_coverage_index + range_offset);
+                    else
+                        to = range.start_coverage_index + range_offset;
+
+                    hz_map_set_value(map, from, to);
+
+//                    HZ_LOG("%d -> %d\n", from, to);
                     ++range_offset;
                 }
 
@@ -717,6 +727,36 @@ typedef struct hz_anchor_t {
     int16_t x_coord, y_coord;
 } hz_anchor_t;
 
+typedef struct hz_anchor_pair_t {
+    hz_bool has_entry, has_exit;
+    hz_anchor_t entry, exit;
+} hz_anchor_pair_t;
+
+
+hz_anchor_t
+hz_ot_layout_read_anchor(const uint8_t *data) {
+    hz_anchor_t anchor;
+    anchor.x_coord = bswap16(*(const uint16_t *)data);
+    anchor.y_coord = bswap16(*(const uint16_t *)&data[2]);
+    return anchor;
+}
+
+hz_anchor_pair_t
+hz_ot_layout_read_anchor_pair(uint8_t *subtable, const hz_entry_exit_record_t *rec) {
+    hz_anchor_pair_t anchor_pair;
+
+    anchor_pair.has_entry = rec->entry_anchor_offset ? HZ_TRUE : HZ_FALSE;
+    anchor_pair.has_exit = rec->exit_anchor_offset ? HZ_TRUE : HZ_FALSE;
+
+    if (anchor_pair.has_entry)
+        anchor_pair.entry = hz_ot_layout_read_anchor(subtable + rec->entry_anchor_offset);
+
+    if (anchor_pair.has_exit)
+        anchor_pair.exit = hz_ot_layout_read_anchor(subtable + rec->exit_anchor_offset);
+
+    return anchor_pair;
+}
+
 void
 hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                                hz_stream_t *table,
@@ -749,22 +789,50 @@ hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
             }
             case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
                 if (format == 1) {
+                    /* 4k stack buffer */
+                    uint8_t monobuf[4096];
+                    cmas_mono_ma_t ma = cmas_mono_ma_create(monobuf, 4096);
+
                     hz_offset16 coverage_offset;
-                    uint16_t entry_exit_count, entry_exit_index;
+                    uint16_t record_count, record_index = 0;
+                    hz_entry_exit_record_t *records;
+                    hz_map_t *coverage_map = hz_map_create();
 
                     hz_stream_read16(subtable, &coverage_offset);
-                    hz_stream_read16(subtable, &entry_exit_count);
+                    hz_stream_read16(subtable, &record_count);
 
-                    entry_exit_index = 0;
-                    while (entry_exit_index < entry_exit_count) {
-                        hz_entry_exit_record_t rec;
-                        hz_stream_read16(subtable, &rec.entry_anchor_offset);
-                        hz_stream_read16(subtable, &rec.exit_anchor_offset);
-                        ++entry_exit_index;
+                    records = cmas_mono_ma_alloc(&ma, sizeof(hz_entry_exit_record_t) * record_count);
+
+                    while (record_index < record_count) {
+                        hz_entry_exit_record_t *rec = &records[record_index];
+                        hz_stream_read16(subtable, &rec->entry_anchor_offset);
+                        hz_stream_read16(subtable, &rec->exit_anchor_offset);
+                        ++record_index;
                     }
 
-                    hz_anchor_t entry, exit;
+                    /* get coverage glyph to index map */
+                    hz_ot_layout_parse_coverage(subtable->data + coverage_offset, coverage_map, NULL);
 
+
+                    /* position glyphs */
+                    hz_section_node_t *curr_node = sect->root;
+
+                    while (curr_node != NULL) {
+                        hz_section_glyph_t *g = &curr_node->data;
+
+                        if (hz_map_value_exists(coverage_map, g->id)) {
+                            uint16_t rec_idx = hz_map_get_value(coverage_map, g->id);
+                            const hz_entry_exit_record_t *rec = records + rec_idx;
+                            hz_anchor_pair_t curr_pair = hz_ot_layout_read_anchor_pair(subtable->data, rec);
+
+                        }
+
+                        curr_node = curr_node->next;
+                    }
+
+                    /* release resources */
+                    cmas_mono_ma_free( &ma, records );
+                    cmas_mono_ma_release( &ma );
                 } else {
                     /* error */
                 }

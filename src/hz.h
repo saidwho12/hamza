@@ -1,9 +1,7 @@
 #ifndef HZ_H
 #define HZ_H
 
-#include "hz-base.h"
 #include "hz-ot.h"
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,7 +42,14 @@ hz_context_collect_required_glyphs(hz_context_t *ctx,
 
 
 hz_id
-hz_face_cmap_unicode_to_id(hz_face_t *face, hz_unicode c);
+hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode c);
+
+
+void
+hz_decode_maxp_table(hz_face_t *face, hz_buf_t *maxp_buf);
+
+void
+hz_decode_hhea_table(hz_face_t *face, hz_buf_t *hhea_buf);
 
 #ifdef __cplusplus
 }

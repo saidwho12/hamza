@@ -13,13 +13,21 @@
 extern "C" {
 #endif
 
+static hz_buf_t*
+hz_ft_load_snft_table(FT_Face face, hz_tag tag)
+{
+    hz_buf_t *buf = hz_buf_create();
+    size_t size = 0;
+    FT_Load_Sfnt_Table(face, tag, 0, NULL, &size);
+    hz_buf_resize(buf, size);
+    FT_Load_Sfnt_Table(face, tag, 0, hz_buf_data(buf), &size);
+    return buf;
+}
+
+
 static hz_face_t *
 hz_ft_face_create(FT_Face ft_face) {
     hz_face_t *face = (hz_face_t *) HZ_MALLOC(sizeof(hz_face_t));
-    //face->handle = (mk_rawptr)malloc(sizeof(FT_Face));
-    //memcpy(face->handle, &ft_face, sizeof(FT_Face));
-    face->cmap_buf.data = NULL;
-    face->cmap_buf.len = 0;
 
     FT_Bytes BASE = NULL;
     FT_Bytes GDEF = NULL;
@@ -34,19 +42,31 @@ hz_ft_face_create(FT_Face ft_face) {
     if (GSUB == NULL)
         HZ_LOG("%s\n", "Failed to load GSUB table.");
 
-    face->gsub_table = (uint8_t *) GSUB;
-    face->gpos_table = (uint8_t *) GPOS;
-    face->gdef_table = (uint8_t *) GDEF;
+    face->gsub_table = (hz_byte *) GSUB;
+    face->gpos_table = (hz_byte *) GPOS;
+    face->gdef_table = (hz_byte *) GDEF;
+
+    /* load cmap table into buffer */
+    face->cmap_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('c','m','a','p'));
+
+    /* load glyf table into buffer */
+    face->glyf_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('g','l','y','f'));
+
+    /* load hmtx table into buffer */
+    face->hmtx_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('h','m','t','x'));
 
     {
-        /* Load cmap table into buffer */
-        FT_ULong tag = FT_MAKE_TAG('c','m','a','p');
+        /* load few variables from maxp table */
+        hz_buf_t *maxp_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('m','a','x','p'));
+        hz_decode_maxp_table(face, maxp_buf);
+        hz_buf_destroy(maxp_buf);
+    }
 
-        FT_Load_Sfnt_Table(ft_face, tag, 0, NULL, &face->cmap_buf.len);
-
-        face->cmap_buf.data = (uint8_t *) HZ_MALLOC(face->cmap_buf.len);
-
-        FT_Load_Sfnt_Table(ft_face, tag, 0, face->cmap_buf.data, &face->cmap_buf.len);
+    {
+        /* load few variables from hhea table */
+        hz_buf_t *hhea_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('h','h','e','a'));
+        hz_decode_hhea_table(face, hhea_buf);
+        hz_buf_destroy(hhea_buf);
     }
 
     return face;

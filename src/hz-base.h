@@ -7,6 +7,10 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <wchar.h>
+
+#define CMAS_IMPL
+#include "cmas.h"
+
 #define HZ_LOG(...) fprintf(stdout, __VA_ARGS__)
 #define HZ_DBGLOG(...) fprintf(stdout, __VA_ARGS__)
 #define HZ_ERROR(...) fprintf(stderr, __VA_ARGS__)
@@ -31,6 +35,16 @@ typedef long hz_int32;
 typedef long long hz_int64;
 typedef float hz_float32;
 typedef double hz_float64;
+typedef void hz_void;
+
+/* signed 16-bit */
+typedef int16_t FWORD;
+
+/* unsigned 16-bit */
+typedef uint16_t UFWORD;
+
+/* unsigned 16-bit */
+typedef uint16_t F2DOT14;
 
 typedef uint8_t hz_byte, hz_bool, hz_char;
 typedef uint16_t hz_offset16;
@@ -79,22 +93,6 @@ static uint32_t bswap32(uint32_t val)
 #define HZ_TAG(c1, c2, c3, c4) ((hz_tag)c4 | ((hz_tag)c3 << 8U) | ((hz_tag)c2 << 16U) | ((hz_tag)c1 << 24U))
 #define HZ_UNTAG(tag) (tag >> 24) & 0xFF, (tag >> 16) & 0xFF, (tag >> 8) & 0xFF, tag & 0xFF
 #define HZ_ALLOC(T) (T *) HZ_MALLOC(sizeof(T))
-
-
-typedef struct hz_buf_t {
-    uint8_t *data;
-    size_t len;
-} hz_buf_t;
-
-typedef struct hz_face_t {
-    hz_byte *base_table;
-    hz_byte *gsub_table;
-    hz_byte *gpos_table;
-    hz_byte *gdef_table;
-    hz_byte *jstf_table;
-    hz_buf_t cmap_buf;
-    void *handle; /* freetype handle */
-} hz_face_t;
 
 typedef enum hz_status_t {
     HZ_SUCCESS = 0,
@@ -179,6 +177,20 @@ hz_stream_read32(hz_stream_t *stream, uint32_t *val) {
 static void
 hz_stream_seek(hz_stream_t *stream, int offset) {
     stream->offset += offset;
+}
+
+static void
+hz_stream_read16_n(hz_stream_t *stream, size_t count, uint16_t *A)
+{
+    size_t i = 0;
+
+    while (i < count) {
+        uint16_t *val = &A[i];
+
+        hz_stream_read16(stream, val);
+
+        ++i;
+    }
 }
 
 #endif /* HZ_BASE_H */

@@ -2,7 +2,7 @@
 #define HZ_OT_SHAPE_COMPLEX_ARABIC_H
 
 #include "hz-base.h"
-#include "hz-array.h"
+#include "util/hz-array.h"
 
 typedef enum hz_arabic_joining_type_t {
     JOINING_TYPE_R = 0x0100, /* Right-Joining */

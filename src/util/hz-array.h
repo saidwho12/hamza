@@ -1,7 +1,7 @@
 #ifndef HZ_ARRAY_H
 #define HZ_ARRAY_H
 
-#include "hz-base.h"
+#include "../hz-base.h"
 
 #ifdef __cplusplus
 extern "C" {

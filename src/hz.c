@@ -64,10 +64,10 @@ typedef enum hz_cmap_platform_t  {
 } hz_cmap_platform_t;
 
 
-//typedef enum hz_cmap_subtable_type_t {
-//    HZ_CMAP_SUBTABLE_BYTE_ENCODING_TABLE = 0,
-//    HZ_CMAP_SUBTABLE_SEGMENT_MAPPING_TO_DELTA_VALUES = 4
-//} hz_cmap_subtable_type_t;
+typedef enum hz_cmap_subtable_format_t {
+    HZ_CMAP_SUBTABLE_FORMAT_BYTE_ENCODING_TABLE = 0,
+    HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES = 4
+} hz_cmap_subtable_format_t;
 
 //typedef enum hz_cmap_unicode_encoding_t {
 //
@@ -153,21 +153,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode c) {
         ++i;
     }
 
-    /* couldn't find a range, return missingGlyph */
-    uint16_t start_code = bswap16(st->start_code[i]);
-    uint16_t end_code = bswap16(st->end_code[i]);
-    int16_t id_delta = bswap16(st->id_delta[i]);
-    uint16_t id_range_offset = bswap16(st->id_range_offsets[i]);
-//    HZ_ASSERT(start_code == 0xFFFF && end_code == 0xFFFF);
-//
-//    if (id_range_offset != 0) {
-//        uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
-//        id = bswap16( raw_val );
-//        if (id != 0) id += id_delta;
-//    } else
-//        id = id_delta + c;
-
-    return 0;
+    return 0; /* map to .notdef */
 }
 
 void
@@ -189,77 +175,47 @@ hz_context_collect_required_glyphs(hz_context_t *ctx,
 
 }
 
-hz_id
-hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode c)
+hz_bool
+hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
+                       hz_cmap_encoding_t enc)
 {
-    /* Parse cmap table and convert unicode run to GID run */
-    hz_stream_t *cmap_table = hz_buf_to_stream(face->cmap_buf);
+    hz_stream_t *subtable = hz_stream_create(table->data + enc.subtable_offset, 0, 0);
+    uint16_t format;
+    hz_stream_read16(subtable, &format);
 
-    uint16_t version;
-    hz_stream_read16(cmap_table, &version);
+    switch (format) {
+        case 0: break;
+        case 2: break;
+        case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
+            hz_cmap_subtable_format4_t st;
+            hz_stream_read16(subtable, &st.length);
+            hz_stream_read16(subtable, &st.language);
+            hz_stream_read16(subtable, &st.seg_count_x2);
+            hz_stream_read16(subtable, &st.search_range);
+            hz_stream_read16(subtable, &st.entry_selector);
+            hz_stream_read16(subtable, &st.range_shift);
 
-    /* Table version number must be 0 */
-    HZ_ASSERT(version == 0);
+            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
 
-    uint16_t num_encodings, enc_idx;
-    hz_stream_read16(cmap_table, &num_encodings);
+            const uint8_t *curr_addr = subtable->data + subtable->offset;
+            st.end_code = (uint16_t *)curr_addr;
+            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
+            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
+            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
 
-//    HZ_LOG("cmap table encoding count: %d\n", num_encodings);
+            /* map unicode characters to glyph indices in section */
+            hz_section_node_t *curr_node = sect->root;
 
-    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx) {
-        hz_cmap_encoding_t enc = {};
-        hz_stream_read16(cmap_table, &enc.platform_id);
-        hz_stream_read16(cmap_table, &enc.encoding_id);
-        hz_stream_read32(cmap_table, &enc.subtable_offset);
-
-//        HZ_LOG("platform: %s\n", hz_cmap_platform_to_string(enc.platform_id));
-//        HZ_LOG("encoding: %d\n", enc.encoding_id);
-//        HZ_LOG("subtable-offset: %d\n", enc.subtable_offset);
-
-        // TODO: Handle length properly with bounding
-        if (enc.platform_id == HZ_CMAP_PLATFORM_UNICODE) {
-            uint16_t subtable_format = 0;
-            hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
-                                                            0, 0);
-            hz_stream_read16(subtable_stream, &subtable_format);
-
-//            HZ_LOG("subtable_format: %d\n", subtable_format);
-
-            if (subtable_format == 4) {
-                /* Format 4: Segment mapping to delta values */
-                hz_cmap_subtable_format4_t subtable;
-                hz_stream_read16(subtable_stream, &subtable.length);
-                hz_stream_read16(subtable_stream, &subtable.language);
-                hz_stream_read16(subtable_stream, &subtable.seg_count_x2);
-                hz_stream_read16(subtable_stream, &subtable.search_range);
-                hz_stream_read16(subtable_stream, &subtable.entry_selector);
-                hz_stream_read16(subtable_stream, &subtable.range_shift);
-
-//                HZ_LOG("length: %d\n", subtable.length);
-//                HZ_LOG("language: %d\n", subtable.language);
-//                HZ_LOG("seg_count_x2: %d\n", subtable.seg_count_x2);
-//                HZ_LOG("search_range: %d\n", subtable.search_range);
-//                HZ_LOG("entry_selector: %d\n", subtable.entry_selector);
-//                HZ_LOG("range_shift: %d\n", subtable.range_shift);
-
-                uint16_t seg_jmp = (subtable.seg_count_x2>>1) * sizeof(uint16_t);
-
-                uint8_t *curr_addr = subtable_stream->data + subtable_stream->offset;
-                subtable.end_code = (uint16_t *)curr_addr;
-                subtable.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
-                subtable.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
-                subtable.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
-
-                /* map unicode characters to glyph indices in run */
-                return hz_cmap_unicode_to_id(&subtable, c);
+            while (curr_node != NULL) {
+                curr_node->data.id = hz_cmap_unicode_to_id(&st, curr_node->data.codepoint);
+                curr_node = curr_node->next;
             }
-
-            /* Found encoding */
             break;
         }
+        default: return HZ_FALSE;
     }
 
-    return 0;
+    return HZ_TRUE;
 }
 
 void
@@ -280,7 +236,8 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
 
     HZ_LOG("cmap table encoding count: %d\n", num_encodings);
 
-    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx) {
+//    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx)
+    {
         hz_cmap_encoding_t enc = {};
         hz_stream_read16(cmap_table, &enc.platform_id);
         hz_stream_read16(cmap_table, &enc.encoding_id);
@@ -290,53 +247,71 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
         HZ_LOG("encoding: %d\n", enc.encoding_id);
         HZ_LOG("subtable-offset: %d\n", enc.subtable_offset);
 
+        hz_cmap_apply_encoding(cmap_table, sect, enc);
 
-        // TODO: Handle length properly with bounding
-        if (enc.platform_id == HZ_CMAP_PLATFORM_UNICODE) {
-            uint16_t subtable_format = 0;
-            hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
-                                                                0, 0);
-            hz_stream_read16(subtable_stream, &subtable_format);
 
-            HZ_LOG("subtable_format: %d\n", subtable_format);
-
-            if (subtable_format == 4) {
-                /* Format 4: Segment mapping to delta values */
-                hz_cmap_subtable_format4_t subtable;
-                hz_stream_read16(subtable_stream, &subtable.length);
-                hz_stream_read16(subtable_stream, &subtable.language);
-                hz_stream_read16(subtable_stream, &subtable.seg_count_x2);
-                hz_stream_read16(subtable_stream, &subtable.search_range);
-                hz_stream_read16(subtable_stream, &subtable.entry_selector);
-                hz_stream_read16(subtable_stream, &subtable.range_shift);
-
-                HZ_LOG("length: %d\n", subtable.length);
-                HZ_LOG("language: %d\n", subtable.language);
-                HZ_LOG("seg_count_x2: %d\n", subtable.seg_count_x2);
-                HZ_LOG("search_range: %d\n", subtable.search_range);
-                HZ_LOG("entry_selector: %d\n", subtable.entry_selector);
-                HZ_LOG("range_shift: %d\n", subtable.range_shift);
-
-                uint16_t seg_jmp = (subtable.seg_count_x2>>1) * sizeof(uint16_t);
-
-                uint8_t *curr_addr = subtable_stream->data + subtable_stream->offset;
-                subtable.end_code = (uint16_t *)curr_addr;
-                subtable.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
-                subtable.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
-                subtable.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
-
-                /* map unicode characters to glyph indices in run */
-                hz_section_node_t *curr_node = sect->root;
-
-                while (curr_node != NULL) {
-                    curr_node->data.id = hz_cmap_unicode_to_id(&subtable, curr_node->data.codepoint);
-                    curr_node = curr_node->next;
-                }
-            }
-
-            /* Found encoding */
-            break;
-        }
+//        switch (enc.platform_id) {
+//            case HZ_CMAP_PLATFORM_UNICODE: {
+//                uint16_t subtable_format = 0;
+//                hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
+//                                                                0, 0);
+//                hz_stream_read16(subtable_stream, &subtable_format);
+//
+//                if (subtable_format == 4) {
+//
+//                }
+//                break;
+//            }
+//            case HZ_CMAP_PLATFORM_MACINTOSH: {
+//                break;
+//            }
+//            case HZ_CMAP_PLATFORM_ISO: {
+//                break;
+//            }
+//            case HZ_CMAP_PLATFORM_WINDOWS: {
+//                /* https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#windows-platform-platform-id--3 */
+//                switch (enc.encoding_id) {
+//                    case 0: { /* Symbol */
+//                        break;
+//                    }
+//                    case 1: { /* Unicode BMP */
+//                        break;
+//                    }
+//                    case 2: { /* ShiftJIS */
+//                        break;
+//                    }
+//                    case 3: { /* PRC */
+//                        break;
+//                    }
+//                    case 4: { /* Big5 */
+//                        break;
+//                    }
+//                    case 5: { /* Wansung */
+//                        break;
+//                    }
+//                    case 6: { /* Johab */
+//                        hz_cmap_windows_johab(cmap_table->data + enc.subtable_offset);
+//                        break;
+//                    }
+//
+////                    case 7 ... 9: { /* Reserved */
+////                        break;
+////                    }
+//
+//                    case 10: { /* Unicode full repertoire */
+//                        hz_cmap_windows_unicode_full(cmap_table->data + enc.subtable_offset);
+//                        break;
+//                    }
+//
+//                    default:
+//                        break;
+//                }
+//                break;
+//            }
+//
+//            default: /* error */
+//                break;
+//        }
     }
 }
 
@@ -425,17 +400,6 @@ typedef struct hz_long_hor_metric_t {
     int16_t lsb; /* left side bearing */
 } hz_long_hor_metric_t;
 
-//typedef struct hz_metrics_t {
-//    uint16_t x_advance;
-//    uint16_t y_advance;
-//    int16_t lsb;
-//    int16_t rsb;
-//    int16_t x_min;
-//    int16_t x_max;
-//    int16_t y_min;
-//    int16_t y_max;
-//} hz_metrics_t;
-
 void
 hz_read_h_metrics(hz_stream_t *table, size_t metrics_count, hz_long_hor_metric_t *metrics) {
     size_t index = 0;
@@ -454,40 +418,80 @@ hz_read_lv_metrics();
 */
 
 void
+hz_fill_tt1_metrics(hz_face_t *face,
+                    hz_metrics_t *metrics,
+                    const hz_long_hor_metric_t *h_metrics,
+                    const int16_t *left_side_bearings,
+                    uint16_t num_of_h_glyphs,
+                    uint16_t glyph_count)
+{
+    hz_stream_t *table = hz_buf_to_stream(face->glyf_buf);
+
+    uint16_t ver;
+    hz_stream_read16(table, &ver);
+
+    switch (ver) {
+        case 1: {
+            uint16_t unk0, unk1, unk2;
+            break;
+        }
+        case 2: {
+            uint16_t unk0, unk1, unk2, unk3, unk4;
+            hz_stream_read16(table, &unk0);
+            hz_stream_read16(table, &unk1);
+            hz_stream_read16(table, &unk2);
+            hz_stream_read16(table, &unk3);
+            hz_stream_read16(table, &unk4);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+void
 hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
 {
     hz_long_hor_metric_t *h_metrics;
     int16_t *left_side_bearings;
 
     hz_stream_t *hmtx_table = hz_buf_to_stream(face->hmtx_buf);
-    //hz_stream_t *glyf_table = hz_buf_to_stream(face->glyf_buf);
 
-    size_t num_of_h_metrics = face->num_of_h_metrics;
-    size_t glyph_count = face->num_glyphs;
-    size_t num_lsb = glyph_count - num_of_h_metrics;
+    uint16_t num_of_h_metrics = face->num_of_h_metrics;
+    uint16_t glyph_count = face->num_glyphs;
+    uint16_t num_left_side_bearings = glyph_count - num_of_h_metrics;
 
     /* read long horizontal metrics */
     h_metrics = malloc(sizeof(hz_long_hor_metric_t) * num_of_h_metrics);
     hz_read_h_metrics(hmtx_table, num_of_h_metrics, h_metrics);
-    left_side_bearings = malloc(sizeof(int16_t) * num_lsb);
-    hz_stream_read16_n(hmtx_table, num_lsb, (uint16_t *)left_side_bearings);
+    left_side_bearings = malloc(sizeof(int16_t) * num_left_side_bearings);
+    hz_stream_read16_n(hmtx_table, num_left_side_bearings, (uint16_t *)left_side_bearings);
+
+    //hz_fill_tt1_metrics(face, metrics, h_metrics, left_side_bearings, num_of_h_metrics, glyph_count);
 
     /* apply the metrics to position the glyphs */
     hz_section_node_t *curr_node = sect->root;
     while (curr_node != NULL) {
         hz_id id = curr_node->data.id;
 
-        if (id < num_of_h_metrics) {
-            hz_long_hor_metric_t *metric = &h_metrics[id];
-            curr_node->data.ax = metric->aw;
-        } else if (id < glyph_count) {
-            int16_t lsb = left_side_bearings[id];
-            curr_node->data.ax = lsb;
-        }
+        hz_metrics_t *metric = &face->metrics[id];
+//        if (id < num_of_h_metrics) {
+//            hz_long_hor_metric_t *h_metric = &h_metrics[id];
+//            curr_node->data.ax = h_metric->aw;
+//        } else if (id < glyph_count) {
+//            int16_t lsb = left_side_bearings[id];
+////            curr_node->data.x_bearing = lsb;
+//        }
+
+        curr_node->data.ax = metric->x_advance;
+        curr_node->data.ay = metric->y_advance;
+        curr_node->data.dx = 0.0f;
+        curr_node->data.dy = 0.0f;
 
         curr_node = curr_node->next;
     }
 
+    free(left_side_bearings);
     free(h_metrics);
 }
 
@@ -504,18 +508,24 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 
     /* Map unicode characters to nominal glyph indices */
     hz_map_to_nominal_forms(ctx, sect);
-    hz_ot_parse_gdef_table(ctx, sect);
-    hz_ot_layout_apply_gsub_features(face, script_tag,
-                                     language_tag,
-                                     ctx->features,
-                                     sect);
+    if (ctx->face->gdef_table != NULL)
+        hz_ot_parse_gdef_table(ctx, sect);
+
+    if (face->gsub_table != NULL) {
+        hz_ot_layout_apply_gsub_features(face, script_tag,
+                                         language_tag,
+                                         ctx->features,
+                                         sect);
+    }
 
     hz_apply_tt1_metrics(face, sect);
 //    hz_ot_adjust_gpos_features();
-    hz_ot_layout_apply_gpos_features(face, script_tag,
-                                     language_tag,
-                                     ctx->features,
-                                     sect);
+    if (face->gpos_table != NULL) {
+        hz_ot_layout_apply_gpos_features(face, script_tag,
+                                         language_tag,
+                                         ctx->features,
+                                         sect);
+    }
 
     return HZ_SUCCESS;
 }
@@ -584,7 +594,7 @@ hz_decode_hhea_table(hz_face_t *face, hz_buf_t *hhea_buf)
         hz_stream_read16(table, (uint16_t *) &caret_slope_run);
         hz_stream_read16(table, (uint16_t *) &caret_offset);
 
-        /* skip over 4x2 bytes of reserved space */
+        /* skip over 8 bytes of reserved space */
         hz_stream_seek(table, 8);
 
         hz_stream_read16(table, (uint16_t *) &metric_data_format);
@@ -596,4 +606,3 @@ hz_decode_hhea_table(hz_face_t *face, hz_buf_t *hhea_buf)
     HZ_LOG("num_of_h_metrics: %d\n", num_of_h_metrics);
     face->num_of_h_metrics = num_of_h_metrics;
 }
-

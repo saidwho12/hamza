@@ -27,6 +27,7 @@ typedef struct hz_face_t {
     uint16_t num_glyphs;
     uint16_t num_of_h_metrics;
     uint16_t num_of_v_metrics;
+    hz_metrics_t *metrics;
 } hz_face_t;
 
 /*
@@ -342,13 +343,15 @@ typedef struct hz_font_t {
 */
 typedef enum hz_script_t {
     HZ_SCRIPT_ARABIC,
-    HZ_SCRIPT_LATIN
+    HZ_SCRIPT_LATIN,
+    HZ_SCRIPT_CJK, /* CJK Ideographic */
 } hz_script_t;
 
 typedef enum hz_language_t {
     HZ_LANGUAGE_ARABIC,
     HZ_LANGUAGE_ENGLISH,
     HZ_LANGUAGE_FRENCH,
+    HZ_LANGUAGE_JAPANESE,
 } hz_language_t;
 
 typedef enum hz_dir_t {
@@ -373,8 +376,10 @@ typedef struct hz_section_node_t hz_section_node_t;
 typedef struct hz_section_glyph_t {
     hz_unicode codepoint;
     hz_id id;
-    uint16_t dx, dy;
-    uint16_t ax, ay;
+    int16_t dx;
+    int16_t dy;
+    int16_t ax;
+    int16_t ay;
     uint8_t clazz: HZ_GLYPH_CLASS_BIT_FIELD;
 } hz_section_glyph_t;
 

@@ -64,9 +64,25 @@ hz_ft_face_create(FT_Face ft_face) {
 
     {
         /* load few variables from hhea table */
+        /* Horizontal Header Table */
         hz_buf_t *hhea_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('h','h','e','a'));
         hz_decode_hhea_table(face, hhea_buf);
         hz_buf_destroy(hhea_buf);
+    }
+
+    face->metrics = (hz_metrics_t *) calloc(face->num_glyphs, sizeof(hz_metrics_t));
+    uint16_t glyph_index = 0;
+    while (glyph_index <= face->num_glyphs) {
+        FT_GlyphSlot glyph_slot = ft_face->glyph;
+        FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_NO_BITMAP);
+
+        hz_metrics_t *metric = &face->metrics[glyph_index];
+        metric->x_advance = glyph_slot->metrics.horiAdvance;
+        metric->y_advance = 0;//glyph_slot->metrics.vertAdvance;
+        metric->x_bearing = glyph_slot->metrics.horiBearingX;
+        metric->y_bearing = glyph_slot->metrics.horiBearingY;
+
+        ++glyph_index;
     }
 
     return face;

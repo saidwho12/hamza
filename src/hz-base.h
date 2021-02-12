@@ -105,14 +105,14 @@ typedef enum hz_status_t {
 #define HZ_STREAM_OVERFLOW 0
 
 typedef struct hz_stream_t {
-    uint8_t *data;
+    const uint8_t *data;
     size_t length;
     size_t offset;
     uint8_t flags;
 } hz_stream_t;
 
 static hz_stream_t *
-hz_stream_create(uint8_t *data, size_t length, uint8_t flags)
+hz_stream_create(const uint8_t *data, size_t length, uint8_t flags)
 {
     hz_stream_t *stream = (hz_stream_t *) HZ_MALLOC(sizeof(hz_stream_t));
     stream->offset = 0;
@@ -192,5 +192,17 @@ hz_stream_read16_n(hz_stream_t *stream, size_t count, uint16_t *A)
         ++i;
     }
 }
+
+typedef struct hz_metrics_t {
+    int16_t x_advance;
+    int16_t y_advance;
+    int16_t x_bearing;
+    int16_t y_bearing;
+
+    int16_t x_min;
+    int16_t x_max;
+    int16_t y_min;
+    int16_t y_max;
+} hz_metrics_t;
 
 #endif /* HZ_BASE_H */

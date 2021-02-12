@@ -735,14 +735,19 @@ typedef struct hz_anchor_pair_t {
 
 hz_anchor_t
 hz_ot_layout_read_anchor(const uint8_t *data) {
+    hz_stream_t *stream = hz_stream_create(data, 0,0);
     hz_anchor_t anchor;
-    anchor.x_coord = bswap16(*(const uint16_t *)data);
-    anchor.y_coord = bswap16(*(const uint16_t *)&data[2]);
+
+    uint16_t format;
+    hz_stream_read16(stream, &format);
+    hz_stream_read16(stream, (uint16_t *) &anchor.x_coord);
+    hz_stream_read16(stream, (uint16_t *) &anchor.y_coord);
+
     return anchor;
 }
 
 hz_anchor_pair_t
-hz_ot_layout_read_anchor_pair(uint8_t *subtable, const hz_entry_exit_record_t *rec) {
+hz_ot_layout_read_anchor_pair(const uint8_t *subtable, const hz_entry_exit_record_t *rec) {
     hz_anchor_pair_t anchor_pair;
 
     anchor_pair.has_entry = rec->entry_anchor_offset ? HZ_TRUE : HZ_FALSE;
@@ -821,10 +826,21 @@ hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                         hz_section_glyph_t *g = &curr_node->data;
 
                         if (hz_map_value_exists(coverage_map, g->id)) {
-                            uint16_t rec_idx = hz_map_get_value(coverage_map, g->id);
-                            const hz_entry_exit_record_t *rec = records + rec_idx;
-                            hz_anchor_pair_t curr_pair = hz_ot_layout_read_anchor_pair(subtable->data, rec);
+                            uint16_t curr_idx = hz_map_get_value(coverage_map, g->id);
+                            const hz_entry_exit_record_t *curr_rec = records + curr_idx;
+                            hz_anchor_pair_t curr_pair = hz_ot_layout_read_anchor_pair(subtable->data, curr_rec);
 
+                            if (curr_pair.has_exit && curr_node->next != NULL) {
+                                uint16_t next_idx = hz_map_get_value(coverage_map, curr_node->next->data.id);
+                                const hz_entry_exit_record_t *next_rec = records + next_idx;
+                                hz_anchor_pair_t next_pair = hz_ot_layout_read_anchor_pair(subtable->data, next_rec);
+
+                                int16_t y_delta = next_pair.entry.y_coord - curr_pair.entry.y_coord;
+                                int16_t x_delta = next_pair.entry.x_coord - curr_pair.exit.x_coord;
+
+//                                curr_node->data.dx = x_delta;
+//                                curr_node->data.dy = y_delta;
+                            }
                         }
 
                         curr_node = curr_node->next;
@@ -872,6 +888,7 @@ hz_ot_script_to_tag(hz_script_t script)
     switch (script) {
         case HZ_SCRIPT_ARABIC: return HZ_TAG('a','r','a','b');
         case HZ_SCRIPT_LATIN: return HZ_TAG('l','a','t','n');
+        case HZ_SCRIPT_CJK: return HZ_TAG('h','a','n','i');
     }
 
     return 0;
@@ -884,6 +901,7 @@ hz_ot_language_to_tag(hz_language_t language)
         case HZ_LANGUAGE_ARABIC: return HZ_TAG('A','R','A',' ');
         case HZ_LANGUAGE_ENGLISH: return HZ_TAG('E','N','G',' ');
         case HZ_LANGUAGE_FRENCH: return HZ_TAG('F','R','A',' ');
+        case HZ_LANGUAGE_JAPANESE: return HZ_TAG('J','A','N',' ');
     }
 
     return 0;

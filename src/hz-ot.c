@@ -902,6 +902,7 @@ hz_ot_language_to_tag(hz_language_t language)
         case HZ_LANGUAGE_ENGLISH: return HZ_TAG('E','N','G',' ');
         case HZ_LANGUAGE_FRENCH: return HZ_TAG('F','R','A',' ');
         case HZ_LANGUAGE_JAPANESE: return HZ_TAG('J','A','N',' ');
+        case HZ_LANGUAGE_URDU: return HZ_TAG('U','R','D',' ');
     }
 
     return 0;

@@ -352,6 +352,7 @@ typedef enum hz_language_t {
     HZ_LANGUAGE_ENGLISH,
     HZ_LANGUAGE_FRENCH,
     HZ_LANGUAGE_JAPANESE,
+    HZ_LANGUAGE_URDU,
 } hz_language_t;
 
 typedef enum hz_dir_t {

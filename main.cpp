@@ -10,7 +10,7 @@ int main(int argc, char *argv[]) {
     FT_Init_FreeType(&ft_library);
 
     FT_Face ft_face;
-    FT_New_Face(ft_library, "../Cairo-Regular.ttf", 0, &ft_face);
+    FT_New_Face(ft_library, "../data/fonts/Cairo-Regular.ttf", 0, &ft_face);
 
     // Setup shaping context and buffer
     hz_face_t *face = hz_ft_face_create(ft_face);

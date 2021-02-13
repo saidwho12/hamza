@@ -11,10 +11,12 @@ Latin scripts are mostly simple, some of them are a bit more complicated like Vi
 - [ ] Chinese
 - [ ] Korean
 - [ ] Russian
+- [ ] Urdu
 
 ## Feature Support
 - [x] RTL
 - [x] Ligatures
 - [ ] Kerning
 - [ ] Vertical Layouts (for Kanji)
-
+- [ ] Emojis
+- [ ] Justification

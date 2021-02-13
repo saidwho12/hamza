@@ -1,9 +1,52 @@
 #include <hz.h>
 #include <hz-ft.h>
 
+#include <inttypes.h>
+
+typedef uint8_t BYTE;
+typedef uint32_t DWORD;
+
+struct DDPIXELFORMAT {
+    DWORD dwSize;
+    DWORD dwFlags;
+    DWORD dwFourCC;
+    DWORD dwRGBBitCount;
+    DWORD dwRBitMask;
+    DWORD dwGBitMask;
+    DWORD dwBBitMask;
+    DWORD dwRGBAlphaBitMask;
+};
+
+struct DDCAPS2 {
+    DWORD dwCaps1;
+    DWORD dwCaps2;
+    DWORD Reserved[2];
+};
+
+struct DDSURFACEDESC2 {
+    DWORD dwSize;
+    DWORD dwFlags;
+    DWORD dwHeight;
+    DWORD dwWidth;
+    DWORD dwPitchOrLinearSize;
+    DWORD dwDepth;
+    DWORD dwMipMapCount;
+    DWORD dwReserved1[11];
+    DDPIXELFORMAT ddpfPixelFormat;
+    DDCAPS2 ddsCaps;
+    DWORD dwReserved2;
+};
+
+struct DDSFILE {
+    DWORD dwMagic;
+    DDSURFACEDESC2 ddsd;
+    BYTE *bData1;
+    BYTE *bData2;
+};
+
+
 int main(int argc, char *argv[]) {
-    // Text string we want to shape
-    const char *text = u8"ق والقرءان المجيد";
+    const char *text = u8"لاَ تَمْشِ فِي الأَرْضِ مَرَحًا إِنَّكَ لَن تَخْرِقَ الأَرْضَ وَلَن تَبْلُغَ الْجِبَالَ طُولاً";
 
     // Load font using FreeType
     FT_Library ft_library;

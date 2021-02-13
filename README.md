@@ -20,3 +20,6 @@ Latin scripts are mostly simple, some of them are a bit more complicated like Vi
 - [ ] Vertical Layouts (for Kanji)
 - [ ] Emojis
 - [ ] Justification
+
+![](data/images/arabic.png)
+![](data/images/japanese.png)

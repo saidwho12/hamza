@@ -1,7 +1,6 @@
 # Hamza
 Hamza is a lightweight, fast and portable C90 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) library.
-It was written to be primarily for Arabic but supporting other languages ended up not being too bad.
-Latin scripts are mostly simple, some of them are a bit more complicated like Vietnamese.
+It was written to be primarily for Arabic but supporting other languages ended up not being too bad but it's still very early.
 
 ## Supported Languages
 - [x] Arabic

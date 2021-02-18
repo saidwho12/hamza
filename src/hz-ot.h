@@ -361,11 +361,11 @@ typedef enum hz_dir_t {
 } hz_dir_t;
 
 typedef enum hz_glyph_class_t {
-    HZ_GLYPH_CLASS_ZERO          = 0,
-    HZ_GLYPH_CLASS_BASE_BIT      = 0x1,
-    HZ_GLYPH_CLASS_LIGATURE_BIT  = 0x2,
-    HZ_GLYPH_CLASS_MARK_BIT      = 0x4,
-    HZ_GLYPH_CLASS_COMPONENT_BIT = 0x8,
+    HZ_GLYPH_CLASS_ZERO      = 0x00,
+    HZ_GLYPH_CLASS_BASE      = 0x01,
+    HZ_GLYPH_CLASS_LIGATURE  = 0x02,
+    HZ_GLYPH_CLASS_MARK      = 0x04,
+    HZ_GLYPH_CLASS_COMPONENT = 0x08,
 } hz_glyph_class_t;
 
 #define HZ_GLYPH_CLASS_BIT_FIELD 4
@@ -374,19 +374,19 @@ typedef enum hz_glyph_class_t {
 
 typedef struct hz_section_node_t hz_section_node_t;
 
-typedef struct hz_section_glyph_t {
+typedef struct hz_glyph_t {
     hz_unicode codepoint;
     hz_id id;
-    int16_t dx;
-    int16_t dy;
-    int16_t ax;
-    int16_t ay;
-    uint8_t clazz: HZ_GLYPH_CLASS_BIT_FIELD;
-} hz_section_glyph_t;
+    int16_t x_offset;
+    int16_t y_offset;
+    int16_t x_advance;
+    int16_t y_advance;
+    uint8_t glyph_class: HZ_GLYPH_CLASS_BIT_FIELD;
+} hz_glyph_t;
 
 struct hz_section_node_t {
     hz_section_node_t *prev, *next;
-    hz_section_glyph_t data;
+    hz_glyph_t glyph;
 };
 
 typedef struct hz_section_t {
@@ -410,10 +410,10 @@ hz_section_create(void) {
 }
 
 static void
-hz_section_add(hz_section_t *sect, const hz_section_glyph_t *node_data)
+hz_section_add(hz_section_t *sect, const hz_glyph_t *node_data)
 {
     hz_section_node_t *new_node = (hz_section_node_t *) HZ_MALLOC(sizeof(hz_section_node_t));
-    new_node->data = *node_data;
+    new_node->glyph = *node_data;
     new_node->prev = NULL;
     new_node->next = NULL;
 
@@ -570,14 +570,14 @@ hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
 
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = hz_utf8_next(&dec)) > 0) {
-        hz_section_glyph_t data;
+        hz_glyph_t data;
         data.codepoint = ch;
         data.id = 0;
-        data.clazz = HZ_GLYPH_CLASS_ZERO;
-        data.ax = 0;
-        data.ay = 0;
-        data.dx = 0;
-        data.dy = 0;
+        data.glyph_class = HZ_GLYPH_CLASS_ZERO;
+        data.x_advance = 0;
+        data.y_advance = 0;
+        data.x_offset = 0;
+        data.y_offset = 0;
         hz_section_add(sect, &data);
     }
 }
@@ -708,7 +708,7 @@ typedef enum hz_gpos_lookup_type_t {
 
 typedef struct hz_lookup_table_t {
     uint16_t lookup_type;
-    uint16_t lookup_flag;
+    uint16_t lookup_flags;
     uint16_t subtable_count;
     hz_offset32 *subtable_offsets;
     uint16_t mark_filtering_set;
@@ -943,14 +943,14 @@ hz_bool
 hz_ot_layout_apply_gsub_features(hz_face_t *face,
                                  hz_tag script,
                                  hz_tag language,
-                                 const hz_bitset_t *feature_bits,
+                                 const hz_array_t *wanted_features,
                                  hz_section_t *sect);
 
 hz_bool
 hz_ot_layout_apply_gpos_features(hz_face_t *face,
                                  hz_tag script,
                                  hz_tag language,
-                                 const hz_bitset_t *feature_bits,
+                                 const hz_array_t *wanted_features,
                                  hz_section_t *sect);
 
 void

@@ -194,15 +194,17 @@ hz_stream_read16_n(hz_stream_t *stream, size_t count, uint16_t *A)
 }
 
 typedef struct hz_metrics_t {
-    int16_t x_advance;
-    int16_t y_advance;
-    int16_t x_bearing;
-    int16_t y_bearing;
+    int32_t x_advance;
+    int32_t y_advance;
+    int32_t x_bearing;
+    int32_t y_bearing;
 
-    int16_t x_min;
-    int16_t x_max;
-    int16_t y_min;
-    int16_t y_max;
+    int32_t x_min;
+    int32_t x_max;
+    int32_t y_min;
+    int32_t y_max;
+    int32_t width;
+    int32_t height;
 } hz_metrics_t;
 
 #endif /* HZ_BASE_H */

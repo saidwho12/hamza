@@ -72,7 +72,7 @@ hz_ft_face_create(FT_Face ft_face) {
 
     face->metrics = (hz_metrics_t *) calloc(face->num_glyphs, sizeof(hz_metrics_t));
     uint16_t glyph_index = 0;
-    while (glyph_index <= face->num_glyphs) {
+    while (glyph_index < face->num_glyphs) {
         FT_GlyphSlot glyph_slot = ft_face->glyph;
         FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_NO_BITMAP);
 
@@ -81,6 +81,19 @@ hz_ft_face_create(FT_Face ft_face) {
         metric->y_advance = 0;//glyph_slot->metrics.vertAdvance;
         metric->x_bearing = glyph_slot->metrics.horiBearingX;
         metric->y_bearing = glyph_slot->metrics.horiBearingY;
+
+        FT_Glyph glyph;
+        FT_Get_Glyph(glyph_slot, &glyph);
+
+        FT_BBox bbox;
+        FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
+
+        metric->x_min = bbox.xMin;
+        metric->x_max = bbox.xMax;
+        metric->y_min = bbox.yMin;
+        metric->y_max = bbox.yMax;
+        metric->width = metric->x_max - metric->x_min;
+        metric->height = metric->y_max - metric->y_min;
 
         ++glyph_index;
     }

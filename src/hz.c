@@ -3,16 +3,10 @@
 #include "util/hz-map.h"
 
 
-hz_bool
-hz_context_set_features(hz_context_t *ctx, hz_bitset_t *features)
+void
+hz_context_set_features(hz_context_t *ctx, hz_array_t *features)
 {
     ctx->features = features;
-    if (features->bit_count == HZ_FEATURE_COUNT) {
-        hz_bitset_copy(ctx->features, features);
-        return HZ_TRUE;
-    }
-
-    return HZ_FALSE;
 }
 
 hz_context_t *
@@ -207,7 +201,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
             hz_section_node_t *curr_node = sect->root;
 
             while (curr_node != NULL) {
-                curr_node->data.id = hz_cmap_unicode_to_id(&st, curr_node->data.codepoint);
+                curr_node->glyph.id = hz_cmap_unicode_to_id(&st, curr_node->glyph.codepoint);
                 curr_node = curr_node->next;
             }
             break;
@@ -377,12 +371,12 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
         /* set glyph class values if in map */
         while (curr_node != NULL) {
-            hz_id gid = curr_node->data.id;
+            hz_id gid = curr_node->glyph.id;
             if (hz_map_value_exists(class_map, gid)) {
-                curr_node->data.clazz = hz_map_get_value(class_map, gid);
+                curr_node->glyph.glyph_class = hz_map_get_value(class_map, gid);
             } else {
                 /* set default glyph class if current glyph id isn't found */
-                curr_node->data.clazz = HZ_GLYPH_CLASS_ZERO;
+                curr_node->glyph.glyph_class = HZ_GLYPH_CLASS_ZERO;
             }
 
             curr_node = curr_node->next;
@@ -396,7 +390,7 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
 
 typedef struct hz_long_hor_metric_t {
-    uint16_t aw; /* advance width */
+    uint16_t advance_width; /* advance width */
     int16_t lsb; /* left side bearing */
 } hz_long_hor_metric_t;
 
@@ -406,7 +400,7 @@ hz_read_h_metrics(hz_stream_t *table, size_t metrics_count, hz_long_hor_metric_t
 
     while (index < metrics_count) {
         hz_long_hor_metric_t *metric = &metrics[ index ];
-        hz_stream_read16(table, &metric->aw);
+        hz_stream_read16(table, &metric->advance_width);
         hz_stream_read16(table, (uint16_t *) &metric->lsb);
         ++index;
     }
@@ -469,24 +463,34 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
 
     //hz_fill_tt1_metrics(face, metrics, h_metrics, left_side_bearings, num_of_h_metrics, glyph_count);
 
+//    uint16_t glyph_index = 0;
+//    while (glyph_index < glyph_count) {
+//
+//        hz_metrics_t *metric = &face->metrics[glyph_index];
+//        if (glyph_index < num_of_h_metrics) {
+//            hz_long_hor_metric_t *h_metric = &h_metrics[glyph_index];
+//            metric->x_advance = h_metric->advance_width;
+//            int16_t rsb = h_metrics->advance_width - (h_metrics->lsb + metric->x_max - metric->x_min);
+//            metric->x_bearing = rsb + metric->width;
+//        } else {
+//            int16_t lsb = left_side_bearings[num_of_h_metrics + glyph_index];
+//            int16_t rsb = lsb + (metric->x_max - metric->x_min);
+//            metric->x_bearing = rsb;
+//        }
+//
+//        ++glyph_index;
+//    }
+
     /* apply the metrics to position the glyphs */
     hz_section_node_t *curr_node = sect->root;
     while (curr_node != NULL) {
-        hz_id id = curr_node->data.id;
-
+        hz_id id = curr_node->glyph.id;
         hz_metrics_t *metric = &face->metrics[id];
-//        if (id < num_of_h_metrics) {
-//            hz_long_hor_metric_t *h_metric = &h_metrics[id];
-//            curr_node->data.ax = h_metric->aw;
-//        } else if (id < glyph_count) {
-//            int16_t lsb = left_side_bearings[id];
-////            curr_node->data.x_bearing = lsb;
-//        }
 
-        curr_node->data.ax = metric->x_advance;
-        curr_node->data.ay = metric->y_advance;
-        curr_node->data.dx = 0.0f;
-        curr_node->data.dy = 0.0f;
+        curr_node->glyph.x_advance = metric->x_advance;
+        curr_node->glyph.y_advance = metric->y_advance;
+        curr_node->glyph.x_offset = 0.0f;
+        curr_node->glyph.y_offset = 0.0f;
 
         curr_node = curr_node->next;
     }
@@ -495,6 +499,9 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
     free(h_metrics);
 }
 
+static void
+hz_apply_rtl_flip(hz_section_t *sect) {
+}
 
 hz_status_t
 hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
@@ -519,13 +526,17 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
     }
 
     hz_apply_tt1_metrics(face, sect);
-//    hz_ot_adjust_gpos_features();
     if (face->gpos_table != NULL) {
         hz_ot_layout_apply_gpos_features(face, script_tag,
                                          language_tag,
                                          ctx->features,
                                          sect);
     }
+
+
+//    if (ctx->dir == HZ_DIR_RTL) {
+//        hz_apply_rtl_flip(sect);
+//    }
 
     return HZ_SUCCESS;
 }

@@ -35,7 +35,7 @@ hz_array_pop_back(hz_array_t *array)
 }
 
 size_t
-hz_array_size(hz_array_t *array)
+hz_array_size(const hz_array_t *array)
 {
     return array->size;
 }
@@ -93,7 +93,7 @@ hz_array_destroy(hz_array_t *array)
 }
 
 uint32_t
-hz_array_at(hz_array_t *array, size_t index)
+hz_array_at(const hz_array_t *array, size_t index)
 {
     return array->data[index];
 }

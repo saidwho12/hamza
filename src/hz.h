@@ -12,11 +12,11 @@ typedef struct hz_context_t {
     hz_script_t script;
     hz_language_t language;
     hz_dir_t dir;
-    hz_bitset_t *features;
+    hz_array_t *features;
 } hz_context_t;
 
-hz_bool
-hz_context_set_features(hz_context_t *ctx, hz_bitset_t *features);
+void
+hz_context_set_features(hz_context_t *ctx, hz_array_t *features);
 
 void
 hz_context_set_script(hz_context_t *ctx, hz_script_t script);

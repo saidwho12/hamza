@@ -13,7 +13,7 @@ However I do wish it to support more languages and writing systems.
 - [ ] Russian
 - [ ] Urdu
 
-## Feature Support
+## TODO
 - [x] RTL
 - [x] Ligatures
 - [ ] Kerning

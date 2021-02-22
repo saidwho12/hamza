@@ -22,3 +22,4 @@ However I do wish it to support more languages and writing systems.
 - [ ] Justification
 - [ ] Multi-Threading (TinyCThread?)
 - [ ] BCP47 Parser
+- [ ] Documentation (Natural Docs)

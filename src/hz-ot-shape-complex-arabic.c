@@ -30,42 +30,39 @@ typedef enum hz_joining_dir_t {
 } hz_joining_dir_t;
 
 hz_section_node_t *
-hz_ot_shape_complex_arabic_adj_harf(hz_section_node_t *node, hz_joining_dir_t dir)
+hz_ot_shape_complex_arabic_adjacent_char(hz_section_node_t *node, hz_bool do_reverse)
 {
-    if (dir == JOINING_PREV) {
-        hz_section_node_t *curr_node = node->prev;
-        while (curr_node != NULL) {
-            if (curr_node->glyph.glyph_class & (HZ_GLYPH_CLASS_BASE | HZ_GLYPH_CLASS_LIGATURE)
-            || curr_node->glyph.codepoint == 0x20)
-                break;
+    hz_section_node_t *curr_node = do_reverse ? node->prev : node->next;
+    while (curr_node != NULL) {
+        hz_unicode code = curr_node->glyph.codepoint;
+        hz_glyph_class_t glyph_class = curr_node->glyph.glyph_class;
 
-            curr_node = curr_node->prev;
+        hz_bool is_arabic_code = code >= 0x0600 && code <= 0x06FF ||
+                code >= 0x0750 && code <= 0x077F ||
+                code >= 0x08A0 && code <= 0x08FF;
+
+        if (!is_arabic_code) {
+            /* if current node's codepoint is non-arabic, return NULL */
+            return NULL;
         }
 
-        return curr_node;
-    }
-    else if (dir == JOINING_NEXT) {
-        hz_section_node_t *curr_node = node->next;
-        while (curr_node != NULL) {
-            if (curr_node->glyph.glyph_class & (HZ_GLYPH_CLASS_BASE | HZ_GLYPH_CLASS_LIGATURE)
-                || curr_node->glyph.codepoint == 0x20)
-                break;
-
-            curr_node = curr_node->next;
+        if (glyph_class & ~HZ_GLYPH_CLASS_MARK) {
+            /* glyph is anything else than a mark, return NULL */
+            break;
         }
 
-        return curr_node;
+        curr_node = do_reverse ? curr_node->prev : curr_node->next;
     }
 
-    return NULL;
+    return curr_node;
 }
 
 uint16_t
-hz_ot_shape_complex_arabic_adj_joining(hz_section_node_t *node, hz_joining_dir_t dir)
+hz_ot_shape_complex_arabic_joining(hz_section_node_t *node, hz_bool do_reverse)
 {
     hz_arabic_joining_entry_t entry;
     hz_unicode codepoint;
-    hz_section_node_t *adj = hz_ot_shape_complex_arabic_adj_harf(node, dir);
+    hz_section_node_t *adj = hz_ot_shape_complex_arabic_adjacent_char(node, do_reverse);
 
     if (adj == NULL)
         goto no_adjacent;
@@ -75,7 +72,7 @@ hz_ot_shape_complex_arabic_adj_joining(hz_section_node_t *node, hz_joining_dir_t
         return entry.joining;
 
     no_adjacent:
-    /* No adjacent harf, return non-joining */
+    /* No adjacent char, return non-joining */
     return NO_JOINING_GROUP | JOINING_TYPE_T;
 }
 
@@ -88,8 +85,8 @@ hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_section_node_t *node)
     if (hz_ot_shape_complex_arabic_char_joining(node->glyph.codepoint, &curr_entry)) {
         uint16_t prev, next;
         curr = curr_entry.joining;
-        prev = hz_ot_shape_complex_arabic_adj_joining(node, JOINING_PREV);
-        next = hz_ot_shape_complex_arabic_adj_joining(node, JOINING_NEXT);
+        prev = hz_ot_shape_complex_arabic_joining(node, HZ_TRUE);
+        next = hz_ot_shape_complex_arabic_joining(node, HZ_FALSE);
 
         /* Conditions for substitution */
         hz_bool fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)

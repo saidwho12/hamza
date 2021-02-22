@@ -154,8 +154,8 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
     HZ_ASSERT(face != NULL);
     HZ_ASSERT(wanted_features != NULL);
 
-    hz_byte *data = (hz_byte *) face->gsub_table;
-    hz_stream_t *table = hz_stream_create(data, 0, 0);
+    hz_blob_t *gsub = hz_face_reference_table(face, HZ_TAG('G','S','U','B'));
+    hz_stream_t *table = hz_blob_to_stream(gsub);
     HZ_Version16Dot16 ver;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
@@ -186,7 +186,7 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
     }
 
     void *lsaddr = hz_ot_layout_choose_lang_sys(face,
-                                                data + script_list_offset,
+                                                table->data + script_list_offset,
                                                 script, language);
 
     if (lsaddr == NULL) {
@@ -223,7 +223,7 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
         ++loopIndex;
     }
 
-    hz_stream_t *lookup_list = hz_stream_create(data + lookup_list_offset, 0, 0);
+    hz_stream_t *lookup_list = hz_stream_create(table->data + lookup_list_offset, 0, 0);
     hz_array_t *lookup_offsets = hz_array_create();
     {
         /* Read lookup offets to table */
@@ -239,7 +239,7 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
     }
 
 
-    hz_stream_t *feature_list = hz_stream_create(data + feature_list_offset, 0, 0);
+    hz_stream_t *feature_list = hz_stream_create(table->data + feature_list_offset, 0, 0);
 
 
     {
@@ -304,8 +304,8 @@ hz_ot_layout_apply_gpos_features(hz_face_t *face,
     HZ_ASSERT(face != NULL);
     HZ_ASSERT(wanted_features != NULL);
 
-    hz_byte *data = (hz_byte *) face->gpos_table;
-    hz_stream_t *table = hz_stream_create(data, 0, 0);
+    hz_blob_t *gpos = hz_face_reference_table(face, HZ_TAG('G','P','O','S'));
+    hz_stream_t *table = hz_blob_to_stream(gpos);
     HZ_Version16Dot16 ver;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
@@ -369,7 +369,7 @@ hz_ot_layout_apply_gpos_features(hz_face_t *face,
         ++loopIndex;
     }
 
-    hz_stream_t *lookup_list = hz_stream_create(data + lookup_list_offset, 0, 0);
+    hz_stream_t *lookup_list = hz_stream_create(table->data + lookup_list_offset, 0, 0);
     hz_array_t *lookup_offsets = hz_array_create();
     {
         /* Read lookup offets to table */
@@ -385,7 +385,7 @@ hz_ot_layout_apply_gpos_features(hz_face_t *face,
     }
 
 
-    hz_stream_t *feature_list = hz_stream_create(data + feature_list_offset, 0, 0);
+    hz_stream_t *feature_list = hz_stream_create(table->data + feature_list_offset, 0, 0);
 
 
     {
@@ -1072,28 +1072,46 @@ hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                                         hz_anchor_t base_anchor = hz_ot_layout_read_anchor(subtable->data + base_array_offset + base_anchor_offset);
                                         hz_anchor_t mark_anchor = hz_ot_layout_read_anchor(subtable->data + mark_array_offset + mark->mark_anchor_offset);
 
-                                        hz_metrics_t *base_metric = &face->metrics[prev_base->glyph.id];
-                                        hz_metrics_t *mark_metric = &face->metrics[node->glyph.id];
-
-                                        int32_t bw = base_metric->width;
-                                        int32_t mw = mark_metric->width;
-                                        int32_t bh = base_metric->height;
-                                        int32_t mh = mark_metric->height;
-                                        int32_t bby = base_metric->y_bearing;
-                                        int32_t mby = mark_metric->y_bearing;
-                                        int32_t bbx = base_metric->x_bearing;
-                                        int32_t mbx = mark_metric->x_bearing;
-
-                                        /* y base anchor */
-                                        int32_t bay = base_anchor.y_coord - (bby - bh) - base_metric->y_min;
-                                        int32_t may = (mark_anchor.y_coord - mark_metric->y_min) - (bby - bh) - (mby - mh);
-
-                                        node->glyph.x_offset = 0;//(bbx - bw) - (mbx - mw);
-                                        node->glyph.y_offset = 0;//(bby - bh) - (mby - mh);
-
-//                                        node->glyph.x_offset = bbx - mbx;
-//                                        node->glyph.y_offset = (mby - mh - (base_anchor.y_coord - bby))
-//                                                - (bby - bh - (mark_anchor.y_coord - mby));
+//                                        hz_metrics_t *base_metric = &face->metrics[prev_base->glyph.id];
+//                                        hz_metrics_t *mark_metric = &face->metrics[node->glyph.id];
+//
+//
+//                                        int32_t x1 = mark_anchor.x_coord;// * (face->units_per_EM/2048);
+//                                        int32_t y1 = mark_anchor.y_coord;// * (face->units_per_EM/2048);
+//                                        int32_t x2 = base_anchor.x_coord;// * (face->units_per_EM/2048);
+//                                        int32_t y2 = base_anchor.y_coord;// * (face->units_per_EM/2048);
+//
+//                                        int32_t bw = base_metric->width;
+//                                        int32_t mw = mark_metric->width;
+//                                        int32_t bh = base_metric->height;
+//                                        int32_t mh = mark_metric->height;
+//                                        int32_t bby = base_metric->y_bearing;
+//                                        int32_t mby = mark_metric->y_bearing;
+//                                        int32_t bbx = base_metric->x_bearing;
+//                                        int32_t mbx = mark_metric->x_bearing;
+//
+//                                        int32_t dy1 = mby - mh;
+//                                        int32_t dy2 = bby - bh;
+//
+//                                        /* y base anchor */
+//                                        int32_t bay = base_anchor.y_coord - (bby - bh) - base_metric->y_min;
+//                                        int32_t may = (mark_anchor.y_coord - mark_metric->y_min) - (bby - bh) - (mby - mh);
+//
+//                                        /* aligns mark to base low bound */
+//                                        int32_t dy = dy1 - dy2;
+//
+////                                        node->glyph.x_offset = (bbx - bw) - (mbx - mw);
+////                                        node->glyph.y_offset = (bby - bh) - (mby - mh);
+//
+////                                        node->glyph.x_offset = 0;
+////                                        node->glyph.y_offset = y2 - ( ((bby - bh) - (mby - mh)) + (- mark_metric->y_min + (mark_metric->y_min - base_metric->y_min)) + y1 );
+//
+//
+//                                        /* anchor delta from mark glyph lower bound in font units */
+//                                        int32_t t_y1 = dy1 + (y1 - mark_metric->y_min);
+//                                        int32_t t_y2 = dy2 + (y2 - base_metric->y_min);
+//
+//                                        node->glyph.y_offset = t_y2 - t_y1;
                                     }
                                 }
                             }

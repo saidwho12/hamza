@@ -1,34 +1,16 @@
 #ifndef HZ_OT_H
 #define HZ_OT_H
 
-#include "util/hz-buf.h"
+#include "util/hz-blob.h"
 #include "util/hz-set.h"
 #include "util/hz-array.h"
 #include "hz-base.h"
+#include "hz-font.h"
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct hz_face_t {
-    hz_byte *base_table;
-    hz_byte *gsub_table;
-    hz_byte *gpos_table;
-    hz_byte *gdef_table;
-    hz_byte *jstf_table;
-    hz_buf_t *cmap_buf;
-    hz_buf_t *hmtx_buf;
-    hz_buf_t *glyf_buf;
-    hz_buf_t *CFF_buf;
-    hz_buf_t *CFF2_buf;
-    void *handle; /* freetype handle */
-
-    uint16_t num_glyphs;
-    uint16_t num_of_h_metrics;
-    uint16_t num_of_v_metrics;
-    hz_metrics_t *metrics;
-} hz_face_t;
 
 /*
  * Registered Features

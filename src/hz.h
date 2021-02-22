@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 typedef struct hz_context_t {
-    hz_face_t *face;
+    hz_font_t *font;
     hz_script_t script;
     hz_language_t language;
     hz_dir_t dir;
@@ -28,7 +28,7 @@ void
 hz_context_set_dir(hz_context_t *ctx, hz_dir_t dir);
 
 hz_context_t *
-hz_context_create(hz_face_t *face);
+hz_context_create(hz_font_t *font);
 
 void
 hz_context_destroy(hz_context_t *ctx);
@@ -43,13 +43,6 @@ hz_context_collect_required_glyphs(hz_context_t *ctx,
 
 hz_id
 hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode c);
-
-
-void
-hz_decode_maxp_table(hz_face_t *face, hz_buf_t *maxp_buf);
-
-void
-hz_decode_hhea_table(hz_face_t *face, hz_buf_t *hhea_buf);
 
 #ifdef __cplusplus
 }

@@ -56,10 +56,10 @@ int main(int argc, char *argv[]) {
     FT_New_Face(ft_library, "../data/fonts/Cairo-Regular.ttf", 0, &ft_face);
 
     // Setup shaping context and buffer
-    hz_face_t *face = hz_ft_face_create(ft_face);
+    hz_font_t *font = hz_ft_font_create(ft_face);
     hz_section_t *run = hz_section_create();
 
-    hz_context_t *ctx = hz_context_create(face);
+    hz_context_t *ctx = hz_context_create(font);
     hz_context_set_dir(ctx, HZ_DIR_RTL);
     hz_context_set_script(ctx, HZ_SCRIPT_ARABIC);
     hz_context_set_language(ctx, HZ_LANGUAGE_ARABIC);

@@ -10,6 +10,10 @@ set(HAMZA_SOURCES
 		src/hz-ot-shape-complex-arabic.h
 		src/hz-ot-shape-complex-arabic-joining-list.h
 		src/hz-ot.c
+		src/hz-font.h
+		src/hz-font.c
+		src/hz-face.h
+		src/hz-face.c
 		src/hz-ft.h
 		src/hz.c
 		src/hz.h
@@ -20,8 +24,8 @@ set(HAMZA_SOURCES
 		src/util/hz-array.h
 		src/util/hz-map.h
 		src/util/hz-map.c
-		src/util/hz-buf.h
-		src/util/hz-buf.c
+		src/util/hz-blob.h
+		src/util/hz-blob.c
 		src/cmas.h)
 
 add_library(hamza ${HAMZA_SOURCES})

@@ -1,6 +1,7 @@
 # Hamza
 Hamza is a lightweight, fast and portable C90 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) library.
-It was written to be primarily for Arabic but supporting other languages ended up not being too bad but it's still very early.
+It was written to be primarily for Arabic but also supports basic-shaping (Latin, Greek, etc...).
+However I do wish it to support more languages and writing systems.
 
 ## Supported Languages
 - [x] Arabic
@@ -19,6 +20,5 @@ It was written to be primarily for Arabic but supporting other languages ended u
 - [ ] Vertical Layouts (for Kanji)
 - [ ] Emojis
 - [ ] Justification
-
-![](data/images/arabic.png)
-![](data/images/japanese.png)
+- [ ] Multi-Threading (TinyCThread?)
+- [ ] BCP47 Parser

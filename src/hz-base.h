@@ -37,6 +37,8 @@ typedef float hz_float32;
 typedef double hz_float64;
 typedef void hz_void;
 
+typedef int32_t hz_position;
+
 /* signed 16-bit */
 typedef int16_t FWORD;
 

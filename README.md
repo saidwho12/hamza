@@ -3,6 +3,9 @@ Hamza is a lightweight, fast and portable C90 [OpenType](https://docs.microsoft.
 It was written to be primarily for Arabic but also supports basic-shaping (Latin, Greek, etc...).
 However I do wish it to support more languages and writing systems.
 
+# Documentation
+https://saidwho12.github.io/hamza/
+
 ## Supported Languages
 - [x] Arabic
 - [x] English

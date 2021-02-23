@@ -343,9 +343,12 @@ typedef enum hz_dir_t {
 } hz_dir_t;
 
 /* Enum: hz_glyph_class_t
- *
- *
- * */
+ * HZ_GLYPH_CLASS_ZERO - No class.
+ * HZ_GLYPH_CLASS_BASE - Base glyph class.
+ * HZ_GLYPH_CLASS_LIGATURE - Ligature glyph class (composed of smaller subglyphs).
+ * HZ_GLYPH_CLASS_MARK - Mark glyph class, as in Arabic tashkeel or accents.
+ * HZ_GLYPH_CLASS_COMPONENT - Component glyph class.
+ */
 typedef enum hz_glyph_class_t {
     HZ_GLYPH_CLASS_ZERO      = 0x00,
     HZ_GLYPH_CLASS_BASE      = 0x01,
@@ -388,9 +391,16 @@ struct hz_section_node_t {
     hz_glyph_t glyph;
 };
 
+/*  Struct: hz_section_t
+ *      Section of text for shaping.
+ *
+ *  Fields:
+ *      root - Root of a doubly linked list for the glyph nodes.
+ *      flags - Shaping flags.
+ * */
 typedef struct hz_section_t {
     hz_section_node_t *root;
-    unsigned int flags;
+    int flags;
 } hz_section_t;
 
 static hz_language_t

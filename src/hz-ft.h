@@ -22,7 +22,7 @@ hz_ft_load_snft_table(FT_Face face, hz_tag tag)
     FT_ULong size = 0;
     FT_Load_Sfnt_Table(face, tag, 0, NULL, &size);
     hz_blob_resize(blob, size);
-    FT_Load_Sfnt_Table(face, tag, 0, hz_blob_data(blob), &size);
+    FT_Load_Sfnt_Table(face, tag, 0, hz_blob_get_data(blob), &size);
     return blob;
 }
 

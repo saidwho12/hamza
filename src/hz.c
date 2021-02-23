@@ -507,7 +507,7 @@ static void
 hz_apply_rtl_flip(hz_section_t *sect) {
 }
 
-hz_status_t
+void
 hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
@@ -533,8 +533,6 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 //    if (ctx->dir == HZ_DIR_RTL) {
 //        hz_apply_rtl_flip(sect);
 //    }
-
-    return HZ_SUCCESS;
 }
 
 void

@@ -7,6 +7,16 @@
 extern "C" {
 #endif
 
+/*  Struct: hz_context_t
+ *      Shaping context structure.
+ *
+ *  Fields:
+ *      font - Font used.
+ *      script - Script.
+ *      language - Language.
+ *      dir - Writing direction (RTL/LTR)
+ *      features - Array of wanted features.
+ * */
 typedef struct hz_context_t {
     hz_font_t *font;
     hz_script_t script;
@@ -33,7 +43,14 @@ hz_context_create(hz_font_t *font);
 void
 hz_context_destroy(hz_context_t *ctx);
 
-hz_status_t
+/*  Function: hz_shape_full
+ *      Shapes a section of text.
+ *
+ *  Parameters:
+ *      ctx - The shaping context.
+ *      sect - The section to shape.
+ * */
+void
 hz_shape_full(hz_context_t *ctx, hz_section_t *sect);
 
 void

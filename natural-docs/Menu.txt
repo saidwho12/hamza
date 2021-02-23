@@ -47,6 +47,7 @@ Format: 1.52
 
 
 File: hz-ot.h  (src/hz-ot.h)
+File: hz_context_t  (src/hz.h)
 
 Group: Index  {
 
@@ -54,5 +55,7 @@ Group: Index  {
    Class Index: Classes
    File Index: Files
    Type Index: Types
+   Constant Index: Constants
+   Function Index: Functions
    }  # Group: Index
 

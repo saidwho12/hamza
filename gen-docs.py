@@ -2,4 +2,4 @@
 
 import os
 
-os.system("~/Desktop/NaturalDocs/NaturalDocs -p ./natural-docs -i ./ -o HTML ./docs")
+os.system("mono ~/Desktop/NaturalDocs/NaturalDocs.exe -p ./natural-docs -i ./ -o HTML ./docs")

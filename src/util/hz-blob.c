@@ -1,5 +1,6 @@
 #include "hz-blob.h"
 
+
 struct hz_blob_t {
     hz_byte *data;
     size_t size;
@@ -31,12 +32,12 @@ hz_blob_resize(hz_blob_t *blob, size_t new_size)
     blob->size = new_size;
 }
 
-size_t hz_blob_size(hz_blob_t *blob)
+size_t hz_blob_get_size(hz_blob_t *blob)
 {
     return blob->size;
 }
 
-hz_byte *hz_blob_data(hz_blob_t *blob)
+hz_byte *hz_blob_get_data(hz_blob_t *blob)
 {
     return blob->data;
 }

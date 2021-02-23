@@ -25,13 +25,10 @@ Timestamp: month d year
 #    yyyy  - Four digit year.  2020 is "2020".
 #    year  - Four digit year.  2020 is "2020".
 
+Style: base
+
 
 # This is where you specify general information about your project.
-#
-# Style: [style]
-#    The style to apply to the generated documentation.  It can be the name of
-#    a CSS file in the project configuration folder or a subfolder that
-#    contains Style.txt.  Do not include ".css" if using a CSS file.
 
 
 # Source Code

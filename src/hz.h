@@ -14,7 +14,7 @@ extern "C" {
  *      font - Font used.
  *      script - Script.
  *      language - Language.
- *      dir - Writing direction (RTL/LTR)
+ *      dir - Writing direction.
  *      features - Array of wanted features.
  * */
 typedef struct hz_context_t {

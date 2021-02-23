@@ -342,6 +342,10 @@ typedef enum hz_dir_t {
     HZ_DIR_RTL,
 } hz_dir_t;
 
+/* Enum: hz_glyph_class_t
+ *
+ *
+ * */
 typedef enum hz_glyph_class_t {
     HZ_GLYPH_CLASS_ZERO      = 0x00,
     HZ_GLYPH_CLASS_BASE      = 0x01,
@@ -356,14 +360,27 @@ typedef enum hz_glyph_class_t {
 
 typedef struct hz_section_node_t hz_section_node_t;
 
+/*  Struct: hz_glyph_t
+ *  Glyph structure holding data for shaping.
+ *
+ *  Fields:
+ *      codepoint - Initial codepoint for this glyph.
+ *      id - Glyph's ID.
+ *      x_offset - X offset.
+ *      y_offset - Y offset.
+ *      x_advance - X advance (horizontal layout).
+ *      y_advance - Y advance (vertical layout).
+ *      glyph_class - Glyph's class.
+ * */
 typedef struct hz_glyph_t {
     hz_unicode codepoint;
+
     hz_id id;
     int16_t x_offset;
     int16_t y_offset;
     int16_t x_advance;
     int16_t y_advance;
-    uint8_t glyph_class: HZ_GLYPH_CLASS_BIT_FIELD;
+    hz_glyph_class_t glyph_class: HZ_GLYPH_CLASS_BIT_FIELD;
 } hz_glyph_t;
 
 struct hz_section_node_t {

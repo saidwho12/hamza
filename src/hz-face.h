@@ -42,7 +42,7 @@ uint16_t
 hz_face_get_num_of_v_metrics(hz_face_t *face);
 
 hz_metrics_t *
-hz_face_get_glyph_metrics(hz_face_t *face, hz_id id);
+hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 
 void
 hz_face_set_num_of_h_metrics(hz_face_t *face, uint16_t num_of_h_metrics);

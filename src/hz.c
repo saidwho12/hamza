@@ -120,11 +120,11 @@ typedef struct hz_cmap_subtable_format4_t {
 
 typedef struct hz_vector_t hz_vector_t;
 
-static hz_id
-hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode c) {
+static hz_index_t
+hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     uint16_t range_count = st->seg_count_x2 >> 1;
     uint16_t i = 0;
-    hz_id id;
+    hz_index_t id;
 
     /* search for code range */
     while (i < range_count) {
@@ -373,7 +373,7 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
         /* set glyph class values if in map */
         while (curr_node != NULL) {
-            hz_id gid = curr_node->glyph.id;
+            hz_index_t gid = curr_node->glyph.id;
             if (hz_map_value_exists(class_map, gid)) {
                 curr_node->glyph.glyph_class = hz_map_get_value(class_map, gid);
             } else {
@@ -488,7 +488,7 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
     /* apply the metrics to position the glyphs */
     hz_section_node_t *curr_node = sect->root;
     while (curr_node != NULL) {
-        hz_id id = curr_node->glyph.id;
+        hz_index_t id = curr_node->glyph.id;
         hz_metrics_t *metric = hz_face_get_glyph_metrics(face, id);
 
         curr_node->glyph.x_advance = metric->x_advance;

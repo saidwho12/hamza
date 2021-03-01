@@ -105,7 +105,7 @@ hz_face_get_num_of_v_metrics(hz_face_t *face)
 }
 
 hz_metrics_t *
-hz_face_get_glyph_metrics(hz_face_t *face, hz_id id)
+hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id)
 {
     if (id < face->num_glyphs) {
         return face->metrics + id;

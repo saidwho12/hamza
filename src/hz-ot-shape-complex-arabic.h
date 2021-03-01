@@ -129,7 +129,7 @@ typedef enum hz_arabic_joining_group_t {
 } hz_arabic_joining_group_t;
 
 typedef struct hz_arabic_joining_entry_t {
-    hz_unicode codepoint;
+    hz_unicode_t codepoint;
     const char *name;
     uint16_t joining;
 } hz_arabic_joining_entry_t;

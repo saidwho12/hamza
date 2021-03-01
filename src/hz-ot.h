@@ -376,9 +376,9 @@ typedef struct hz_section_node_t hz_section_node_t;
  *      glyph_class - Glyph's class.
  * */
 typedef struct hz_glyph_t {
-    hz_unicode codepoint;
+    hz_unicode_t codepoint;
 
-    hz_id id;
+    hz_index_t id;
     int16_t x_offset;
     int16_t y_offset;
     int16_t x_advance;
@@ -569,7 +569,7 @@ hz_utf8_next(hz_utf8_dec_t *dec) {
 
 static void
 hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
-    hz_unicode code;
+    hz_unicode_t code;
     int ch;
 
     hz_utf8_dec_t dec;
@@ -596,6 +596,16 @@ hz_section_load_utf8_zt(hz_section_t *sect, const hz_char *text) {
     hz_section_load_utf8(sect, text, UINT64_MAX);
 }
 
+static void
+hz_section_destroy(hz_section_t *sect) {
+    hz_section_node_t *node = sect->root;
+
+    while (node != NULL) {
+        hz_section_node_t *node_tmp = node;
+        node = node->next;
+        free(node_tmp);
+    }
+}
 
 typedef struct hz_rec16_t {
     hz_tag tag;
@@ -726,12 +736,12 @@ typedef struct hz_lookup_table_t {
 typedef struct hz_coverage_format1_t {
     hz_uint16 coverageFormat; /* Format identifier — format = 1 */
     hz_uint16 glyphCount; /* Number of glyphs in the glyph array */
-    hz_id *glyphArray; /* Array of glyph IDs — in numerical order */
+    hz_index_t *glyphArray; /* Array of glyph IDs — in numerical order */
 } hz_coverage_format1_t;
 
 typedef struct hz_range_rec_t {
-    hz_id start_glyph_id;
-    hz_id end_glyph_id;
+    hz_index_t start_glyph_id;
+    hz_index_t end_glyph_id;
     uint16_t start_coverage_index;
 } hz_range_rec_t;
 
@@ -744,14 +754,14 @@ typedef struct hz_coverage_format2_t {
 
 struct hz_class_def_format1_t {
     hz_uint16 format; /* Format identifier — format = 1 */
-    hz_id startGID; /* First glyph ID of the classValueArray */
+    hz_index_t startGID; /* First glyph ID of the classValueArray */
     hz_uint16 glyphCount; /* Size of the classValueArray */
     hz_uint16 *classValues; /* Array of Class Values — one per glyph ID */
 };
 
 struct hz_class_range_rec_t {
-    hz_id startGlyphID;
-    hz_id endGlyphID;
+    hz_index_t startGlyphID;
+    hz_index_t endGlyphID;
     hz_uint16 classValue;
 };
 
@@ -971,7 +981,7 @@ hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
 hz_bool
 hz_ot_layout_lookup_would_substitute(hz_face_t *face,
                                        unsigned int lookup_index,
-                                       const hz_id *glyphs,
+                                       const hz_index_t *glyphs,
                                        unsigned int glyph_count,
                                        hz_bool zero_context);
 

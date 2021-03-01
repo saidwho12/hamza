@@ -25,4 +25,4 @@ https://saidwho12.github.io/hamza/
 - [ ] Justification
 - [ ] Multi-Threading (TinyCThread?)
 - [ ] BCP47 Parser
-- [ ] Documentation (Natural Docs)
+- [x] Documentation (Natural Docs)

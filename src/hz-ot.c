@@ -452,7 +452,7 @@ hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
 hz_bool
 hz_ot_layout_lookup_would_substitute(hz_face_t *face,
                                      unsigned int lookup_index,
-                                     const hz_id *glyphs,
+                                     const hz_index_t *glyphs,
                                      unsigned int glyph_count,
                                      hz_bool zero_context)
 {
@@ -496,7 +496,7 @@ hz_ot_layout_parse_coverage(const uint8_t *data,
 
             /* Assuming ranges are ordered from 0 to glyph_count in order */
             while (range_index < range_count) {
-                hz_id from, to;
+                hz_index_t from, to;
                 hz_range_rec_t range;
                 uint16_t range_offset;
                 uint32_t range_end;
@@ -618,8 +618,8 @@ hz_ot_layout_apply_fit_ligature(hz_ligature_t *ligatures,
                 break;
             }
 
-            hz_id g1 = step_node->glyph.id;
-            hz_id g2 = ligature->component_glyph_ids[skip_index];
+            hz_index_t g1 = step_node->glyph.id;
+            hz_index_t g2 = ligature->component_glyph_ids[skip_index];
             if (g1 != g2) {
                 pattern_matches = HZ_FALSE;
                 break;
@@ -685,7 +685,7 @@ hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
                     /* Get destination glyph indices */
                     uint16_t dst_gidx;
                     for (dst_gidx = 0; dst_gidx < glyph_count; ++dst_gidx) {
-                        hz_id substitute_glyph;
+                        hz_index_t substitute_glyph;
                         hz_stream_read16(subtable, &substitute_glyph);
                         hz_array_push_back(subst, substitute_glyph);
                     }
@@ -697,7 +697,7 @@ hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
                     hz_section_node_t *curr_node = sect->root;
 
                     while (curr_node != NULL) {
-                        hz_id curr_id = curr_node->glyph.id;
+                        hz_index_t curr_id = curr_node->glyph.id;
 
                         if (hz_map_value_exists(map_subst, curr_id)) {
                             switch (feature) {

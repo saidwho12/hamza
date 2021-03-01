@@ -58,8 +58,8 @@ hz_context_collect_required_glyphs(hz_context_t *ctx,
                                    hz_set_t *glyphs);
 
 
-hz_id
-hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode c);
+hz_index_t
+hz_face_map_unicode_to_id(hz_face_t *face, hz_unicode_t c);
 
 #ifdef __cplusplus
 }

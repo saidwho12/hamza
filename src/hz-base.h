@@ -52,8 +52,8 @@ typedef uint8_t hz_byte, hz_bool, hz_char;
 typedef uint16_t hz_offset16;
 typedef uint32_t hz_tag;
 typedef uint32_t hz_offset32;
-typedef uint32_t hz_unicode; /* 32 bit unicode type */
-typedef uint16_t hz_id;
+typedef uint32_t hz_unicode_t; /* 32 bit unicode type */
+typedef uint16_t hz_index_t;
 typedef uint16_t hz_fixed;
 
 #define HZ_F2DOT14 uint16_t

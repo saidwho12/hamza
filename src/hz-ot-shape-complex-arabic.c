@@ -3,7 +3,7 @@
 #include "hz.h"
 
 hz_bool
-hz_ot_shape_complex_arabic_char_joining(hz_unicode codepoint,
+hz_ot_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
                                         hz_arabic_joining_entry_t *entry)
 {
     const hz_arabic_joining_entry_t *curr_entry = NULL;
@@ -34,7 +34,7 @@ hz_ot_shape_complex_arabic_adjacent_char(hz_section_node_t *node, hz_bool do_rev
 {
     hz_section_node_t *curr_node = do_reverse ? node->prev : node->next;
     while (curr_node != NULL) {
-        hz_unicode code = curr_node->glyph.codepoint;
+        hz_unicode_t code = curr_node->glyph.codepoint;
         hz_glyph_class_t glyph_class = curr_node->glyph.glyph_class;
 
         hz_bool is_arabic_code = code >= 0x0600 && code <= 0x06FF ||
@@ -61,7 +61,7 @@ uint16_t
 hz_ot_shape_complex_arabic_joining(hz_section_node_t *node, hz_bool do_reverse)
 {
     hz_arabic_joining_entry_t entry;
-    hz_unicode codepoint;
+    hz_unicode_t codepoint;
     hz_section_node_t *adj = hz_ot_shape_complex_arabic_adjacent_char(node, do_reverse);
 
     if (adj == NULL)

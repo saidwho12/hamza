@@ -11,9 +11,15 @@
 #define CMAS_IMPL
 #include "cmas.h"
 
+#ifdef HZ_ENABLE_LOGGING
 #define HZ_LOG(...) fprintf(stdout, __VA_ARGS__)
 #define HZ_DBGLOG(...) fprintf(stdout, __VA_ARGS__)
 #define HZ_ERROR(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define HZ_LOG(...)
+#define HZ_DBGLOG(...)
+#define HZ_ERROR(...)
+#endif
 #define HZ_MALLOC(size) malloc(size)
 #define HZ_FREE(p) free(p)
 #define HZ_REALLOC(p, size) realloc(p, size)

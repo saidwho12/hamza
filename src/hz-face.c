@@ -1,17 +1,20 @@
 #include "hz-face.h"
 
-typedef struct hz_face_table_entry_t {
+typedef struct hz_face_table_node_t hz_face_table_node_t;
+
+struct hz_face_table_node_t {
     hz_tag tag;
     hz_blob_t *blob;
-} hz_face_table_entry_t;
+    hz_face_table_node_t *prev, *next;
+};
 
-struct hz_face_table_t {
-    struct hz_face_table_entry_t *entries;
-    size_t table_count;
+struct hz_face_tables_t {
+    struct hz_face_table_node_t *root;
 };
 
 struct hz_face_t {
-    hz_face_table_t table;
+    hz_face_tables_t tables;
+    hz_face_ot_tables_t ot_tables;
 
     uint16_t num_glyphs;
     uint16_t num_of_h_metrics;
@@ -37,6 +40,7 @@ hz_face_create()
     face->descender = 0;
     face->linegap = 0;
     face->upem = 0;
+    face->tables.root = NULL;
     return face;
 }
 
@@ -57,27 +61,42 @@ hz_face_set_upem(hz_face_t *face, uint16_t upem)
 void
 hz_face_set_table(hz_face_t *face, hz_tag tag, hz_blob_t *blob)
 {
+    hz_face_table_node_t *new_node = HZ_MALLOC(sizeof(hz_face_table_node_t));
+    new_node->tag = tag;
+    new_node->blob = blob;
+    new_node->next = NULL;
 
+    if (face->tables.root == NULL) {
+        new_node->prev = NULL;
+        face->tables.root = new_node;
+    } else {
+        hz_face_table_node_t *node = face->tables.root;
+        while (node != NULL) {
+            if (node->next == NULL) {
+                /* found last node */
+                new_node->prev = node;
+                node->next = new_node;
+                break;
+            }
+
+            node = node->next;
+        }
+    }
 }
 
 hz_blob_t *
 hz_face_reference_table(hz_face_t *face, hz_tag tag)
 {
-    hz_blob_t *blob = NULL;
-    size_t table_index = 0;
+    hz_face_table_node_t *node = face->tables.root;
 
-    while (table_index < face->table.table_count) {
-        hz_face_table_entry_t *entry = & face->table.entries[table_index];
-        if (entry->tag == tag) {
-            /* tags match, found table */
-            blob = entry->blob;
-            break;
-        }
+    while (node != NULL) {
+        if (node->tag == tag)
+            return node->blob; /* tags match, found table */
 
-        ++ table_index;
+        node = node->next;
     }
 
-    return blob;
+    return NULL;
 }
 
 void
@@ -161,4 +180,17 @@ float
 hz_face_line_skip(hz_face_t *face)
 {
     return (float)(face->ascender - face->descender + face->linegap) / 64.0f;
+}
+
+
+void
+hz_face_set_ot_tables(hz_face_t *face, const hz_face_ot_tables_t *tables)
+{
+    memcpy(&face->ot_tables, tables, sizeof(hz_face_ot_tables_t));
+}
+
+const hz_face_ot_tables_t *
+hz_face_get_ot_tables(hz_face_t *face)
+{
+   return &face->ot_tables;
 }

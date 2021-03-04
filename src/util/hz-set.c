@@ -24,6 +24,26 @@ hz_set_add(hz_set_t *set, uint32_t val)
     set->count = new_count;
 }
 
+hz_bool
+hz_set_add_no_duplicate(hz_set_t *set, uint32_t val)
+{
+    hz_bool has_copy = 0;
+    int i = 0;
+    while (i < set->count) {
+        if (set->values[i] == val) {
+            has_copy = 1;
+            break;
+        }
+
+        ++i;
+    }
+
+    if (!has_copy)
+        hz_set_add(set, val);
+
+    return has_copy;
+}
+
 void
 hz_set_add_range(hz_set_t *set, uint32_t v1, uint32_t v2)
 {
@@ -44,6 +64,17 @@ hz_set_add_range(hz_set_t *set, uint32_t v1, uint32_t v2)
     }
 
     set->count = new_count;
+}
+
+void
+hz_set_add_range_no_duplicate(hz_set_t *set, uint32_t v1, uint32_t v2)
+{
+    uint32_t val = v1;
+
+    while (val <= v2) {
+        hz_set_add_no_duplicate(set, val);
+        ++ val;
+    }
 }
 
 void

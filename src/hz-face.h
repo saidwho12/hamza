@@ -8,8 +8,16 @@
 extern "C" {
 #endif
 
-typedef struct hz_face_table_t hz_face_table_t;
+typedef struct hz_face_tables_t hz_face_tables_t;
 typedef struct hz_face_t hz_face_t;
+
+typedef struct hz_face_ot_tables_t {
+    hz_byte *BASE_table;
+    hz_byte *GDEF_table;
+    hz_byte *GSUB_table;
+    hz_byte *GPOS_table;
+    hz_byte *JSTF_table;
+} hz_face_ot_tables_t;
 
 hz_face_t *
 hz_face_create();
@@ -55,6 +63,12 @@ hz_face_load_upem(hz_face_t *face);
 
 float
 hz_face_line_skip(hz_face_t *face);
+
+void
+hz_face_set_ot_tables(hz_face_t *face, const hz_face_ot_tables_t *tables);
+
+const hz_face_ot_tables_t *
+hz_face_get_ot_tables(hz_face_t *face);
 
 #ifdef __cplusplus
 }

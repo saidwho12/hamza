@@ -33,7 +33,7 @@ hz_context_set_language(hz_context_t *ctx, hz_language_t language)
 }
 
 void
-hz_context_set_dir(hz_context_t *ctx, hz_dir_t dir)
+hz_context_set_dir(hz_context_t *ctx, hz_direction_t dir)
 {
     ctx->dir = dir;
 }
@@ -117,9 +117,6 @@ typedef struct hz_cmap_subtable_format4_t {
     uint16_t *glyph_id_array;
 } hz_cmap_subtable_format4_t;
 
-
-typedef struct hz_vector_t hz_vector_t;
-
 static hz_index_t
 hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     uint16_t range_count = st->seg_count_x2 >> 1;
@@ -148,25 +145,6 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     }
 
     return 0; /* map to .notdef */
-}
-
-void
-hz_context_collect_required_glyphs(hz_context_t *ctx,
-                                     hz_set_t *glyphs)
-{
-//    hz_tag script_tag = ctx->script;
-//    hz_tag language_tag = ctx->language;
-//    hz_set_t *lookup_indices = hz_set_create();
-//
-//    if (!hz_set_is_empty(glyphs))
-//        hz_set_clear(glyphs);
-//
-//    hz_ot_layout_collect_lookups(ctx->face, HZ_OT_TAG_GSUB,
-//                                   script_tag,
-//                                   language_tag,
-//                                   ctx->features,
-//                                   lookup_indices);
-
 }
 
 hz_bool
@@ -206,7 +184,56 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
             }
             break;
         }
-        default: return HZ_FALSE;
+        default:
+            return HZ_FALSE;
+    }
+
+    return HZ_TRUE;
+}
+
+hz_bool
+hz_cmap_apply_encoding_to_set(hz_stream_t *table,
+                              hz_set_t *codepoints,
+                              hz_set_t *glyphs,
+                              hz_cmap_encoding_t enc)
+{
+    hz_stream_t *subtable = hz_stream_create(table->data + enc.subtable_offset, 0, 0);
+    uint16_t format;
+    hz_stream_read16(subtable, &format);
+
+    switch (format) {
+        case 0: break;
+        case 2: break;
+        case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
+            hz_cmap_subtable_format4_t st;
+            hz_stream_read16(subtable, &st.length);
+            hz_stream_read16(subtable, &st.language);
+            hz_stream_read16(subtable, &st.seg_count_x2);
+            hz_stream_read16(subtable, &st.search_range);
+            hz_stream_read16(subtable, &st.entry_selector);
+            hz_stream_read16(subtable, &st.range_shift);
+
+            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
+
+            const uint8_t *curr_addr = subtable->data + subtable->offset;
+            st.end_code = (uint16_t *)curr_addr;
+            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
+            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
+            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
+
+            /* map unicode characters to glyph indices in section */
+            size_t index = 0;
+            size_t num_codes = codepoints->count;
+
+            while (index < num_codes) {
+                hz_set_add_no_duplicate(glyphs, hz_cmap_unicode_to_id(&st, codepoints->values[index]));
+                ++index;
+            }
+
+            break;
+        }
+        default:
+            return HZ_FALSE;
     }
 
     return HZ_TRUE;
@@ -241,8 +268,11 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
         HZ_LOG("platform: %s\n", hz_cmap_platform_to_string(enc.platform_id));
         HZ_LOG("encoding: %d\n", enc.encoding_id);
         HZ_LOG("subtable-offset: %d\n", enc.subtable_offset);
-
         hz_cmap_apply_encoding(table, sect, enc);
+//        if (enc.platform_id == HZ_CMAP_PLATFORM_WINDOWS) {
+//            hz_cmap_apply_encoding(table, sect, enc);
+//            break;
+//        }
 
 
 //        switch (enc.platform_id) {
@@ -315,18 +345,17 @@ void
 hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
-    hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('G','D','E','F'));
-    hz_stream_t *table = hz_blob_to_stream(blob);
-    uint32_t ver;
+    hz_stream_t *table = hz_stream_create(hz_face_get_ot_tables(face)->GDEF_table,0,0);
+    uint32_t version;
 
     hz_offset16 glyph_class_def_offset;
     hz_offset16 attach_list_offset;
     hz_offset16 lig_caret_list_offset;
     hz_offset16 mark_attach_class_def_offset;
 
-    hz_stream_read32(table, &ver);
+    hz_stream_read32(table, &version);
 
-    switch (ver) {
+    switch (version) {
         case 0x00010000: /* 1.0 */
             hz_stream_read16(table, &glyph_class_def_offset);
             hz_stream_read16(table, &attach_list_offset);
@@ -337,7 +366,7 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
             break;
         case 0x00010003: /* 1.3 */
             break;
-        default:
+        default: /* error */
             break;
     }
 
@@ -386,8 +415,6 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
         hz_map_destroy(class_map);
     }
-
-
 }
 
 
@@ -516,18 +543,18 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 
     /* Map unicode characters to nominal glyph indices */
     hz_map_to_nominal_forms(ctx, sect);
-//    hz_ot_parse_gdef_table(ctx, sect);
+    hz_ot_parse_gdef_table(ctx, sect);
 
     hz_ot_layout_apply_gsub_features(face, script_tag,
                                      language_tag,
                                      ctx->features,
                                      sect);
 
-    hz_apply_tt1_metrics(face, sect);
-    hz_ot_layout_apply_gpos_features(face, script_tag,
-                                     language_tag,
-                                     ctx->features,
-                                     sect);
+//    hz_apply_tt1_metrics(face, sect);
+//    hz_ot_layout_apply_gpos_features(face, script_tag,
+//                                     language_tag,
+//                                     ctx->features,
+//                                     sect);
 
 
 //    if (ctx->dir == HZ_DIR_RTL) {
@@ -577,4 +604,64 @@ hz_decode_hhea_table(hz_face_t *face, hz_blob_t *blob)
     }
 
     hz_face_set_num_of_h_metrics(face, num_of_h_metrics);
+}
+
+
+static hz_set_t *
+hz_gather_script_codepoints(hz_script_t script)
+{
+    hz_set_t *codepoints = hz_set_create();
+    int i;
+
+    for (i = 0; i < HZ_ARRAY_SIZE(script_ranges); ++i) {
+        hz_script_range_t range = script_ranges[i];
+        if (range.script == script) {
+            hz_set_add_range_no_duplicate(codepoints, range.first_code, range.last_code);
+        }
+    }
+
+    return codepoints;
+}
+
+static void
+hz_gather_script_glyphs(hz_face_t *face, hz_script_t script, hz_set_t *glyphs)
+{
+    hz_set_t *codepoints = hz_gather_script_codepoints(script);
+    hz_blob_t *cmap_blob = hz_face_reference_table(face, HZ_TAG('c','m','a','p'));
+    hz_stream_t *table = hz_blob_to_stream(cmap_blob);
+
+    uint16_t version;
+    hz_stream_read16(table, &version);
+
+    if (version == 0) {
+        uint16_t num_encodings, enc_idx;
+        hz_stream_read16(table, &num_encodings);
+
+        hz_cmap_encoding_t enc = {};
+        hz_stream_read16(table, &enc.platform_id);
+        hz_stream_read16(table, &enc.encoding_id);
+        hz_stream_read32(table, &enc.subtable_offset);
+
+        hz_cmap_apply_encoding_to_set(table, codepoints, glyphs, enc);
+
+    } else {
+        /* error, table version must be 0 */
+        HZ_ERROR("cmap table version must be zero!");
+    }
+
+    hz_set_destroy(codepoints);
+}
+
+hz_set_t *
+hz_context_gather_required_glyphs(hz_context_t *ctx)
+{
+    hz_set_t *glyphs = hz_set_create();
+    hz_face_t *face = hz_font_get_face(ctx->font);
+    hz_tag script_tag = hz_ot_script_to_tag(ctx->script);
+    hz_tag language_tag = hz_ot_language_to_tag(ctx->language);
+
+    hz_gather_script_glyphs(face, HZ_SCRIPT_COMMON, glyphs);
+    hz_gather_script_glyphs(face, ctx->script, glyphs);
+    hz_ot_layout_gather_glyphs(face, script_tag, language_tag, ctx->features, glyphs);
+    return glyphs;
 }

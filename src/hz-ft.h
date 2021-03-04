@@ -34,10 +34,29 @@ hz_ft_font_create(FT_Face ft_face) {
     hz_face_t *face = hz_face_create();
     hz_face_set_upem(face, ft_face->units_per_EM);
 
+    hz_face_ot_tables_t ot_tables;
+    FT_Bytes BASE_table;
+    FT_Bytes GDEF_table;
+    FT_Bytes GSUB_table;
+    FT_Bytes GPOS_table;
+    FT_Bytes JSTF_table;
+
+    if (FT_OpenType_Validate(ft_face, FT_VALIDATE_OT,
+                             &BASE_table, &GDEF_table, &GPOS_table, &GSUB_table, &JSTF_table)
+                            != FT_Err_Ok) {
+        HZ_ERROR("Failed to validate OpenType tables!");
+    }
+
+
+    ot_tables.BASE_table = (hz_byte *)BASE_table;
+    ot_tables.GDEF_table = (hz_byte *)GDEF_table;
+    ot_tables.GSUB_table = (hz_byte *)GSUB_table;
+    ot_tables.GPOS_table = (hz_byte *)GPOS_table;
+    ot_tables.JSTF_table = (hz_byte *)JSTF_table;
+
+    hz_face_set_ot_tables(face, &ot_tables);
+
     hz_tag tags[] = {
-            HZ_TAG('G','S','U','B'),
-            HZ_TAG('G','P','O','S'),
-            HZ_TAG('G','D','E','F'),
             HZ_TAG('c','m','a','p'),
             HZ_TAG('m','a','x','p'),
             HZ_TAG('g','l','y','f'),
@@ -54,26 +73,14 @@ hz_ft_font_create(FT_Face ft_face) {
         ++ i;
     }
 
-    hz_font_set_face(font, face);
-    return font;
+//    hz_load_num_glyphs(face);
 
-//    hz_face_set_table(HZ_TAG('G','S','U','B'), hz_ft_load_snft_table());
-//    face->gsub_table = (hz_byte *) GSUB;
-//    face->gpos_table = (hz_byte *) GPOS;
-//    face->gdef_table = (hz_byte *) GDEF;
-//
-//    /* load cmap table into buffer */
-//    face->cmap_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('c','m','a','p'));
-//
-//    /* load glyf table into buffer */
-//    face->glyf_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('g','l','y','f'));
-//
-//    /* load hmtx table into buffer */
-//    face->hmtx_buf = hz_ft_load_snft_table(ft_face, HZ_TAG('h','m','t','x'));
-//
 //    face->ascender = ft_face->ascender;
 //    face->descender = ft_face->descender;
-//    face->linegap = ft_face->size->metrics.height;//ft_face->height;
+//    face->linegap = ft_face->size->metrics.height;
+
+    hz_font_set_face(font, face);
+    return font;
 //
 //    {
 //        /* load few variables from maxp table */

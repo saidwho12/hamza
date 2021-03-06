@@ -545,10 +545,11 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
     hz_map_to_nominal_forms(ctx, sect);
     hz_ot_parse_gdef_table(ctx, sect);
 
-    hz_ot_layout_apply_gsub_features(face, script_tag,
-                                     language_tag,
-                                     ctx->features,
-                                     sect);
+    if (hz_face_get_ot_tables(face)->GSUB_table != NULL)
+        hz_ot_layout_apply_gsub_features(face, script_tag,
+                                         language_tag,
+                                         ctx->features,
+                                         sect);
 
 //    hz_apply_tt1_metrics(face, sect);
 //    hz_ot_layout_apply_gpos_features(face, script_tag,
@@ -662,6 +663,9 @@ hz_context_gather_required_glyphs(hz_context_t *ctx)
 
     hz_gather_script_glyphs(face, HZ_SCRIPT_COMMON, glyphs);
     hz_gather_script_glyphs(face, ctx->script, glyphs);
-    hz_ot_layout_gather_glyphs(face, script_tag, language_tag, ctx->features, glyphs);
+
+    if (hz_face_get_ot_tables(face)->GSUB_table != NULL)
+        hz_ot_layout_gather_glyphs(face, script_tag, language_tag, ctx->features, glyphs);
+
     return glyphs;
 }

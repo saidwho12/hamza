@@ -745,6 +745,25 @@ hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
 }
 
 static void
+hz_section_load_unicode(hz_section_t *section, const hz_unicode_t *codepoints, size_t size)
+{
+    size_t i = 0;
+    while (i < size) {
+        hz_glyph_t data;
+        data.codepoint = codepoints[i];
+        data.id = 0;
+        data.glyph_class = HZ_GLYPH_CLASS_ZERO;
+        data.x_advance = 0;
+        data.y_advance = 0;
+        data.x_offset = 0;
+        data.y_offset = 0;
+        hz_section_add(section, &data);
+
+        ++i;
+    }
+}
+
+static void
 hz_section_load_utf8_zt(hz_section_t *sect, const hz_char *text) {
     hz_section_load_utf8(sect, text, UINT64_MAX);
 }

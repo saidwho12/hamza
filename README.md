@@ -1,5 +1,5 @@
 # Hamza
-Hamza is a lightweight, fast and portable C90 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) library.
+Hamza is a lightweight, fast and portable C89 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) library.
 It was written to be primarily for Arabic but also supports basic-shaping (Latin, Greek, etc...).
 However I do wish it to support more languages and writing systems.
 

@@ -49,7 +49,7 @@ hz_array_range_eq(const hz_array_t *a_arr, size_t a_index,
                   size_t len);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* HZ_ARRAY_H */

@@ -21,6 +21,13 @@ hz_ot_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
         ++index;
     }
 
+    if (codepoint == 0x0640) {
+        entry->joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
+        entry->codepoint = codepoint;
+        entry->name = "Kashida";
+        return HZ_TRUE;
+    }
+
     return HZ_FALSE;
 }
 

@@ -1011,11 +1011,11 @@ hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
                             }
 
                             /* hack, pass HZ_GLYPH_CLASS_MARK as ignored class if there's no ignored classes */
-//                            if (ignored_classes == 0)
-//                                hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, HZ_GLYPH_CLASS_MARK, node);
-//                            else
-//                                hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignored_classes, node);
-                            hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignored_classes, node);
+                            if (ignored_classes == 0)
+                                hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, HZ_GLYPH_CLASS_MARK, node);
+                            else
+                                hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignored_classes, node);
+//                            hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignored_classes, node);
                         }
 
                         skip_node:

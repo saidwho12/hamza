@@ -33,7 +33,7 @@ hz_context_set_language(hz_context_t *ctx, hz_language_t language)
 }
 
 void
-hz_context_set_dir(hz_context_t *ctx, hz_direction_t dir)
+hz_context_set_direction(hz_context_t *ctx, hz_direction_t dir)
 {
     ctx->dir = dir;
 }
@@ -662,6 +662,7 @@ hz_context_gather_required_glyphs(hz_context_t *ctx)
     hz_tag language_tag = hz_ot_language_to_tag(ctx->language);
 
     hz_gather_script_glyphs(face, HZ_SCRIPT_COMMON, glyphs);
+    hz_gather_script_glyphs(face, HZ_SCRIPT_INHERITED, glyphs);
     hz_gather_script_glyphs(face, ctx->script, glyphs);
 
     if (hz_face_get_ot_tables(face)->GSUB_table != NULL)

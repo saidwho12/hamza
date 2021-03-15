@@ -36,7 +36,7 @@ void
 hz_context_set_language(hz_context_t *ctx, hz_language_t language);
 
 void
-hz_context_set_dir(hz_context_t *ctx, hz_direction_t dir);
+hz_context_set_direction(hz_context_t *ctx, hz_direction_t dir);
 
 hz_context_t *
 hz_context_create(hz_font_t *font);

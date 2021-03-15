@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     hz_section_t *run = hz_section_create();
 
     hz_context_t *ctx = hz_context_create(font);
-    hz_context_set_dir(ctx, HZ_RTL);
+    hz_context_set_direction(ctx, HZ_RTL);
     hz_context_set_script(ctx, HZ_SCRIPT_ARABIC);
     hz_context_set_language(ctx, HZ_LANGUAGE_ARABIC);
 

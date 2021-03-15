@@ -84,7 +84,7 @@ hz_stream_t *
 hz_blob_to_stream(hz_blob_t *blob);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 #endif /* HZ_BLOB_H */

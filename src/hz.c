@@ -70,7 +70,7 @@ typedef enum hz_cmap_subtable_format_t {
 typedef struct hz_cmap_encoding_t {
     uint16_t        platform_id; /* Platform ID. */
     uint16_t        encoding_id; /* Platform-specific encoding ID. */
-    hz_offset32   subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
+    hz_offset32_t   subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
 } hz_cmap_encoding_t;
 
 static const char *
@@ -147,7 +147,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     return 0; /* map to .notdef */
 }
 
-hz_bool
+hz_bool_t
 hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
                        hz_cmap_encoding_t enc)
 {
@@ -179,7 +179,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
             hz_section_node_t *curr_node = sect->root;
 
             while (curr_node != NULL) {
-                curr_node->glyph.id = hz_cmap_unicode_to_id(&st, curr_node->glyph.codepoint);
+                curr_node->id = hz_cmap_unicode_to_id(&st, curr_node->codepoint);
                 curr_node = curr_node->next;
             }
             break;
@@ -191,7 +191,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
     return HZ_TRUE;
 }
 
-hz_bool
+hz_bool_t
 hz_cmap_apply_encoding_to_set(hz_stream_t *table,
                               hz_set_t *codepoints,
                               hz_set_t *glyphs,
@@ -348,10 +348,10 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
     hz_stream_t *table = hz_stream_create(hz_face_get_ot_tables(face)->GDEF_table,0,0);
     uint32_t version;
 
-    hz_offset16 glyph_class_def_offset;
-    hz_offset16 attach_list_offset;
-    hz_offset16 lig_caret_list_offset;
-    hz_offset16 mark_attach_class_def_offset;
+    hz_offset16_t glyph_class_def_offset;
+    hz_offset16_t attach_list_offset;
+    hz_offset16_t lig_caret_list_offset;
+    hz_offset16_t mark_attach_class_def_offset;
 
     hz_stream_read32(table, &version);
 
@@ -402,12 +402,12 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
 
         /* set glyph class values if in map */
         while (curr_node != NULL) {
-            hz_index_t gid = curr_node->glyph.id;
+            hz_index_t gid = curr_node->id;
             if (hz_map_value_exists(class_map, gid)) {
-                curr_node->glyph.glyph_class = hz_map_get_value(class_map, gid);
+                curr_node->gc = hz_map_get_value(class_map, gid);
             } else {
                 /* set default glyph class if current glyph id isn't found */
-                curr_node->glyph.glyph_class = HZ_GLYPH_CLASS_ZERO;
+                curr_node->gc = HZ_GLYPH_CLASS_ZERO;
             }
 
             curr_node = curr_node->next;
@@ -487,9 +487,9 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
     uint16_t num_left_side_bearings = glyph_count - num_of_h_metrics;
 
     /* read long horizontal metrics */
-    h_metrics = malloc(sizeof(hz_long_hor_metric_t) * num_of_h_metrics);
+    h_metrics = HZ_MALLOC(sizeof(hz_long_hor_metric_t) * num_of_h_metrics);
     hz_read_h_metrics(table, num_of_h_metrics, h_metrics);
-    left_side_bearings = malloc(sizeof(int16_t) * num_left_side_bearings);
+    left_side_bearings = HZ_MALLOC(sizeof(int16_t) * num_left_side_bearings);
     hz_stream_read16_n(table, num_left_side_bearings, (uint16_t *)left_side_bearings);
 
     //hz_fill_tt1_metrics(face, metrics, h_metrics, left_side_bearings, num_of_h_metrics, glyph_count);
@@ -515,31 +515,31 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
     /* apply the metrics to position the glyphs */
     hz_section_node_t *curr_node = sect->root;
     while (curr_node != NULL) {
-        hz_index_t id = curr_node->glyph.id;
+        hz_index_t id = curr_node->id;
         hz_metrics_t *metric = hz_face_get_glyph_metrics(face, id);
 
-        curr_node->glyph.x_advance = metric->x_advance;
-        curr_node->glyph.y_advance = metric->y_advance;
-        curr_node->glyph.x_offset = 0.0f;
-        curr_node->glyph.y_offset = 0.0f;
+        curr_node->x_advance = metric->x_advance;
+        curr_node->y_advance = metric->y_advance;
+        curr_node->x_offset = 0;
+        curr_node->y_offset = 0;
 
         curr_node = curr_node->next;
     }
 
-    free(left_side_bearings);
-    free(h_metrics);
+    HZ_FREE(left_side_bearings);
+    HZ_FREE(h_metrics);
 }
 
 static void
-hz_apply_rtl_flip(hz_section_t *sect) {
+hz_apply_rtl_switch(hz_section_t *sect) {
 }
 
 void
 hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
-    hz_tag script_tag = hz_ot_script_to_tag(ctx->script);
-    hz_tag language_tag = hz_ot_language_to_tag(ctx->language);
+    hz_tag_t script_tag = hz_ot_script_to_tag(ctx->script);
+    hz_tag_t language_tag = hz_ot_language_to_tag(ctx->language);
 
     /* Map unicode characters to nominal glyph indices */
     hz_map_to_nominal_forms(ctx, sect);
@@ -551,15 +551,16 @@ hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
                                          ctx->features,
                                          sect);
 
-//    hz_apply_tt1_metrics(face, sect);
-//    hz_ot_layout_apply_gpos_features(face, script_tag,
-//                                     language_tag,
-//                                     ctx->features,
-//                                     sect);
+    hz_apply_tt1_metrics(face, sect);
+    if (hz_face_get_ot_tables(face)->GPOS_table != NULL)
+        hz_ot_layout_apply_gpos_features(face, script_tag,
+                                         language_tag,
+                                         ctx->features,
+                                         sect);
 
 
 //    if (ctx->dir == HZ_DIR_RTL) {
-//        hz_apply_rtl_flip(sect);
+//        hz_apply_rtl_switch(sect);
 //    }
 }
 
@@ -658,8 +659,8 @@ hz_context_gather_required_glyphs(hz_context_t *ctx)
 {
     hz_set_t *glyphs = hz_set_create();
     hz_face_t *face = hz_font_get_face(ctx->font);
-    hz_tag script_tag = hz_ot_script_to_tag(ctx->script);
-    hz_tag language_tag = hz_ot_language_to_tag(ctx->language);
+    hz_tag_t script_tag = hz_ot_script_to_tag(ctx->script);
+    hz_tag_t language_tag = hz_ot_language_to_tag(ctx->language);
 
     hz_gather_script_glyphs(face, HZ_SCRIPT_COMMON, glyphs);
     hz_gather_script_glyphs(face, HZ_SCRIPT_INHERITED, glyphs);

@@ -3,7 +3,7 @@
 typedef struct hz_face_table_node_t hz_face_table_node_t;
 
 struct hz_face_table_node_t {
-    hz_tag tag;
+    hz_tag_t tag;
     hz_blob_t *blob;
     hz_face_table_node_t *prev, *next;
 };
@@ -59,7 +59,7 @@ hz_face_set_upem(hz_face_t *face, uint16_t upem)
 
 
 void
-hz_face_set_table(hz_face_t *face, hz_tag tag, hz_blob_t *blob)
+hz_face_set_table(hz_face_t *face, hz_tag_t tag, hz_blob_t *blob)
 {
     hz_face_table_node_t *new_node = HZ_MALLOC(sizeof(hz_face_table_node_t));
     new_node->tag = tag;
@@ -85,7 +85,7 @@ hz_face_set_table(hz_face_t *face, hz_tag tag, hz_blob_t *blob)
 }
 
 hz_blob_t *
-hz_face_reference_table(hz_face_t *face, hz_tag tag)
+hz_face_reference_table(hz_face_t *face, hz_tag_t tag)
 {
     hz_face_table_node_t *node = face->tables.root;
 
@@ -126,7 +126,7 @@ hz_face_get_num_of_v_metrics(hz_face_t *face)
 hz_metrics_t *
 hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id)
 {
-    if (id < face->num_glyphs) {
+    if (id < face->num_glyphs && face->metrics != NULL) {
         return face->metrics + id;
     }
 
@@ -193,4 +193,10 @@ const hz_face_ot_tables_t *
 hz_face_get_ot_tables(hz_face_t *face)
 {
    return &face->ot_tables;
+}
+
+void
+hz_face_alloc_metrics(hz_face_t *face) {
+    if (face->metrics == NULL)
+        face->metrics = HZ_MALLOC(sizeof(hz_metrics_t) * face->num_glyphs);
 }

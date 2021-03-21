@@ -37,5 +37,5 @@ target_link_libraries(hamza PUBLIC ${FREETYPE_LIBRARIES})
 target_include_directories(hamza PUBLIC ${FREETYPE_INCLUDE_DIRS})
 
 
-add_executable(hamza-example main.cpp)
-target_link_libraries(hamza-example PRIVATE hamza)
+add_executable(hamza-example main.c)
+target_link_libraries(hamza-example PRIVATE hamza m)

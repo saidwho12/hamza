@@ -62,7 +62,7 @@ hz_map_destroy(hz_map_t *map)
 
 }
 
-hz_bool
+hz_bool_t
 hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
 {
     uint32_t hash = hash_fnv1a(key);
@@ -133,7 +133,7 @@ hz_map_remove(hz_map_t *map, uint32_t key)
 
 }
 
-hz_bool
+hz_bool_t
 hz_map_value_exists(hz_map_t *map, uint32_t key)
 {
     uint32_t hash = hash_fnv1a(key);
@@ -156,10 +156,10 @@ hz_map_value_exists(hz_map_t *map, uint32_t key)
 }
 
 
-hz_bool
+hz_bool_t
 hz_map_set_value_for_keys(hz_map_t *map, uint32_t k0, uint32_t k1, uint32_t value)
 {
-    hz_bool any_set = HZ_FALSE;
+    hz_bool_t any_set = HZ_FALSE;
     uint32_t k = k0;
 
     while (k <= k1) {

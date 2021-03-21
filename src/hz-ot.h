@@ -145,7 +145,7 @@ typedef enum hz_feature_t {
 
 typedef struct hz_feature_info_t {
     hz_feature_t feature;
-    hz_tag tag;
+    hz_tag_t tag;
 } hz_feature_info_t;
 
 static const hz_feature_info_t HZ_FEATURE_INFO_LUT[HZ_FEATURE_COUNT] = {
@@ -290,7 +290,7 @@ hz_ot_calc_table_checksum(const uint32_t *table, uint32_t len) {
 */
 typedef struct HZ_PACKED hz_ttc_header_t {
     /* Font Collection ID string: 'ttcf' (used for fonts with CFF or CFF2 outlines as well as TrueType outlines) */
-    hz_tag ttcTag;
+    hz_tag_t ttcTag;
 
     /* 	Major version of the TTC Header */
     hz_uint16 majorVersion;
@@ -302,7 +302,7 @@ typedef struct HZ_PACKED hz_ttc_header_t {
     uint32_t numFonts;
 
     /* Array of offsets to the OffsetTable for each font from the beginning of the file */
-    hz_offset32 *offsetTable;
+    hz_offset32_t *offsetTable;
 
     /* Tag indicating that a DSIG table exists, 0x44534947 ('DSIG') (null if no signature) */
     uint32_t dsigTag;
@@ -516,7 +516,7 @@ typedef enum hz_glyph_class_t {
 
 typedef struct hz_section_node_t hz_section_node_t;
 
-/*  Struct: hz_glyph_t
+/*  Struct: hz_section_node_t
  *  Glyph structure holding data for shaping.
  *
  *  Fields:
@@ -528,20 +528,16 @@ typedef struct hz_section_node_t hz_section_node_t;
  *      y_advance - Y advance (vertical layout).
  *      glyph_class - Glyph's class.
  * */
-typedef struct hz_glyph_t {
-    hz_unicode_t codepoint;
 
+struct hz_section_node_t {
+    hz_section_node_t *prev, *next;
+    hz_unicode_t codepoint;
     hz_index_t id;
     int16_t x_offset;
     int16_t y_offset;
     int16_t x_advance;
     int16_t y_advance;
-    hz_glyph_class_t glyph_class: HZ_GLYPH_CLASS_BIT_FIELD;
-} hz_glyph_t;
-
-struct hz_section_node_t {
-    hz_section_node_t *prev, *next;
-    hz_glyph_t glyph;
+    hz_glyph_class_t gc: HZ_GLYPH_CLASS_BIT_FIELD;
 };
 
 /*  Struct: hz_section_t
@@ -560,6 +556,7 @@ static hz_language_t
 hz_lang(const char *s) {
     if (!strcmp(s, "ar")) return HZ_LANGUAGE_ARABIC;
     else if (!strcmp(s, "en")) return HZ_LANGUAGE_ENGLISH;
+    return HZ_LANGUAGE_ENGLISH;
 }
 
 #define HZ_LANG(lang_str) hz_lang(lang_str)
@@ -572,10 +569,8 @@ hz_section_create(void) {
 }
 
 static void
-hz_section_add(hz_section_t *sect, const hz_glyph_t *node_data)
+hz_section_add(hz_section_t *sect, hz_section_node_t *new_node)
 {
-    hz_section_node_t *new_node = (hz_section_node_t *) HZ_MALLOC(sizeof(hz_section_node_t));
-    new_node->glyph = *node_data;
     new_node->prev = NULL;
     new_node->next = NULL;
 
@@ -614,7 +609,7 @@ hz_section_last_node(hz_section_node_t *node) {
     return node;
 }
 
-static hz_bool
+static hz_bool_t
 hz_section_rem_n_next_nodes(hz_section_node_t *start, size_t n)
 {
     /* assumes n passed in doesn't cause segfault :) */
@@ -636,9 +631,9 @@ hz_section_rem_n_next_nodes(hz_section_node_t *start, size_t n)
 }
 
 typedef struct {
-    const hz_byte *mem;
-    hz_size length;
-    hz_size offset;
+    const hz_byte_t *mem;
+    hz_size_t length;
+    hz_size_t offset;
 } hz_utf8_dec_t;
 
 #define HZ_UTF8_END -1
@@ -726,40 +721,38 @@ hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
     int ch;
 
     hz_utf8_dec_t dec;
-    dec.mem = (const hz_byte *) text;
+    dec.mem = (const hz_byte_t *) text;
     dec.length = len;
     dec.offset = 0;
 
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = hz_utf8_next(&dec)) > 0) {
-        hz_glyph_t data;
-        data.codepoint = ch;
-        data.id = 0;
-        data.glyph_class = HZ_GLYPH_CLASS_ZERO;
-        data.x_advance = 0;
-        data.y_advance = 0;
-        data.x_offset = 0;
-        data.y_offset = 0;
-        hz_section_add(sect, &data);
+        hz_section_node_t *node = (hz_section_node_t *) HZ_MALLOC(sizeof(hz_section_node_t));
+        node->codepoint = ch;
+        node->id = 0;
+        node->gc = HZ_GLYPH_CLASS_ZERO;
+        node->x_advance = 0;
+        node->y_advance = 0;
+        node->x_offset = 0;
+        node->y_offset = 0;
+        hz_section_add(sect, node);
     }
 }
 
 static void
-hz_section_load_unicode(hz_section_t *section, const hz_unicode_t *codepoints, size_t size)
+hz_section_load_unicode(hz_section_t *sect, const hz_unicode_t *codepoints, size_t size)
 {
-    size_t i = 0;
-    while (i < size) {
-        hz_glyph_t data;
-        data.codepoint = codepoints[i];
-        data.id = 0;
-        data.glyph_class = HZ_GLYPH_CLASS_ZERO;
-        data.x_advance = 0;
-        data.y_advance = 0;
-        data.x_offset = 0;
-        data.y_offset = 0;
-        hz_section_add(section, &data);
-
-        ++i;
+    size_t i;
+    for (i = 0; i < size; ++i) {
+        hz_section_node_t *node = (hz_section_node_t *)HZ_MALLOC(sizeof(hz_section_node_t));
+        node->codepoint = codepoints[i];
+        node->id = 0;
+        node->gc = HZ_GLYPH_CLASS_ZERO;
+        node->x_advance = 0;
+        node->y_advance = 0;
+        node->x_offset = 0;
+        node->y_offset = 0;
+        hz_section_add(sect, node);
     }
 }
 
@@ -780,13 +773,13 @@ hz_section_destroy(hz_section_t *sect) {
 }
 
 typedef struct hz_rec16_t {
-    hz_tag tag;
-    hz_offset16 offset;
+    hz_tag_t tag;
+    hz_offset16_t offset;
 } hz_rec16_t;
 
 typedef struct hz_rec32_t {
-    hz_tag tag;
-    hz_offset32 offset;
+    hz_tag_t tag;
+    hz_offset32_t offset;
 } hz_rec32_t;
 
 typedef struct hz_script_list_t {
@@ -795,14 +788,14 @@ typedef struct hz_script_list_t {
 } hz_script_list_t;
 
 typedef struct hz_script_table_t {
-    hz_offset16 defaultLangSys;
+    hz_offset16_t defaultLangSys;
     hz_uint16 langSysCount;
     //hz_rec16_t *langSysRecords;
 } hz_script_table_t;
 
 typedef struct hz_lang_sys_t {
     /* = NULL (reserved for an offset to a reordering table) */
-    hz_offset16 lookupOrder;
+    hz_offset16_t lookupOrder;
 
     /* Index of a feature required for this language system; if no required features = 0xFFFF */
     hz_uint16 requiredFeatureIndex;
@@ -821,7 +814,7 @@ typedef struct hz_feature_list_t {
 
 typedef struct hz_feature_table_t {
     /* = NULL (reserved for offset to FeatureParams) */
-    hz_offset16 feature_params;
+    hz_offset16_t feature_params;
 
     /* Number of LookupList indices for this feature */
     uint16_t lookup_index_count;
@@ -901,7 +894,7 @@ typedef struct hz_lookup_table_t {
     uint16_t lookup_type;
     uint16_t lookup_flags;
     uint16_t subtable_count;
-    hz_offset32 *subtable_offsets;
+    hz_offset32_t *subtable_offsets;
     uint16_t mark_filtering_set;
 } hz_lookup_table_t;
 
@@ -979,13 +972,13 @@ typedef struct HZ_PACKED hz_variation_index_table_t {
 
 typedef struct HZ_PACKED hz_feature_variation_record_t {
     /* Offset to a condition set table, from beginning of FeatureVariations table. */
-    hz_offset32 conditionSetOffset;
+    hz_offset32_t conditionSetOffset;
 
     /*
         Offset to a feature table substitution table,
         from beginning of the FeatureVariations table.
     */
-    hz_offset32 featureTableSubstitutionOffset;
+    hz_offset32_t featureTableSubstitutionOffset;
 } hz_feature_variation_record_t;
 
 
@@ -1008,7 +1001,7 @@ typedef struct HZ_PACKED hz_condition_set_t {
     hz_uint16 conditionCount;
 
     /* Array of offsets to condition tables, from beginning of the ConditionSet table. */
-    hz_offset32 *conditions;
+    hz_offset32_t *conditions;
 } hz_condition_set_t;
 
 typedef struct HZ_PACKED hz_condition_format1_t {
@@ -1030,7 +1023,7 @@ typedef struct HZ_PACKED hz_feature_table_substitution_record_t {
     hz_uint16 featureIndex;
 
     /* Offset to an alternate feature table, from start of the FeatureTableSubstitution table. */
-    hz_offset32 alternateFeatureOffset;
+    hz_offset32_t alternateFeatureOffset;
 } hz_feature_table_substitution_record_t;
 
 typedef struct HZ_PACKED hz_feature_table_substitution_table_t {
@@ -1079,8 +1072,8 @@ hz_bitset_destroy(hz_bitset_t *bitset) {
     free(bitset);
 }
 
-static hz_bool
-hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool value) {
+static hz_bool_t
+hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool_t value) {
     if (index < bitset->bit_count) {
         uint8_t *byte = bitset->data + (index / 8);
         uint8_t mask = 1 << (index % 8);
@@ -1096,9 +1089,9 @@ hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool value) {
     return HZ_FALSE;
 }
 
-static hz_bool
+static hz_bool_t
 hz_bitset_check(const hz_bitset_t *bitset, uint16_t index) {
-    hz_bool value = HZ_FALSE;
+    hz_bool_t value = HZ_FALSE;
 
     if (index < bitset->bit_count) {
         uint8_t byte = *(bitset->data + (index / 8));
@@ -1127,27 +1120,27 @@ hz_bitset_copy(hz_bitset_t *dst, const hz_bitset_t *src) {
 
 
 hz_feature_t
-hz_ot_feature_from_tag(hz_tag tag);
+hz_ot_feature_from_tag(hz_tag_t tag);
 
 
-hz_bool
+hz_bool_t
 hz_ot_layout_gather_glyphs(hz_face_t *face,
-                           hz_tag script,
-                           hz_tag language,
+                           hz_tag_t script,
+                           hz_tag_t language,
                            const hz_array_t *wanted_features,
                            hz_set_t *glyphs);
 
-hz_bool
+hz_bool_t
 hz_ot_layout_apply_gsub_features(hz_face_t *face,
-                                 hz_tag script,
-                                 hz_tag language,
+                                 hz_tag_t script,
+                                 hz_tag_t language,
                                  const hz_array_t *wanted_features,
                                  hz_section_t *sect);
 
-hz_bool
+hz_bool_t
 hz_ot_layout_apply_gpos_features(hz_face_t *face,
-                                 hz_tag script,
-                                 hz_tag language,
+                                 hz_tag_t script,
+                                 hz_tag_t language,
                                  const hz_array_t *wanted_features,
                                  hz_section_t *sect);
 
@@ -1157,12 +1150,12 @@ hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
                                           hz_set_t *glyphs);
 
 
-hz_bool
+hz_bool_t
 hz_ot_layout_lookup_would_substitute(hz_face_t *face,
-                                       unsigned int lookup_index,
-                                       const hz_index_t *glyphs,
-                                       unsigned int glyph_count,
-                                       hz_bool zero_context);
+                                     unsigned int lookup_index,
+                                     const hz_index_t *glyphs,
+                                     unsigned int glyph_count,
+                                     hz_bool_t zero_context);
 
 
 void
@@ -1176,10 +1169,10 @@ hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                                hz_feature_t feature,
                                hz_section_t *sect);
 
-hz_tag
+hz_tag_t
 hz_ot_script_to_tag(hz_script_t script);
 
-hz_tag
+hz_tag_t
 hz_ot_language_to_tag(hz_language_t language);
 
 #ifdef __cplusplus

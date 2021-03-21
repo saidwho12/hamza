@@ -54,13 +54,13 @@ typedef uint16_t UFWORD;
 /* unsigned 16-bit */
 typedef uint16_t F2DOT14;
 
-typedef uint8_t hz_byte, hz_bool, hz_char;
-typedef uint16_t hz_offset16;
-typedef uint32_t hz_tag;
-typedef uint32_t hz_offset32;
+typedef uint8_t hz_byte_t, hz_bool_t, hz_char;
+typedef uint16_t hz_offset16_t;
+typedef uint32_t hz_tag_t;
+typedef uint32_t hz_offset32_t;
 typedef uint32_t hz_unicode_t; /* 32 bit unicode type */
 typedef uint16_t hz_index_t;
-typedef uint16_t hz_fixed;
+typedef uint16_t hz_fixed_t;
 
 #define HZ_F2DOT14 uint16_t
 #define HZ_FWORD uint16_t
@@ -68,7 +68,7 @@ typedef uint16_t hz_fixed;
 typedef uint32_t HZ_Version16Dot16;
 
 typedef uint64_t hz_uintptr;
-typedef size_t hz_size;
+typedef size_t hz_size_t;
 
 static hz_float32
 hz_cast_f32_f2d14(const HZ_F2DOT14 x)
@@ -98,7 +98,7 @@ static uint32_t bswap32(uint32_t val)
 #define HZ_FALSE 0
 
 #define HZ_ASSERT(cond) assert(cond)
-#define HZ_TAG(c1, c2, c3, c4) ((hz_tag)c4 | ((hz_tag)c3 << 8U) | ((hz_tag)c2 << 16U) | ((hz_tag)c1 << 24U))
+#define HZ_TAG(c1, c2, c3, c4) ((hz_tag_t)c4 | ((hz_tag_t)c3 << 8U) | ((hz_tag_t)c2 << 16U) | ((hz_tag_t)c1 << 24U))
 #define HZ_UNTAG(tag) (tag >> 24) & 0xFF, (tag >> 16) & 0xFF, (tag >> 8) & 0xFF, tag & 0xFF
 #define HZ_ALLOC(T) (T *) HZ_MALLOC(sizeof(T))
 

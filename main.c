@@ -111,8 +111,8 @@ int main(int argc, char *argv[]) {
     hz_context_set_features(ctx, features);
 
     // Load utf8 string "_zt" stands for zero-terminated
-    hz_section_t *section = hz_section_create();
-    hz_section_load_utf8_zt(section, (const hz_char *) text);
+    hz_sequence_t *section = hz_section_create();
+    hz_sequence_load_utf8_zt(section, (const hz_char *) text);
     hz_shape_full(ctx, section);
 
 
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
 
     int xpos = 400, ypos = 100;
 
-    hz_section_node_t *node = ctx->dir == HZ_RTL ? hz_section_last_node(section->root) : section->root;
+    hz_sequence_node_t *node = ctx->dir == HZ_RTL ? hz_sequence_last_node(section->root) : section->root;
     while (node != NULL) {
         FT_GlyphSlot slot = ft_face->glyph;
         FT_Glyph glyph;

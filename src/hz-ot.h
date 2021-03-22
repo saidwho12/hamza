@@ -514,7 +514,7 @@ typedef enum hz_glyph_class_t {
 #define HZ_BIT(x) (1 << (x))
 
 
-typedef struct hz_section_node_t hz_section_node_t;
+typedef struct hz_sequence_node_t hz_sequence_node_t;
 
 /*  Struct: hz_section_node_t
  *  Glyph structure holding data for shaping.
@@ -529,15 +529,16 @@ typedef struct hz_section_node_t hz_section_node_t;
  *      glyph_class - Glyph's class.
  * */
 
-struct hz_section_node_t {
-    hz_section_node_t *prev, *next;
-    hz_unicode_t codepoint;
-    hz_index_t id;
+struct hz_sequence_node_t {
+    hz_unicode_t codepoint; /* initial codepoint */
+    hz_index_t id; /* glyph index */
+    uint16_t cid; /* component index */
     int16_t x_offset;
     int16_t y_offset;
     int16_t x_advance;
     int16_t y_advance;
     hz_glyph_class_t gc: HZ_GLYPH_CLASS_BIT_FIELD;
+    hz_sequence_node_t *prev, *next;
 };
 
 /*  Struct: hz_section_t
@@ -547,10 +548,10 @@ struct hz_section_node_t {
  *      root - Root of a doubly linked list for the glyph nodes.
  *      flags - Shaping flags.
  * */
-typedef struct hz_section_t {
-    hz_section_node_t *root;
+typedef struct hz_sequence_t {
+    hz_sequence_node_t *root;
     int flags;
-} hz_section_t;
+} hz_sequence_t;
 
 static hz_language_t
 hz_lang(const char *s) {
@@ -561,15 +562,15 @@ hz_lang(const char *s) {
 
 #define HZ_LANG(lang_str) hz_lang(lang_str)
 
-static hz_section_t *
+static hz_sequence_t *
 hz_section_create(void) {
-    hz_section_t *sect = (hz_section_t *) HZ_MALLOC(sizeof(hz_section_t));
+    hz_sequence_t *sect = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
     sect->root = NULL;
     return sect;
 }
 
 static void
-hz_section_add(hz_section_t *sect, hz_section_node_t *new_node)
+hz_sequence_add(hz_sequence_t *sect, hz_sequence_node_t *new_node)
 {
     new_node->prev = NULL;
     new_node->next = NULL;
@@ -577,7 +578,7 @@ hz_section_add(hz_section_t *sect, hz_section_node_t *new_node)
     if (sect->root == NULL)
         sect->root = new_node;
     else {
-        hz_section_node_t *curr_node;
+        hz_sequence_node_t *curr_node;
         curr_node = sect->root;
         while (curr_node->next != NULL) {
             curr_node = curr_node->next;
@@ -589,7 +590,7 @@ hz_section_add(hz_section_t *sect, hz_section_node_t *new_node)
 }
 
 static size_t
-hz_section_node_count(hz_section_node_t *node) {
+hz_sequence_node_count(hz_sequence_node_t *node) {
     size_t count = 0;
 
     while (node != NULL) {
@@ -600,8 +601,8 @@ hz_section_node_count(hz_section_node_t *node) {
     return count;
 }
 
-static hz_section_node_t *
-hz_section_last_node(hz_section_node_t *node) {
+static hz_sequence_node_t *
+hz_sequence_last_node(hz_sequence_node_t *node) {
     while (node->next != NULL) {
         node = node->next;
     }
@@ -610,23 +611,38 @@ hz_section_last_node(hz_section_node_t *node) {
 }
 
 static hz_bool_t
-hz_section_rem_n_next_nodes(hz_section_node_t *start, size_t n)
+hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 {
-    /* assumes n passed in doesn't cause segfault :) */
-    hz_section_node_t *curr = start->next, *prev;
+    hz_sequence_node_t *next, *curr = g->next;
     size_t i = 0;
 
-    while (i < n && curr != NULL) {
-        curr = curr->next;
-
-        if (curr == NULL) break;
-        prev = curr->prev;
-
+    while (curr != NULL && i < n) {
+        next = curr->next;
+        HZ_FREE(curr);
+        curr = next;
         ++i;
     }
 
-    start->next = curr;
-    if (curr != NULL) curr->prev = start;
+    g->next = curr;
+    curr->prev = g;
+    return HZ_TRUE;
+}
+
+/* removes n nodes starting from start
+ * including start
+ * */
+static hz_bool_t
+hz_sequence_rem_node_range(hz_sequence_node_t *n1, hz_sequence_node_t *n2) {
+    hz_sequence_node_t *next, *n = n1->next;
+
+    while (n != NULL && n != n2) {
+        next = n->next;
+        HZ_FREE(n);
+        n = next;
+    }
+
+    n1->next = n2;
+    n2->prev = n1;
     return HZ_TRUE;
 }
 
@@ -716,7 +732,7 @@ hz_utf8_next(hz_utf8_dec_t *dec) {
 
 
 static void
-hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
+hz_sequence_load_utf8(hz_sequence_t *sect, const hz_char *text, size_t len) {
     hz_unicode_t code;
     int ch;
 
@@ -727,49 +743,55 @@ hz_section_load_utf8(hz_section_t *sect, const hz_char *text, size_t len) {
 
     /* TODO: do proper error handling for the UTF-8 decoder */
     while ((ch = hz_utf8_next(&dec)) > 0) {
-        hz_section_node_t *node = (hz_section_node_t *) HZ_MALLOC(sizeof(hz_section_node_t));
+        hz_sequence_node_t *node = (hz_sequence_node_t *) HZ_MALLOC(sizeof(hz_sequence_node_t));
         node->codepoint = ch;
         node->id = 0;
+        node->cid = 0;
         node->gc = HZ_GLYPH_CLASS_ZERO;
         node->x_advance = 0;
         node->y_advance = 0;
         node->x_offset = 0;
         node->y_offset = 0;
-        hz_section_add(sect, node);
+        hz_sequence_add(sect, node);
     }
 }
 
 static void
-hz_section_load_unicode(hz_section_t *sect, const hz_unicode_t *codepoints, size_t size)
+hz_sequence_load_unicode(hz_sequence_t *sequence, const hz_unicode_t *codepoints, size_t size)
 {
     size_t i;
     for (i = 0; i < size; ++i) {
-        hz_section_node_t *node = (hz_section_node_t *)HZ_MALLOC(sizeof(hz_section_node_t));
+        hz_sequence_node_t *node = (hz_sequence_node_t *)HZ_MALLOC(sizeof(hz_sequence_node_t));
         node->codepoint = codepoints[i];
         node->id = 0;
+        node->cid = 0;
         node->gc = HZ_GLYPH_CLASS_ZERO;
         node->x_advance = 0;
         node->y_advance = 0;
         node->x_offset = 0;
         node->y_offset = 0;
-        hz_section_add(sect, node);
+        hz_sequence_add(sequence, node);
     }
 }
 
 static void
-hz_section_load_utf8_zt(hz_section_t *sect, const hz_char *text) {
-    hz_section_load_utf8(sect, text, UINT64_MAX);
+hz_sequence_load_utf8_zt(hz_sequence_t *sequence, const hz_char *text) {
+    hz_sequence_load_utf8(sequence, text, UINT64_MAX);
 }
 
 static void
-hz_section_destroy(hz_section_t *sect) {
-    hz_section_node_t *node = sect->root;
+hz_sequence_destroy(hz_sequence_t *sequence) {
+    hz_sequence_node_t *node = sequence->root;
 
     while (node != NULL) {
-        hz_section_node_t *node_tmp = node;
+        hz_sequence_node_t *node_tmp = node;
         node = node->next;
-        free(node_tmp);
+        node_tmp->prev = NULL;
+        node_tmp->next = NULL;
+        HZ_FREE(node_tmp);
     }
+
+    sequence->root = NULL;
 }
 
 typedef struct hz_rec16_t {
@@ -1135,14 +1157,14 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
                                  hz_tag_t script,
                                  hz_tag_t language,
                                  const hz_array_t *wanted_features,
-                                 hz_section_t *sect);
+                                 hz_sequence_t *sect);
 
 hz_bool_t
 hz_ot_layout_apply_gpos_features(hz_face_t *face,
                                  hz_tag_t script,
                                  hz_tag_t language,
                                  const hz_array_t *wanted_features,
-                                 hz_section_t *sect);
+                                 hz_sequence_t *sect);
 
 void
 hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
@@ -1162,12 +1184,12 @@ void
 hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
                                hz_stream_t *table,
                                hz_feature_t feature,
-                               hz_section_t *sect);
+                               hz_sequence_t *sect);
 void
 hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                                hz_stream_t *table,
                                hz_feature_t feature,
-                               hz_section_t *sect);
+                               hz_sequence_t *sect);
 
 hz_tag_t
 hz_ot_script_to_tag(hz_script_t script);

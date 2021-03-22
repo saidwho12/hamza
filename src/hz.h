@@ -45,14 +45,14 @@ void
 hz_context_destroy(hz_context_t *ctx);
 
 /*  Function: hz_shape_full
- *      Shapes a section of text.
+ *      Shapes a sequenceion of text.
  *
  *  Parameters:
  *      ctx - The shaping context.
- *      sect - The section to shape.
+ *      sequence - The sequenceion to shape.
  * */
 void
-hz_shape_full(hz_context_t *ctx, hz_section_t *sect);
+hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence);
 
 hz_set_t *
 hz_context_gather_required_glyphs(hz_context_t *ctx);

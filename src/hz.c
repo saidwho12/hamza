@@ -148,7 +148,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
 }
 
 hz_bool_t
-hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
+hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
                        hz_cmap_encoding_t enc)
 {
     hz_stream_t *subtable = hz_stream_create(table->data + enc.subtable_offset, 0, 0);
@@ -175,8 +175,8 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_section_t *sect,
             st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
             st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
 
-            /* map unicode characters to glyph indices in section */
-            hz_section_node_t *curr_node = sect->root;
+            /* map unicode characters to glyph indices in sequenceion */
+            hz_sequence_node_t *curr_node = sequence->root;
 
             while (curr_node != NULL) {
                 curr_node->id = hz_cmap_unicode_to_id(&st, curr_node->codepoint);
@@ -221,7 +221,7 @@ hz_cmap_apply_encoding_to_set(hz_stream_t *table,
             st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
             st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
 
-            /* map unicode characters to glyph indices in section */
+            /* map unicode characters to glyph indices in sequenceion */
             size_t index = 0;
             size_t num_codes = codepoints->count;
 
@@ -241,7 +241,7 @@ hz_cmap_apply_encoding_to_set(hz_stream_t *table,
 
 void
 hz_map_to_nominal_forms(hz_context_t *ctx,
-                        hz_section_t *sect)
+                        hz_sequence_t *sequence)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
     hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('c','m','a','p'));
@@ -268,9 +268,9 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
         HZ_LOG("platform: %s\n", hz_cmap_platform_to_string(enc.platform_id));
         HZ_LOG("encoding: %d\n", enc.encoding_id);
         HZ_LOG("subtable-offset: %d\n", enc.subtable_offset);
-        hz_cmap_apply_encoding(table, sect, enc);
+        hz_cmap_apply_encoding(table, sequence, enc);
 //        if (enc.platform_id == HZ_CMAP_PLATFORM_WINDOWS) {
-//            hz_cmap_apply_encoding(table, sect, enc);
+//            hz_cmap_apply_encoding(table, sequence, enc);
 //            break;
 //        }
 
@@ -342,7 +342,7 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
 
 
 void
-hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
+hz_ot_parse_gdef_table(hz_context_t *ctx, hz_sequence_t *sequence)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
     hz_stream_t *table = hz_stream_create(hz_face_get_ot_tables(face)->GDEF_table,0,0);
@@ -374,7 +374,7 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_section_t *sect)
         /* glyph class def isn't nil */
         hz_stream_t *subtable = hz_stream_create(table->data + glyph_class_def_offset, 0, 0);
         hz_map_t *class_map = hz_map_create();
-        hz_section_node_t *curr_node = sect->root;
+        hz_sequence_node_t *curr_node = sequence->root;
         uint16_t class_format;
         hz_stream_read16(subtable, &class_format);
         switch (class_format) {
@@ -474,7 +474,7 @@ hz_fill_tt1_metrics(hz_face_t *face,
 }
 
 void
-hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
+hz_apply_tt1_metrics(hz_face_t *face, hz_sequence_t *sequence)
 {
     hz_long_hor_metric_t *h_metrics;
     int16_t *left_side_bearings;
@@ -513,7 +513,7 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
 //    }
 
     /* apply the metrics to position the glyphs */
-    hz_section_node_t *curr_node = sect->root;
+    hz_sequence_node_t *curr_node = sequence->root;
     while (curr_node != NULL) {
         hz_index_t id = curr_node->id;
         hz_metrics_t *metric = hz_face_get_glyph_metrics(face, id);
@@ -531,37 +531,40 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_section_t *sect)
 }
 
 static void
-hz_apply_rtl_switch(hz_section_t *sect) {
+hz_apply_rtl_switch(hz_sequence_t *sequence) {
 }
 
 void
-hz_shape_full(hz_context_t *ctx, hz_section_t *sect)
+hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
 {
     hz_face_t *face = hz_font_get_face(ctx->font);
     hz_tag_t script_tag = hz_ot_script_to_tag(ctx->script);
     hz_tag_t language_tag = hz_ot_language_to_tag(ctx->language);
+    const hz_face_ot_tables_t *tables = hz_face_get_ot_tables(face);
 
-    /* Map unicode characters to nominal glyph indices */
-    hz_map_to_nominal_forms(ctx, sect);
-    hz_ot_parse_gdef_table(ctx, sect);
+    /* map unicode characters to nominal glyph indices */
+    hz_map_to_nominal_forms(ctx, sequence);
 
-    if (hz_face_get_ot_tables(face)->GSUB_table != NULL)
+    /* sets glyph class information */
+    hz_ot_parse_gdef_table(ctx, sequence);
+
+    /* substitute glyphs */
+    if (tables->GSUB_table != NULL)
         hz_ot_layout_apply_gsub_features(face, script_tag,
                                          language_tag,
                                          ctx->features,
-                                         sect);
+                                         sequence);
 
-    hz_apply_tt1_metrics(face, sect);
-    if (hz_face_get_ot_tables(face)->GPOS_table != NULL)
+    /* position glyphs */
+    hz_apply_tt1_metrics(face, sequence);
+    if (tables->GPOS_table != NULL)
         hz_ot_layout_apply_gpos_features(face, script_tag,
                                          language_tag,
                                          ctx->features,
-                                         sect);
+                                         sequence);
 
-
-//    if (ctx->dir == HZ_DIR_RTL) {
-//        hz_apply_rtl_switch(sect);
-//    }
+    if (ctx->dir == HZ_RTL)
+        hz_apply_rtl_switch(sequence);
 }
 
 void

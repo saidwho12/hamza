@@ -55,8 +55,10 @@ hz_ft_font_create(FT_Face ft_face) {
                              &BASE_table, &GDEF_table, &GPOS_table, &GSUB_table, &JSTF_table)
                             != FT_Err_Ok) {
         HZ_ERROR("Failed to validate OpenType tables!");
+        hz_face_destroy(face);
+        hz_font_destroy(font);
+        return NULL;
     }
-
 
     ot_tables.BASE_table = (hz_byte_t *)BASE_table;
     ot_tables.GDEF_table = (hz_byte_t *)GDEF_table;

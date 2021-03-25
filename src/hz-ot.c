@@ -882,7 +882,7 @@ hz_next_node_of_class_bound(hz_sequence_node_t *node,
         return node->next;
     }
 
-    while (*skip <= max_skip) {
+    while (*skip < max_skip) {
         if (skip != NULL) (* skip) ++;
         node = node->next;
 
@@ -957,6 +957,8 @@ hz_ignored_classes_from_lookup_flags(hz_lookup_flag_t flags)
     return ignored_classes;
 }
 
+#define HZ_MAX(x, y) (((x) > (y)) ? (x) : (y))
+
 /* if possible, apply ligature fit for sequence of glyphs
  * returns true if replacement occurred
  * */
@@ -999,36 +1001,40 @@ hz_ot_layout_apply_fit_ligature(hz_ligature_t *ligatures,
              * a component id, link all following marks together after the ligature which were attache
              * to the ligature.
              * */
+            int comp_count = ligature->component_count;
 
-            if (gcignore == HZ_GLYPH_CLASS_ZERO)
-                hz_sequence_rem_next_n_nodes(start_node, ligature->component_count-1);
-            else {
-                hz_sequence_node_t *n1, *n2 = start_node;
+            if (comp_count - 1) {
+                if (gcignore == HZ_GLYPH_CLASS_ZERO)
+                    hz_sequence_rem_next_n_nodes(start_node, comp_count-1);
+                else {
+                    hz_sequence_node_t *n1, *n2 = start_node;
 
-                int comp_index = 0;
-                int comp_count = ligature->component_count;
-                while (comp_index < comp_count) {
-                    hz_sequence_node_t *child;
-                    int skip = 0;
-                    n1 = n2;
-                    n2 = hz_next_node_of_class_bound(n1, gcignore, &skip, comp_count);
+                    int comp_index = 0;
+                    while (comp_index < comp_count) {
+                        hz_sequence_node_t *child;
+                        int skip = 0;
+                        n1 = n2;
+                        n2 = hz_next_node_of_class_bound(n1, gcignore, &skip, comp_count);
 
-                    if ((comp_index + skip) > comp_count) {
-                        int rem = abs((comp_index + skip) - comp_count);
-                        if (rem)
-                            hz_sequence_rem_next_n_nodes(n1, rem);
-                    } else {
-                        hz_sequence_rem_node_range(n1, n2);
+                        if ((comp_index + skip) > comp_count) {
+                            int rem = HZ_MAX((comp_index + skip) - comp_count, 0);
+                            if (rem)
+                                hz_sequence_rem_next_n_nodes(n1, rem);
+                        } else {
+                            hz_sequence_rem_node_range(n1, n2);
+                        }
+
+                        if (n2 == NULL) break;
+
+                        n1 = n2;
+                        n2 = hz_last_node_of_class(n1, HZ_GLYPH_CLASS_MARK, NULL);
+
+                        for (child = n1; child != n2->next; child = child->next) {
+                            child->cid = comp_index ? comp_index : skip-1;
+                        }
+
+                        comp_index += comp_index ? skip-1 : skip;
                     }
-
-                    n1 = n2;
-                    n2 = hz_last_node_of_class(n1, HZ_GLYPH_CLASS_MARK, NULL);
-
-                    for (child = n1; child != n2->next; child = child->next) {
-                        child->cid = comp_index ? comp_index : skip-1;
-                    }
-
-                    comp_index += comp_index ? skip-1 : skip;
                 }
             }
 
@@ -1486,8 +1492,8 @@ hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
                                         int32_t x2 = base_anchor.x_coord;
                                         int32_t y2 = base_anchor.y_coord;
 
-                                        g->x_offset += x2 - x1;
-                                        g->y_offset += y2 - y1;
+                                        g->x_offset = x2 - x1;
+                                        g->y_offset = y2 - y1;
                                     }
                                 }
                             }
@@ -1759,6 +1765,7 @@ hz_ot_language_to_tag(hz_language_t language)
         case HZ_LANGUAGE_ARABIC: return HZ_TAG('A','R','A',' ');
         case HZ_LANGUAGE_ENGLISH: return HZ_TAG('E','N','G',' ');
         case HZ_LANGUAGE_FRENCH: return HZ_TAG('F','R','A',' ');
+        case HZ_LANGUAGE_GERMAN: return HZ_TAG('D','E','U',' ');
         case HZ_LANGUAGE_JAPANESE: return HZ_TAG('J','A','N',' ');
         case HZ_LANGUAGE_URDU: return HZ_TAG('U','R','D',' ');
     }

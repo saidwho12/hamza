@@ -44,6 +44,11 @@ hz_face_create()
     return face;
 }
 
+void
+hz_face_destroy(hz_face_t *face)
+{
+
+}
 
 uint16_t
 hz_face_get_upem(hz_face_t *face)

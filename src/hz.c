@@ -532,6 +532,43 @@ hz_apply_tt1_metrics(hz_face_t *face, hz_sequence_t *sequence)
 
 static void
 hz_apply_rtl_switch(hz_sequence_t *sequence) {
+    hz_sequence_node_t *node = hz_sequence_last_node(sequence->root);
+    sequence->root = node;
+
+    while (node != NULL) {
+        hz_sequence_node_t *prev, *next;
+        prev = node->prev;
+        next = node->next;
+        node->next = prev;
+        node->prev = next;
+        node = prev;
+    }
+}
+
+static void
+hz_compute_sequence_width(hz_sequence_t *sequence) {
+    hz_sequence_node_t *node = sequence->root;
+
+    while (node != NULL) {
+        sequence->width += node->x_advance;
+        node = node->next;
+    }
+}
+
+void
+hz_setup_sequence_glyph_info(hz_context_t *ctx, hz_sequence_t *sequence) {
+    hz_face_t *face = hz_font_get_face(ctx->font);
+    const hz_face_ot_tables_t *tables = hz_face_get_ot_tables(face);
+    if (tables->GDEF_table != NULL) {
+        hz_ot_parse_gdef_table(ctx, sequence);
+    } else {
+        hz_sequence_node_t *node = sequence->root;
+
+        while (node != NULL) {
+            node->gc = HZ_GLYPH_CLASS_BASE;
+            node = node->next;
+        }
+    }
 }
 
 void
@@ -546,7 +583,7 @@ hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
     hz_map_to_nominal_forms(ctx, sequence);
 
     /* sets glyph class information */
-    hz_ot_parse_gdef_table(ctx, sequence);
+    hz_setup_sequence_glyph_info(ctx, sequence);
 
     /* substitute glyphs */
     if (tables->GSUB_table != NULL)
@@ -565,6 +602,8 @@ hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
 
     if (ctx->dir == HZ_RTL)
         hz_apply_rtl_switch(sequence);
+
+    hz_compute_sequence_width(sequence);
 }
 
 void

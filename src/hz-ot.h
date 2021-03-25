@@ -486,6 +486,7 @@ typedef enum hz_language_t {
     HZ_LANGUAGE_ARABIC,
     HZ_LANGUAGE_ENGLISH,
     HZ_LANGUAGE_FRENCH,
+    HZ_LANGUAGE_GERMAN,
     HZ_LANGUAGE_JAPANESE,
     HZ_LANGUAGE_URDU,
 } hz_language_t;
@@ -551,6 +552,7 @@ struct hz_sequence_node_t {
 typedef struct hz_sequence_t {
     hz_sequence_node_t *root;
     int flags;
+    int64_t width;
 } hz_sequence_t;
 
 static hz_language_t
@@ -563,10 +565,12 @@ hz_lang(const char *s) {
 #define HZ_LANG(lang_str) hz_lang(lang_str)
 
 static hz_sequence_t *
-hz_section_create(void) {
-    hz_sequence_t *sect = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
-    sect->root = NULL;
-    return sect;
+hz_sequence_create(void) {
+    hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
+    sequence->root = NULL;
+    sequence->flags = 0;
+    sequence->width = 0;
+    return sequence;
 }
 
 static void
@@ -615,6 +619,7 @@ hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 {
     hz_sequence_node_t *next, *curr = g->next;
     size_t i = 0;
+    if (n == 0) return HZ_TRUE;
 
     while (curr != NULL && i < n) {
         next = curr->next;
@@ -624,7 +629,9 @@ hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
     }
 
     g->next = curr;
-    curr->prev = g;
+    if (curr != NULL)
+        curr->prev = g;
+
     return HZ_TRUE;
 }
 

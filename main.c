@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
     hz_context_set_features(ctx, features);
 
     // Load utf8 string "_zt" stands for zero-terminated
-    hz_sequence_t *section = hz_section_create();
+    hz_sequence_t *section = hz_sequence_create();
     hz_sequence_load_utf8_zt(section, (const hz_char *) text);
     hz_shape_full(ctx, section);
 

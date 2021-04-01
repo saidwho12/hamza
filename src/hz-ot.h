@@ -492,8 +492,11 @@ typedef enum hz_language_t {
 } hz_language_t;
 
 typedef enum hz_direction_t {
-    HZ_LTR,
-    HZ_RTL,
+    HB_DIRECTION_INVALID = 0,
+    HZ_DIRECTION_LTR = 1,
+    HZ_DIRECTION_RTL = 2,
+    HZ_DIRECTION_TTB = 3,
+    HZ_DIRECTION_BTT = 4,
 } hz_direction_t;
 
 /* Enum: hz_glyph_class_t
@@ -799,6 +802,7 @@ hz_sequence_destroy(hz_sequence_t *sequence) {
     }
 
     sequence->root = NULL;
+    HZ_FREE(sequence);
 }
 
 typedef struct hz_rec16_t {

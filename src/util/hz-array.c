@@ -105,8 +105,8 @@ hz_array_insert(hz_array_t *array, size_t index, uint32_t val)
 void
 hz_array_destroy(hz_array_t *array)
 {
-    free(array->data);
-    free(array);
+    HZ_FREE(array->data);
+    HZ_FREE(array);
 }
 
 uint32_t

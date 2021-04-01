@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
 
 
     hz_context_t *ctx = hz_context_create(font);
-    hz_context_set_direction(ctx, HZ_RTL);
+    hz_context_set_direction(ctx, HZ_DIRECTION_RTL);
     hz_context_set_script(ctx, HZ_SCRIPT_ARABIC);
     hz_context_set_language(ctx, HZ_LANGUAGE_ARABIC);
     hz_context_set_features(ctx, features);
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
 
     int xpos = 400, ypos = 100;
 
-    hz_sequence_node_t *node = ctx->dir == HZ_RTL ? hz_sequence_last_node(section->root) : section->root;
+    hz_sequence_node_t *node = ctx->dir == HZ_DIRECTION_RTL ? hz_sequence_last_node(section->root) : section->root;
     while (node != NULL) {
         FT_GlyphSlot slot = ft_face->glyph;
         FT_Glyph glyph;
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
 //        FT_Done_Glyph(glyph);
 
         xpos += node->glyph.x_advance;
-        node = ctx->dir == HZ_RTL ? node->prev : node->next;
+        node = ctx->dir == HZ_DIRECTION_RTL ? node->prev : node->next;
     }
 
     stbi_write_bmp("./example.bmp", WIDTH, HEIGHT, 1, image);

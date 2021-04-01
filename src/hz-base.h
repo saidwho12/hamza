@@ -130,6 +130,11 @@ hz_stream_create(const uint8_t *data, size_t length, uint8_t flags)
     return stream;
 }
 
+static void
+hz_stream_destroy(hz_stream_t *stream) {
+    HZ_FREE(stream);
+}
+
 static unsigned int
 hz_stream_read8(hz_stream_t *stream, uint8_t *val) {
     const uint8_t *valptr = stream->data + stream->offset;

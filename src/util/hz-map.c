@@ -21,22 +21,22 @@ uint32_t hash_fnv1a(uint32_t val) {
     return hash;
 }
 
-struct map_bucket_node {
-    struct map_bucket_node *prev, *next;
+typedef struct hz_map_bucket_node_t {
+    struct hz_map_bucket_node_t *prev, *next;
     uint32_t key;
     uint32_t value;
-};
+} hz_map_bucket_node_t;
 
-struct map_bucket {
-    struct map_bucket_node *root;
-};
+typedef struct hz_map_bucket_t {
+    struct hz_map_bucket_node_t *root;
+} hz_map_bucket_t;
 
-static void bucket_init(struct map_bucket *b) {
+static void bucket_init(hz_map_bucket_t *b) {
     b->root = NULL;
 }
 
 struct hz_map_t {
-    struct map_bucket *buckets;
+    hz_map_bucket_t *buckets;
     size_t bucket_count;
 };
 
@@ -45,7 +45,7 @@ hz_map_create(void)
 {
     hz_map_t *map = HZ_MALLOC(sizeof(hz_map_t));
     map->bucket_count = BUCKET_COUNT;
-    map->buckets = HZ_MALLOC(sizeof(struct map_bucket) * map->bucket_count);
+    map->buckets = HZ_MALLOC(sizeof(hz_map_bucket_t) * map->bucket_count);
     size_t i = 0;
 
     while (i < BUCKET_COUNT) {
@@ -59,7 +59,25 @@ hz_map_create(void)
 void
 hz_map_destroy(hz_map_t *map)
 {
+    size_t i;
 
+    for (i = 0; i < map->bucket_count; ++i) {
+        hz_map_bucket_t *bucket = &map->buckets[i];
+        if (bucket != NULL) {
+            hz_map_bucket_node_t *node = bucket->root;
+
+            while (node != NULL) {
+                hz_map_bucket_node_t *tmp = node;
+                node = node->next;
+                HZ_FREE(tmp);
+            }
+
+            bucket->root = NULL;
+        }
+    }
+
+    HZ_FREE(map->buckets);
+    HZ_FREE(map);
 }
 
 hz_bool_t
@@ -68,10 +86,10 @@ hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
     uint32_t hash = hash_fnv1a(key);
     size_t index = hash % map->bucket_count;
 
-    struct map_bucket *bucket = &map->buckets[index];
+    hz_map_bucket_t *bucket = &map->buckets[index];
 
     if (bucket->root == NULL) {
-        struct map_bucket_node *new_node = HZ_MALLOC(sizeof(struct map_bucket_node));
+        hz_map_bucket_node_t *new_node = HZ_MALLOC(sizeof(hz_map_bucket_node_t));
         new_node->prev = NULL;
         new_node->next = NULL;
         new_node->value = value;
@@ -79,7 +97,7 @@ hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
         bucket->root = new_node;
     } else {
         /* loop over nodes, if one with equal key is found set value, otherwise insert node */
-        struct map_bucket_node *curr_node = bucket->root;
+        hz_map_bucket_node_t *curr_node = bucket->root;
         while (curr_node->next != NULL) {
             if (curr_node->key == key) {
                 curr_node->value = value;
@@ -89,7 +107,7 @@ hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
             curr_node = curr_node->next;
         }
 
-        struct map_bucket_node *new_node = HZ_MALLOC(sizeof(struct map_bucket_node));
+        hz_map_bucket_node_t *new_node = HZ_MALLOC(sizeof(hz_map_bucket_node_t));
         new_node->prev = curr_node;
         new_node->value = value;
         new_node->key = key;
@@ -105,10 +123,10 @@ hz_map_get_value(hz_map_t *map, uint32_t key)
 {
     uint32_t hash = hash_fnv1a(key);
     size_t index = hash % map->bucket_count;
-    struct map_bucket *bucket = &map->buckets[index];
+    hz_map_bucket_t *bucket = &map->buckets[index];
 
     if (bucket->root != NULL) {
-        struct map_bucket_node *curr_node = bucket->root;
+        hz_map_bucket_node_t *curr_node = bucket->root;
 
         /* if only single node is the root of bucket, no need to compare keys  */
 //        if (curr_node->next == NULL && curr_node->key == key) {
@@ -138,10 +156,10 @@ hz_map_value_exists(hz_map_t *map, uint32_t key)
 {
     uint32_t hash = hash_fnv1a(key);
     size_t index = hash % map->bucket_count;
-    struct map_bucket *bucket = &map->buckets[index];
+    hz_map_bucket_t *bucket = &map->buckets[index];
 
     if (bucket->root != NULL) {
-        struct map_bucket_node *curr_node = bucket->root;
+        hz_map_bucket_node_t *curr_node = bucket->root;
 
         do {
             if (curr_node->key == key) {

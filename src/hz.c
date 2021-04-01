@@ -188,6 +188,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
             return HZ_FALSE;
     }
 
+    hz_stream_destroy(subtable);
     return HZ_TRUE;
 }
 
@@ -338,6 +339,7 @@ hz_map_to_nominal_forms(hz_context_t *ctx,
 //                break;
 //        }
     }
+    hz_stream_destroy(table);
 }
 
 
@@ -414,7 +416,10 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_sequence_t *sequence)
         }
 
         hz_map_destroy(class_map);
+        hz_stream_destroy(subtable);
     }
+
+    hz_stream_destroy(table);
 }
 
 
@@ -600,7 +605,7 @@ hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
                                          ctx->features,
                                          sequence);
 
-    if (ctx->dir == HZ_RTL)
+    if (ctx->dir == HZ_DIRECTION_RTL)
         hz_apply_rtl_switch(sequence);
 
     hz_compute_sequence_width(sequence);

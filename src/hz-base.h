@@ -102,6 +102,11 @@ static uint32_t bswap32(uint32_t val)
 #define HZ_UNTAG(tag) (tag >> 24) & 0xFF, (tag >> 16) & 0xFF, (tag >> 8) & 0xFF, tag & 0xFF
 #define HZ_ALLOC(T) (T *) HZ_MALLOC(sizeof(T))
 
+/* V is the variable name, while T is the type/structure */
+#define HZ_HEAPVAR(V, T) T *V = HZ_ALLOC(T)
+
+#define HZ_HEAPARR(V, N, T) T *V = HZ_MALLOC(sizeof(T) * (N))
+
 typedef enum hz_status_t {
     HZ_SUCCESS = 0,
     HZ_FAILURE = 1
@@ -113,14 +118,14 @@ typedef enum hz_status_t {
 #define HZ_STREAM_OVERFLOW 0
 
 typedef struct hz_stream_t {
-    const uint8_t *data;
+    hz_byte_t *data;
     size_t length;
     size_t offset;
     uint8_t flags;
 } hz_stream_t;
 
 static hz_stream_t *
-hz_stream_create(const uint8_t *data, size_t length, uint8_t flags)
+hz_stream_create(hz_byte_t *data, size_t length, uint8_t flags)
 {
     hz_stream_t *stream = (hz_stream_t *) HZ_MALLOC(sizeof(hz_stream_t));
     stream->offset = 0;
@@ -195,14 +200,16 @@ hz_stream_seek(hz_stream_t *stream, int offset) {
 static void
 hz_stream_read16_n(hz_stream_t *stream, size_t count, uint16_t *A)
 {
-    size_t i = 0;
+    if (A != NULL) {
+        size_t i = 0;
 
-    while (i < count) {
-        uint16_t *val = &A[i];
+        while (i < count) {
+            uint16_t *val = A + i;
 
-        hz_stream_read16(stream, val);
+            hz_stream_read16(stream, val);
 
-        ++i;
+            ++i;
+        }
     }
 }
 

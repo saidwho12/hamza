@@ -354,6 +354,7 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_sequence_t *sequence)
     hz_offset16_t attach_list_offset;
     hz_offset16_t lig_caret_list_offset;
     hz_offset16_t mark_attach_class_def_offset;
+    hz_offset16_t mark_glyph_sets_def_offset;
 
     hz_stream_read32(table, &version);
 
@@ -365,6 +366,11 @@ hz_ot_parse_gdef_table(hz_context_t *ctx, hz_sequence_t *sequence)
             hz_stream_read16(table, &mark_attach_class_def_offset);
             break;
         case 0x00010002: /* 1.2 */
+            hz_stream_read16(table, &glyph_class_def_offset);
+            hz_stream_read16(table, &attach_list_offset);
+            hz_stream_read16(table, &lig_caret_list_offset);
+            hz_stream_read16(table, &mark_attach_class_def_offset);
+            hz_stream_read16(table, &mark_glyph_sets_def_offset);
             break;
         case 0x00010003: /* 1.3 */
             break;

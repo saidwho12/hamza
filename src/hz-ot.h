@@ -486,6 +486,7 @@ typedef enum hz_language_t {
     HZ_LANGUAGE_ARABIC,
     HZ_LANGUAGE_ENGLISH,
     HZ_LANGUAGE_FRENCH,
+    HZ_LANGUAGE_SPANISH,
     HZ_LANGUAGE_GERMAN,
     HZ_LANGUAGE_JAPANESE,
     HZ_LANGUAGE_URDU,
@@ -556,6 +557,7 @@ typedef struct hz_sequence_t {
     hz_sequence_node_t *root;
     int flags;
     int64_t width;
+    hz_direction_t direction;
 } hz_sequence_t;
 
 static hz_language_t
@@ -652,7 +654,9 @@ hz_sequence_rem_node_range(hz_sequence_node_t *n1, hz_sequence_node_t *n2) {
     }
 
     n1->next = n2;
-    n2->prev = n1;
+    if (n2 != NULL) {
+        n2->prev = n1;
+    }
     return HZ_TRUE;
 }
 
@@ -742,7 +746,7 @@ hz_utf8_next(hz_utf8_dec_t *dec) {
 
 
 static void
-hz_sequence_load_utf8(hz_sequence_t *sect, const hz_char *text, size_t len) {
+hz_sequence_load_utf8_full(hz_sequence_t *sect, const char *text, size_t len) {
     hz_unicode_t code;
     int ch;
 
@@ -785,8 +789,13 @@ hz_sequence_load_unicode(hz_sequence_t *sequence, const hz_unicode_t *codepoints
 }
 
 static void
-hz_sequence_load_utf8_zt(hz_sequence_t *sequence, const hz_char *text) {
-    hz_sequence_load_utf8(sequence, text, UINT64_MAX);
+hz_sequence_load_utf8(hz_sequence_t *sequence, const char *text) {
+    hz_sequence_load_utf8_full(sequence, text, UINT64_MAX);
+}
+
+static void
+hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction) {
+    sequence->direction = direction;
 }
 
 static void
@@ -1192,15 +1201,15 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
 
 
 void
-hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
-                               hz_stream_t *table,
-                               hz_feature_t feature,
-                               hz_sequence_t *sect);
+hz_ot_layout_apply_gsub_feature(hz_face_t *face,
+                                hz_stream_t *table,
+                                hz_feature_t feature,
+                                hz_sequence_t *sequence);
 void
-hz_ot_layout_apply_gpos_lookup(hz_face_t *face,
-                               hz_stream_t *table,
-                               hz_feature_t feature,
-                               hz_sequence_t *sect);
+hz_ot_layout_apply_gpos_feature(hz_face_t *face,
+                                hz_stream_t *table,
+                                hz_feature_t feature,
+                                hz_sequence_t *sequence);
 
 hz_tag_t
 hz_ot_script_to_tag(hz_script_t script);

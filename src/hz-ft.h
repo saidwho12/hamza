@@ -80,27 +80,28 @@ hz_ft_font_create(FT_Face ft_face) {
 
     for (glyph_index = 0; glyph_index < hz_face_get_num_glyphs(face); ++glyph_index) {
         FT_GlyphSlot slot = ft_face->glyph;
-        FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE);
-        FT_Glyph_Metrics metrics = ft_face->glyph->metrics;
-        FT_Glyph glyph;
-        FT_Get_Glyph(slot, &glyph);
+        if (FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
+            FT_Glyph_Metrics metrics = ft_face->glyph->metrics;
+            FT_Glyph glyph;
+            FT_Get_Glyph(slot, &glyph);
 
-        FT_BBox bbox;
-        FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
+            FT_BBox bbox;
+            FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
 
-        FT_Done_Glyph(glyph);
+            FT_Done_Glyph(glyph);
 
-        hz_metrics_t *out_metrics = hz_face_get_glyph_metrics(face, glyph_index);
-        out_metrics->x_advance = metrics.horiAdvance;
-        out_metrics->y_advance = 0;
-        out_metrics->x_bearing = metrics.horiBearingX;
-        out_metrics->y_bearing = metrics.horiBearingY;
-        out_metrics->width = metrics.width;
-        out_metrics->height = metrics.height;
-        out_metrics->x_min = bbox.xMin;
-        out_metrics->x_max = bbox.xMax;
-        out_metrics->y_min = bbox.yMin;
-        out_metrics->y_max = bbox.yMax;
+            hz_metrics_t *out_metrics = hz_face_get_glyph_metrics(face, glyph_index);
+            out_metrics->x_advance = metrics.horiAdvance;
+            out_metrics->y_advance = 0;
+            out_metrics->x_bearing = metrics.horiBearingX;
+            out_metrics->y_bearing = metrics.horiBearingY;
+            out_metrics->width = metrics.width;
+            out_metrics->height = metrics.height;
+            out_metrics->x_min = bbox.xMin;
+            out_metrics->x_max = bbox.xMax;
+            out_metrics->y_min = bbox.yMin;
+            out_metrics->y_max = bbox.yMax;
+        }
     }
 
     hz_font_set_face(font, face);

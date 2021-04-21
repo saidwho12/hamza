@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
 
     // Load utf8 string "_zt" stands for zero-terminated
     hz_sequence_t *section = hz_sequence_create();
-    hz_sequence_load_utf8_zt(section, (const hz_char *) text);
+    hz_sequence_load_utf8(section, (const hz_char *) text);
     hz_shape_full(ctx, section);
 
 
@@ -134,8 +134,8 @@ int main(int argc, char *argv[]) {
         unsigned int h = slot->bitmap.rows;
         int xb = slot->bitmap_left >> 6;
         int yb = slot->bitmap_top >> 6;
-        int xo = node->glyph.x_offset >> 6;
-        int yo = node->glyph.y_offset >> 6;
+        int xo = node->x_offset >> 6;
+        int yo = node->y_offset >> 6;
 
         uint16_t x0 = xpos + xo + xb;
         uint16_t y0 = ypos + yo + (h - yb);

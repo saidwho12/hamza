@@ -47,7 +47,7 @@ hz_bool hz_blob_is_empty(hz_blob_t *blob) {
     return blob->data == NULL || blob->size == 0;
 }
 
-hz_stream_t *
-hz_blob_to_stream(hz_blob_t *blob) {
-    return hz_stream_create(blob->data, blob->size, HZ_STREAM_BOUND_FLAG);
-}
+//buf_t *
+//hz_blob_to_stream(hz_blob_t *blob) {
+//    return createbuf(blob->data, blob->size, HZ_STREAM_BOUND_FLAG);
+//}

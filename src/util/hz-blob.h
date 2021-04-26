@@ -80,8 +80,8 @@ hz_bool hz_blob_is_empty(hz_blob_t *blob);
  *  Returns:
  *      Byte stream to read into the blob.
  * */
-hz_stream_t *
-hz_blob_to_stream(hz_blob_t *blob);
+//buf_t *
+//hz_blob_to_stream(hz_blob_t *blob);
 
 #ifdef __cplusplus
 }

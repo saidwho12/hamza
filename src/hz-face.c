@@ -1,4 +1,6 @@
 #include "hz-face.h"
+#include "util/hz-map.h"
+#include "hz-ot.h"
 
 typedef struct hz_face_table_node_t hz_face_table_node_t;
 
@@ -26,6 +28,8 @@ struct hz_face_t {
     int16_t linegap;
 
     uint16_t upem;
+
+    hz_map_t *class_map;
 };
 
 hz_face_t *
@@ -41,6 +45,7 @@ hz_face_create()
     face->linegap = 0;
     face->upem = 0;
     face->tables.root = NULL;
+    face->class_map = hz_map_create();
     return face;
 }
 
@@ -148,22 +153,22 @@ void
 hz_face_load_num_glyphs(hz_face_t *face)
 {
     hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('m','a','x','p'));
-    hz_stream_t *table = hz_blob_to_stream( blob );
+    buf_t table = createbuf(hz_blob_get_data(blob), BUF_BSWAP);
 
     uint32_t version;
     uint16_t num_glyphs;
 
-    hz_stream_read32(table, &version);
+    version = unpacki(&table);
 
     switch (version) {
         case 0x00005000: {
             /* version 0.5 */
-            hz_stream_read16(table, &num_glyphs);
+            num_glyphs = unpackh(&table);
             break;
         }
         case 0x00010000: {
             /* version 1.0 with full information */
-            hz_stream_read16(table, &num_glyphs);
+            num_glyphs = unpackh(&table);
             break;
         }
         default:
@@ -174,6 +179,84 @@ hz_face_load_num_glyphs(hz_face_t *face)
     face->num_glyphs = num_glyphs;
 }
 
+void
+hz_face_load_class_map(hz_face_t *face)
+{
+    if (hz_face_get_ot_tables(face)->GDEF_table != NULL) {
+        buf_t table = createbuf(hz_face_get_ot_tables(face)->GDEF_table, BUF_BSWAP);
+        uint32_t version;
+
+        hz_offset16_t glyph_class_def_offset;
+        hz_offset16_t attach_list_offset;
+        hz_offset16_t lig_caret_list_offset;
+        hz_offset16_t mark_attach_class_def_offset;
+        hz_offset16_t mark_glyph_sets_def_offset;
+
+        version = unpacki(&table);
+
+        switch (version) {
+            case 0x00010000: /* 1.0 */
+                unpackv(&table, "hhhh",
+                        &glyph_class_def_offset,
+                        &attach_list_offset,
+                        &lig_caret_list_offset,
+                        &mark_attach_class_def_offset);
+                break;
+            case 0x00010002: /* 1.2 */
+                unpackv(&table, "hhhhh",
+                        &glyph_class_def_offset,
+                        &attach_list_offset,
+                        &lig_caret_list_offset,
+                        &mark_attach_class_def_offset,
+                        &mark_glyph_sets_def_offset);
+                break;
+            case 0x00010003: /* 1.3 */
+                break;
+            default: /* error */
+                break;
+        }
+
+        if (glyph_class_def_offset != 0) {
+            /* glyph class def isn't nil */
+            buf_t subtable = createbuf(table.data + glyph_class_def_offset, BUF_BSWAP);
+            uint16_t class_format;
+            class_format = unpackh(&subtable);
+            switch (class_format) {
+                case 1:
+                    break;
+                case 2: {
+                    uint16_t range_index = 0, class_range_count;
+                    class_range_count = unpackh(&subtable);
+
+                    while (range_index < class_range_count) {
+                        uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                        unpackv(&subtable, "hhh",
+                                &start_glyph_id,
+                                &end_glyph_id,
+                                &glyph_class);
+                        HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
+                        hz_map_set_value_for_keys(face->class_map, start_glyph_id, end_glyph_id, HZ_BIT(glyph_class - 1));
+
+                        ++range_index;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+hz_glyph_class_t
+hz_face_get_glyph_class(hz_face_t *face, hz_index_t id)
+{
+    if (hz_map_value_exists(face->class_map, id)) {
+        return hz_map_get_value(face->class_map, id);
+    }
+
+    return HZ_GLYPH_CLASS_BASE;
+}
 
 void
 hz_face_load_upem(hz_face_t *face)

@@ -500,24 +500,6 @@ typedef enum hz_direction_t {
     HZ_DIRECTION_BTT = 4,
 } hz_direction_t;
 
-/* Enum: hz_glyph_class_t
- * HZ_GLYPH_CLASS_ZERO - No class.
- * HZ_GLYPH_CLASS_BASE - Base glyph class.
- * HZ_GLYPH_CLASS_LIGATURE - Ligature glyph class (composed of smaller subglyphs).
- * HZ_GLYPH_CLASS_MARK - Mark glyph class, as in Arabic tashkeel or accents.
- * HZ_GLYPH_CLASS_COMPONENT - Component glyph class.
- */
-typedef enum hz_glyph_class_t {
-    HZ_GLYPH_CLASS_ZERO      = 0x00,
-    HZ_GLYPH_CLASS_BASE      = 0x01,
-    HZ_GLYPH_CLASS_LIGATURE  = 0x02,
-    HZ_GLYPH_CLASS_MARK      = 0x04,
-    HZ_GLYPH_CLASS_COMPONENT = 0x08,
-} hz_glyph_class_t;
-
-#define HZ_GLYPH_CLASS_BIT_FIELD 4
-#define HZ_BIT(x) (1 << (x))
-
 
 typedef struct hz_sequence_node_t hz_sequence_node_t;
 
@@ -884,13 +866,13 @@ typedef struct hz_script_table_t {
 
 typedef struct hz_lang_sys_t {
     /* = NULL (reserved for an offset to a reordering table) */
-    hz_offset16_t lookupOrder;
+    hz_offset16_t lookup_order;
 
     /* Index of a feature required for this language system; if no required features = 0xFFFF */
-    hz_uint16 requiredFeatureIndex;
+    hz_uint16 required_feature_index;
 
     /* Number of feature index values for this language system — excludes the required feature */
-    hz_uint16 featureIndexCount;
+    hz_uint16 feature_index_count;
 
     /* Array of indices into the FeatureList, in arbitrary order */
     //HZ_Uint16 *featureIndices;
@@ -1208,6 +1190,15 @@ hz_bitset_copy(hz_bitset_t *dst, const hz_bitset_t *src) {
 #define HZ_OT_TAG_JSTF HZ_TAG('J','S','T','F')
 
 
+typedef enum hz_error_t {
+    HZ_OK,
+    HZ_ERROR_INVALID_TABLE_TAG,
+    HZ_ERROR_UNKNOWN_TABLE_VERSION,
+    HZ_ERROR_UNIMPLEMENTED_LOOKUP_SUBTABLE,
+    HZ_ERROR_WRONG_PARAM,
+} hz_error_t;
+
+
 hz_feature_t
 hz_ot_feature_from_tag(hz_tag_t tag);
 
@@ -1224,7 +1215,7 @@ hz_ot_layout_apply_gsub_features(hz_face_t *face,
                                  hz_tag_t script,
                                  hz_tag_t language,
                                  const hz_array_t *wanted_features,
-                                 hz_sequence_t *sect);
+                                 hz_sequence_t *sequence);
 
 hz_bool
 hz_ot_layout_apply_gpos_features(hz_face_t *face,
@@ -1249,7 +1240,7 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
 
 void
 hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
-                                 hz_stream_t *subtable,
+                                 buf_t *subtable,
                                  uint16_t lookup_type,
                                  uint16_t lookup_flags,
                                  hz_feature_t feature,
@@ -1258,7 +1249,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
 
 void
 hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
-                                 hz_stream_t *subtable,
+                                 buf_t *subtable,
                                  uint16_t lookup_type,
                                  uint16_t lookup_flags,
                                  hz_feature_t feature,
@@ -1266,15 +1257,30 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 
 void
 hz_ot_layout_apply_gsub_feature(hz_face_t *face,
-                                hz_stream_t *table,
+                                buf_t *table,
                                 hz_feature_t feature,
                                 hz_sequence_t *sequence);
 void
 hz_ot_layout_apply_gpos_feature(hz_face_t *face,
-                                hz_stream_t *table,
+                                buf_t *table,
                                 hz_feature_t feature,
                                 hz_sequence_t *sequence);
 
+
+hz_bool
+hz_ot_layout_apply_features(hz_face_t *face,
+                            hz_tag_t table_tag,
+                            hz_tag_t script,
+                            hz_tag_t language,
+                            const hz_array_t *wanted_features,
+                            hz_sequence_t *sequence);
+
+
+void
+hz_ot_parse_gdef_table(hz_face_t *face, hz_sequence_t *sequence);
+
+void
+hz_set_sequence_glyph_info(hz_face_t *face, hz_sequence_t *sequence);
 
 hz_tag_t
 hz_ot_script_to_tag(hz_script_t script);

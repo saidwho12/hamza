@@ -59,6 +59,12 @@ void
 hz_face_load_num_glyphs(hz_face_t *face);
 
 void
+hz_face_load_class_map(hz_face_t *face);
+
+hz_glyph_class_t
+hz_face_get_glyph_class(hz_face_t *face, hz_index_t id);
+
+void
 hz_face_load_upem(hz_face_t *face);
 
 float

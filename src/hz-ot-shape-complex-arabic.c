@@ -51,7 +51,7 @@ hz_ot_shape_complex_arabic_adjacent_char(hz_sequence_node_t *node, hz_bool do_re
             return NULL;
         }
 
-        if (glyph_class & ~HZ_GLYPH_CLASS_MARK) {
+        if (glyph_class & HZ_GLYPH_CLASS_BASE) {
             /* glyph is anything else than a mark, return NULL */
             break;
         }

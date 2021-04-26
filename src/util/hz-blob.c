@@ -2,7 +2,7 @@
 
 
 struct hz_blob_t {
-    hz_byte_t *data;
+    hz_byte *data;
     size_t size;
 };
 
@@ -37,13 +37,13 @@ size_t hz_blob_get_size(hz_blob_t *blob)
     return blob->size;
 }
 
-hz_byte_t *hz_blob_get_data(hz_blob_t *blob)
+hz_byte *hz_blob_get_data(hz_blob_t *blob)
 {
     return blob->data;
 }
 
 
-hz_bool_t hz_blob_is_empty(hz_blob_t *blob) {
+hz_bool hz_blob_is_empty(hz_blob_t *blob) {
     return blob->data == NULL || blob->size == 0;
 }
 

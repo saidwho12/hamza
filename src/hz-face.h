@@ -12,11 +12,11 @@ typedef struct hz_face_tables_t hz_face_tables_t;
 typedef struct hz_face_t hz_face_t;
 
 typedef struct hz_face_ot_tables_t {
-    hz_byte_t *BASE_table;
-    hz_byte_t *GDEF_table;
-    hz_byte_t *GSUB_table;
-    hz_byte_t *GPOS_table;
-    hz_byte_t *JSTF_table;
+    hz_byte *BASE_table;
+    hz_byte *GDEF_table;
+    hz_byte *GSUB_table;
+    hz_byte *GPOS_table;
+    hz_byte *JSTF_table;
 } hz_face_ot_tables_t;
 
 hz_face_t *

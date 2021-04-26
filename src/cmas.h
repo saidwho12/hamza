@@ -11,8 +11,8 @@ typedef struct hz_bump_allocator_t {
 } hz_bump_allocator_t;
 
 static void hz_bump_allocator_init(hz_bump_allocator_t *ma, uint8_t *data, size_t size);
-static void *hz_bump_alloc(hz_bump_allocator_t *ma, size_t n);
-static void hz_bump_free(hz_bump_allocator_t *ma, void *p);
+static void *hz_bump_allocator_alloc(hz_bump_allocator_t *ma, size_t n);
+static void hz_bump_allocator_free(hz_bump_allocator_t *ma, void *p);
 static void hz_bump_allocator_release(hz_bump_allocator_t *ma);
 
 #ifdef CMAS_IMPL
@@ -23,7 +23,7 @@ void hz_bump_allocator_init(hz_bump_allocator_t *ma, uint8_t *data, size_t size)
     ma->flags = 0;
 }
 
-static void *hz_bump_alloc(hz_bump_allocator_t *ma, size_t n) {
+static void *hz_bump_allocator_alloc(hz_bump_allocator_t *ma, size_t n) {
     void *addr;
     if (ma->bump_ptr + n > ma->size) return NULL;
 
@@ -32,7 +32,7 @@ static void *hz_bump_alloc(hz_bump_allocator_t *ma, size_t n) {
     return addr;
 }
 
-static void hz_bump_free(hz_bump_allocator_t *ma, void *p) {
+static void hz_bump_allocator_free(hz_bump_allocator_t *ma, void *p) {
     /* no-op */
 }
 

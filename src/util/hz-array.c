@@ -40,7 +40,7 @@ hz_array_size(const hz_array_t *array)
     return array->size;
 }
 
-hz_bool_t
+hz_bool
 hz_array_is_empty(const hz_array_t *array)
 {
     return array->data == NULL || !array->size;
@@ -115,7 +115,7 @@ hz_array_at(const hz_array_t *array, size_t index)
     return array->data[index];
 }
 
-hz_bool_t
+hz_bool
 hz_array_has(hz_array_t *array, uint32_t val, size_t *val_idx)
 {
     size_t index = 0;
@@ -137,7 +137,7 @@ hz_array_set(hz_array_t *array, size_t index, uint32_t val)
     array->data[index] = val;
 }
 
-hz_bool_t
+hz_bool
 hz_array_range_eq(const hz_array_t *a_arr, size_t a_index,
                   const hz_array_t *b_arr, size_t b_index,
                   size_t len)

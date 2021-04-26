@@ -147,7 +147,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     return 0; /* map to .notdef */
 }
 
-hz_bool_t
+hz_bool
 hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
                        hz_cmap_encoding_t enc)
 {
@@ -192,7 +192,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
     return HZ_TRUE;
 }
 
-hz_bool_t
+hz_bool
 hz_cmap_apply_encoding_to_set(hz_stream_t *table,
                               hz_set_t *codepoints,
                               hz_set_t *glyphs,
@@ -557,6 +557,19 @@ hz_apply_rtl_switch(hz_sequence_t *sequence) {
 }
 
 static void
+hz_apply_remove_marks(hz_sequence_t *sequence) {
+    hz_sequence_node_t *g = sequence->root;
+
+    while (g != NULL) {
+        hz_sequence_node_t *next = g->next;
+        if (g->gc & HZ_GLYPH_CLASS_MARK)
+            hz_sequence_pop_node(sequence, g);
+
+        g = next;
+    }
+}
+
+static void
 hz_compute_sequence_width(hz_sequence_t *sequence) {
     hz_sequence_node_t *node = sequence->root;
 
@@ -595,6 +608,8 @@ hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
 
     /* sets glyph class information */
     hz_setup_sequence_glyph_info(ctx, sequence);
+
+    hz_apply_remove_marks(sequence);
 
     /* substitute glyphs */
     if (tables->GSUB_table != NULL)

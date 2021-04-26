@@ -54,7 +54,7 @@ typedef uint16_t UFWORD;
 /* unsigned 16-bit */
 typedef uint16_t F2DOT14;
 
-typedef uint8_t hz_byte_t, hz_bool_t, hz_char;
+typedef uint8_t hz_byte, hz_bool, hz_char;
 typedef uint16_t hz_offset16_t;
 typedef uint32_t hz_tag_t;
 typedef uint32_t hz_offset32_t;
@@ -118,14 +118,14 @@ typedef enum hz_status_t {
 #define HZ_STREAM_OVERFLOW 0
 
 typedef struct hz_stream_t {
-    hz_byte_t *data;
+    hz_byte *data;
     size_t length;
     size_t offset;
     uint8_t flags;
 } hz_stream_t;
 
 static hz_stream_t *
-hz_stream_create(hz_byte_t *data, size_t length, uint8_t flags)
+hz_stream_create(hz_byte *data, size_t length, uint8_t flags)
 {
     hz_stream_t *stream = (hz_stream_t *) HZ_MALLOC(sizeof(hz_stream_t));
     stream->offset = 0;

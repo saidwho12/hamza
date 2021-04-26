@@ -598,6 +598,53 @@ hz_sequence_add(hz_sequence_t *sect, hz_sequence_node_t *new_node)
     }
 }
 
+static void
+hz_sequence_insert_node(hz_sequence_node_t *p, hz_sequence_node_t *q) {
+    hz_sequence_node_t *n = p->next;
+
+    q->next = n;
+    q->prev = p;
+    p->next = q;
+
+    if (n != NULL) {
+        n->prev = q;
+    }
+}
+
+static void
+hz_sequence_pop_node(hz_sequence_t *sequence, hz_sequence_node_t *node) {
+    hz_sequence_node_t *x = node->prev, *y = node->next;
+    HZ_FREE(node);
+    if(x) x->next = y;
+    if(y) y->prev = x;
+
+    if (!x) {
+        sequence->root = y;
+    }
+}
+
+static void
+hz_sequence_remove_node(hz_sequence_t *sequence, size_t index) {
+    size_t i = 0;
+    hz_sequence_node_t *g, *a, *b;
+
+    for (g=sequence->root; g != NULL; g=g->next,
+            ++i) {
+        if (i == index) {
+            a = g->prev, b = g->next;
+            HZ_FREE(g);
+            if(b) b->prev = a;
+            if(a) a->next = b;
+
+            if (i == 0) {
+                sequence->root = b;
+            }
+
+            break;
+        }
+    }
+}
+
 static size_t
 hz_sequence_node_count(hz_sequence_node_t *node) {
     size_t count = 0;
@@ -619,7 +666,7 @@ hz_sequence_last_node(hz_sequence_node_t *node) {
     return node;
 }
 
-static hz_bool_t
+static hz_bool
 hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 {
     hz_sequence_node_t *next, *curr = g->next;
@@ -643,7 +690,7 @@ hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 /* removes n nodes starting from start
  * including start
  * */
-static hz_bool_t
+static hz_bool
 hz_sequence_rem_node_range(hz_sequence_node_t *n1, hz_sequence_node_t *n2) {
     hz_sequence_node_t *next, *n = n1->next;
 
@@ -661,7 +708,7 @@ hz_sequence_rem_node_range(hz_sequence_node_t *n1, hz_sequence_node_t *n2) {
 }
 
 typedef struct {
-    const hz_byte_t *mem;
+    const hz_byte *mem;
     hz_size_t length;
     hz_size_t offset;
 } hz_utf8_dec_t;
@@ -751,7 +798,7 @@ hz_sequence_load_utf8_full(hz_sequence_t *sect, const char *text, size_t len) {
     int ch;
 
     hz_utf8_dec_t dec;
-    dec.mem = (const hz_byte_t *) text;
+    dec.mem = (const hz_byte *) text;
     dec.length = len;
     dec.offset = 0;
 
@@ -1114,8 +1161,8 @@ hz_bitset_destroy(hz_bitset_t *bitset) {
     free(bitset);
 }
 
-static hz_bool_t
-hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool_t value) {
+static hz_bool
+hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool value) {
     if (index < bitset->bit_count) {
         uint8_t *byte = bitset->data + (index / 8);
         uint8_t mask = 1 << (index % 8);
@@ -1131,9 +1178,9 @@ hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool_t value) {
     return HZ_FALSE;
 }
 
-static hz_bool_t
+static hz_bool
 hz_bitset_check(const hz_bitset_t *bitset, uint16_t index) {
-    hz_bool_t value = HZ_FALSE;
+    hz_bool value = HZ_FALSE;
 
     if (index < bitset->bit_count) {
         uint8_t byte = *(bitset->data + (index / 8));
@@ -1165,26 +1212,26 @@ hz_feature_t
 hz_ot_feature_from_tag(hz_tag_t tag);
 
 
-hz_bool_t
+hz_bool
 hz_ot_layout_gather_glyphs(hz_face_t *face,
                            hz_tag_t script,
                            hz_tag_t language,
                            const hz_array_t *wanted_features,
                            hz_set_t *glyphs);
 
-hz_bool_t
+hz_bool
 hz_ot_layout_apply_gsub_features(hz_face_t *face,
                                  hz_tag_t script,
                                  hz_tag_t language,
                                  const hz_array_t *wanted_features,
                                  hz_sequence_t *sect);
 
-hz_bool_t
+hz_bool
 hz_ot_layout_apply_gpos_features(hz_face_t *face,
                                  hz_tag_t script,
                                  hz_tag_t language,
                                  const hz_array_t *wanted_features,
-                                 hz_sequence_t *sect);
+                                 hz_sequence_t *sequence);
 
 void
 hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
@@ -1192,13 +1239,30 @@ hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
                                           hz_set_t *glyphs);
 
 
-hz_bool_t
+hz_bool
 hz_ot_layout_lookup_would_substitute(hz_face_t *face,
                                      unsigned int lookup_index,
                                      const hz_index_t *glyphs,
                                      unsigned int glyph_count,
-                                     hz_bool_t zero_context);
+                                     hz_bool zero_context);
 
+
+void
+hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
+                                 hz_stream_t *subtable,
+                                 uint16_t lookup_type,
+                                 uint16_t lookup_flags,
+                                 hz_feature_t feature,
+                                 hz_sequence_t *sequence,
+                                 hz_sequence_node_t *nested);
+
+void
+hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
+                                 hz_stream_t *subtable,
+                                 uint16_t lookup_type,
+                                 uint16_t lookup_flags,
+                                 hz_feature_t feature,
+                                 hz_sequence_t *sequence);
 
 void
 hz_ot_layout_apply_gsub_feature(hz_face_t *face,
@@ -1210,6 +1274,7 @@ hz_ot_layout_apply_gpos_feature(hz_face_t *face,
                                 hz_stream_t *table,
                                 hz_feature_t feature,
                                 hz_sequence_t *sequence);
+
 
 hz_tag_t
 hz_ot_script_to_tag(hz_script_t script);

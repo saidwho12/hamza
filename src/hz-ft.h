@@ -60,11 +60,11 @@ hz_ft_font_create(FT_Face ft_face) {
         return NULL;
     }
 
-    ot_tables.BASE_table = (hz_byte_t *)BASE_table;
-    ot_tables.GDEF_table = (hz_byte_t *)GDEF_table;
-    ot_tables.GSUB_table = (hz_byte_t *)GSUB_table;
-    ot_tables.GPOS_table = (hz_byte_t *)GPOS_table;
-    ot_tables.JSTF_table = (hz_byte_t *)JSTF_table;
+    ot_tables.BASE_table = (hz_byte *)BASE_table;
+    ot_tables.GDEF_table = (hz_byte *)GDEF_table;
+    ot_tables.GSUB_table = (hz_byte *)GSUB_table;
+    ot_tables.GPOS_table = (hz_byte *)GPOS_table;
+    ot_tables.JSTF_table = (hz_byte *)JSTF_table;
 
     hz_face_set_ot_tables(face, &ot_tables);
 

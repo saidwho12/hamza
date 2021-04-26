@@ -2,7 +2,7 @@
 #include "hz-ot-shape-complex-arabic.h"
 #include "hz.h"
 
-hz_bool_t
+hz_bool
 hz_ot_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
                                         uint16_t *joining)
 {
@@ -35,14 +35,14 @@ typedef enum hz_joining_dir_t {
 } hz_joining_dir_t;
 
 hz_sequence_node_t *
-hz_ot_shape_complex_arabic_adjacent_char(hz_sequence_node_t *node, hz_bool_t do_reverse)
+hz_ot_shape_complex_arabic_adjacent_char(hz_sequence_node_t *node, hz_bool do_reverse)
 {
     hz_sequence_node_t *curr_node = do_reverse ? node->prev : node->next;
     while (curr_node != NULL) {
         hz_unicode_t code = curr_node->codepoint;
         hz_glyph_class_t glyph_class = curr_node->gc;
 
-        hz_bool_t is_arabic_code = code >= 0x0600 && code <= 0x06FF ||
+        hz_bool is_arabic_code = code >= 0x0600 && code <= 0x06FF ||
                 code >= 0x0750 && code <= 0x077F ||
                 code >= 0x08A0 && code <= 0x08FF;
 
@@ -51,7 +51,7 @@ hz_ot_shape_complex_arabic_adjacent_char(hz_sequence_node_t *node, hz_bool_t do_
             return NULL;
         }
 
-        if (glyph_class & HZ_GLYPH_CLASS_BASE) {
+        if (glyph_class & ~HZ_GLYPH_CLASS_MARK) {
             /* glyph is anything else than a mark, return NULL */
             break;
         }
@@ -63,7 +63,7 @@ hz_ot_shape_complex_arabic_adjacent_char(hz_sequence_node_t *node, hz_bool_t do_
 }
 
 uint16_t
-hz_ot_shape_complex_arabic_joining(hz_sequence_node_t *node, hz_bool_t do_reverse)
+hz_ot_shape_complex_arabic_joining(hz_sequence_node_t *node, hz_bool do_reverse)
 {
     uint16_t joining;
     hz_unicode_t codepoint;
@@ -81,7 +81,7 @@ hz_ot_shape_complex_arabic_joining(hz_sequence_node_t *node, hz_bool_t do_revers
     return NO_JOINING_GROUP | JOINING_TYPE_T;
 }
 
-hz_bool_t
+hz_bool
 hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_sequence_node_t *node)
 {
     uint16_t curr;
@@ -92,15 +92,15 @@ hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_sequence_node_t *node)
         next = hz_ot_shape_complex_arabic_joining(node, HZ_FALSE);
 
         /* Conditions for substitution */
-        hz_bool_t fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
-                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
+        hz_bool fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
+                       && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
 
-        hz_bool_t medi = curr & JOINING_TYPE_D
-                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+        hz_bool medi = curr & JOINING_TYPE_D
+                       && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
+                       && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
 
-        hz_bool_t init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
-                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+        hz_bool init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
+                       && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
 
         if (feature == HZ_FEATURE_FINA) {
             return fina && !(medi || init);

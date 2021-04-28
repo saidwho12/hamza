@@ -471,7 +471,7 @@ hz_shape_full(hz_context_t *ctx, hz_sequence_t *sequence)
     /* sets glyph class information */
     hz_set_sequence_glyph_info(hz_font_get_face(ctx->font), sequence);
 
-//    hz_apply_remove_marks(sequence);
+    hz_apply_remove_marks(sequence);
 
     /* substitute glyphs */
     if (tables->GSUB_table != NULL)

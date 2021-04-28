@@ -117,6 +117,26 @@ typedef enum hz_feature_t {
     HZ_FEATURE_SMCP = 193, /* Small Capitals */
     HZ_FEATURE_SMPL = 194, /* Simplified Forms */
     /* 	ss01 - ss20 Stylistic Sets */
+    HZ_FEATURE_SS01 = 195,
+    HZ_FEATURE_SS02 = 196,
+    HZ_FEATURE_SS03 = 197,
+    HZ_FEATURE_SS04 = 198,
+    HZ_FEATURE_SS05 = 199,
+    HZ_FEATURE_SS06 = 200,
+    HZ_FEATURE_SS07 = 201,
+    HZ_FEATURE_SS08 = 202,
+    HZ_FEATURE_SS09 = 203,
+    HZ_FEATURE_SS10 = 204,
+    HZ_FEATURE_SS11 = 205,
+    HZ_FEATURE_SS12 = 206,
+    HZ_FEATURE_SS13 = 207,
+    HZ_FEATURE_SS14 = 208,
+    HZ_FEATURE_SS15 = 209,
+    HZ_FEATURE_SS16 = 210,
+    HZ_FEATURE_SS17 = 211,
+    HZ_FEATURE_SS18 = 212,
+    HZ_FEATURE_SS19 = 213,
+    HZ_FEATURE_SS20 = 214,
     HZ_FEATURE_SSTY = 215, /* Math script style alternates */
     HZ_FEATURE_STCH = 216, /* Stretching Glyph Decomposition */
     HZ_FEATURE_SUBS = 217, /* Subscript */
@@ -248,6 +268,26 @@ static const hz_feature_info_t HZ_FEATURE_INFO_LUT[HZ_FEATURE_COUNT] = {
         {HZ_FEATURE_SMCP, HZ_TAG('s', 'm', 'c', 'p')}, /* Small Capitals */
         {HZ_FEATURE_SMPL, HZ_TAG('s', 'm', 'p', 'l')}, /* Simplified Forms */
         /* 	ss01 - ss20 Stylistic Sets */
+        {HZ_FEATURE_SS01, HZ_TAG('s','s','0','1')},
+        {HZ_FEATURE_SS02, HZ_TAG('s','s','0','2')},
+        {HZ_FEATURE_SS03, HZ_TAG('s','s','0','3')},
+        {HZ_FEATURE_SS04, HZ_TAG('s','s','0','4')},
+        {HZ_FEATURE_SS05, HZ_TAG('s','s','0','5')},
+        {HZ_FEATURE_SS06, HZ_TAG('s','s','0','6')},
+        {HZ_FEATURE_SS07, HZ_TAG('s','s','0','7')},
+        {HZ_FEATURE_SS08, HZ_TAG('s','s','0','8')},
+        {HZ_FEATURE_SS09, HZ_TAG('s','s','0','9')},
+        {HZ_FEATURE_SS10, HZ_TAG('s','s','1','0')},
+        {HZ_FEATURE_SS11, HZ_TAG('s','s','1','1')},
+        {HZ_FEATURE_SS12, HZ_TAG('s','s','1','2')},
+        {HZ_FEATURE_SS13, HZ_TAG('s','s','1','3')},
+        {HZ_FEATURE_SS14, HZ_TAG('s','s','1','4')},
+        {HZ_FEATURE_SS15, HZ_TAG('s','s','1','5')},
+        {HZ_FEATURE_SS16, HZ_TAG('s','s','1','6')},
+        {HZ_FEATURE_SS17, HZ_TAG('s','s','1','7')},
+        {HZ_FEATURE_SS18, HZ_TAG('s','s','1','8')},
+        {HZ_FEATURE_SS19, HZ_TAG('s','s','1','9')},
+        {HZ_FEATURE_SS20, HZ_TAG('s','s','2','0')},
         {HZ_FEATURE_SSTY, HZ_TAG('s', 's', 't', 'y')}, /* Math script style alternates */
         {HZ_FEATURE_STCH, HZ_TAG('s', 't', 'c', 'h')}, /* Stretching Glyph Decomposition */
         {HZ_FEATURE_SUBS, HZ_TAG('s', 'u', 'b', 's')}, /* Subscript */

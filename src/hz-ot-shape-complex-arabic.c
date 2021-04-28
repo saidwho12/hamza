@@ -111,6 +111,9 @@ hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_sequence_node_t *node)
         else if (feature == HZ_FEATURE_INIT) {
             return init && !(fina || medi);
         }
+        else if (feature == HZ_FEATURE_ISOL) {
+            return !init && !fina && !medi;
+        }
     }
 
     return HZ_FALSE;

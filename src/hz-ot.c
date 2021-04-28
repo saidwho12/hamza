@@ -659,6 +659,10 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
     uint16_t lookup_list_offset;
     uint32_t feature_variations_offset;
 
+    if (lookup_index == 519) {
+        printf("%s\n", "HI");
+    }
+
     if (table_tag == HZ_OT_TAG_GSUB) {
         table = createbuf(hz_face_get_ot_tables(face)->GSUB_table, BUF_BSWAP);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
@@ -1812,7 +1816,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
 //        printf("%d.%d\n", lookup_type, format);
 //    }
 
-//    if (lookup_type != 7) {
+//    if (lookup_type == HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION) {
 //        printf("%d.%d\n", lookup_type, format);
 //
 //    }
@@ -2076,8 +2080,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                 hz_sequence_node_t *g;
                 hz_ot_read_chained_sequence_context_format3_table(subtable, &table_cache);
 
-                for (g = sequence->root; g != NULL;
-                g = hz_next_node_not_of_class(g, ignore_flags, NULL)) {
+                for (g = sequence->root; g != NULL; g = hz_next_node_not_of_class(g, ignore_flags, NULL)) {
 
                     hz_sequence_node_cache_t *i_seq = hz_sequence_node_cache_create();
 
@@ -2106,7 +2109,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                                                    NULL,
                                                    HZ_FALSE);
 
-                        if (prefix_match && suffix_match) {
+                        if ((prefix_match || !table_cache.prefix_count) && (suffix_match || !table_cache.suffix_count)) {
                             size_t k;
 
                             /* apply lookups to input, within context */
@@ -2122,8 +2125,8 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                             }
 
                             g = i_seq->nodes[i_seq->node_count-1];
+                            continue;
                         }
-
                     }
 
                     hz_sequence_node_cache_destroy(i_seq);
@@ -2691,7 +2694,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                     if (node->gc & HZ_GLYPH_CLASS_MARK) {
                         /* glyph is of mark class, position in relation to last mark */
                         hz_sequence_node_t *prev_node = hz_prev_node_not_of_class(node, class_ignore, NULL);
-                        if (prev_node != NULL) {
+                        if (prev_node != NULL && prev_node->gc == HZ_GLYPH_CLASS_MARK) {
                             /* previous mark found, check if both glyph's ids are found in the
                              * coverage maps.
                              * */

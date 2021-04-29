@@ -1942,7 +1942,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                             node->prev = NULL;
                             node->next = NULL;
                             node->gc = hz_face_get_glyph_class(face, node->id);//t->gc;
-                            node->codepoint = t->codepoint;
+                            node->codepoint = 0;//t->codepoint;
                             hz_sequence_insert_node(t, node);
                             t = t->next;
                         }

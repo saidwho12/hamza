@@ -1368,7 +1368,7 @@ hz_ot_layout_apply_fit_ligature(hz_ligature_t **ligatures,
             }
 
             /* modify start node to ligature glyph */
-            start_node->codepoint = 0;
+            // start_node->codepoint = 0;
             start_node->id = ligature->ligature_glyph;
             start_node->gc |= HZ_GLYPH_CLASS_LIGATURE;
             break;
@@ -1825,10 +1825,9 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
 //        printf("%d.%d\n", lookup_type, format);
 //    }
 
-//    if (lookup_type == HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION) {
-//        printf("%d.%d\n", lookup_type, format);
-//
-//    }
+   if (lookup_type != 7 && nested) {
+       printf("%d.%d\n", lookup_type, format);
+   }
 
     switch (lookup_type) {
         case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {

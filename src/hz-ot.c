@@ -659,10 +659,6 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
     uint16_t lookup_list_offset;
     uint32_t feature_variations_offset;
 
-    if (lookup_index == 519) {
-        printf("%s\n", "HI");
-    }
-
     if (table_tag == HZ_OT_TAG_GSUB) {
         table = createbuf(hz_face_get_ot_tables(face)->GSUB_table, BUF_BSWAP);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
@@ -1279,23 +1275,21 @@ hz_prev_node_of_class(hz_sequence_node_t *node,
 void
 hz_ot_layout_apply_fit_ligature(hz_ligature_t **ligatures,
                                 uint16_t ligature_count,
-                                hz_glyph_class_t ignore_flags,
+                                hz_glyph_class_t class_ignore,
+                                hz_sequence_t *sequence,
                                 hz_sequence_node_t *start_node)
 {
     uint16_t i, j;
-    hz_sequence_node_cache_t *node_cache = hz_sequence_node_cache_create();
-
-
 
     for (i=0; i<ligature_count; ++i) {
-        int64_t skip_count = 0;
         hz_sequence_node_t *step_node = start_node;
         hz_ligature_t *ligature = ligatures[i];
         hz_bool did_match = HZ_TRUE;
+        hz_sequence_node_cache_t *node_cache = hz_sequence_node_cache_create();
 
         /* go over sequence and compare with current ligature */
         for (j=0; j<ligature->component_count-1; ++j) {
-            step_node = hz_next_node_not_of_class(step_node, ignore_flags, &skip_count);
+            step_node = hz_next_node_not_of_class(step_node, class_ignore, NULL);
 
             if (step_node == NULL) {
                 did_match = HZ_FALSE;
@@ -1308,64 +1302,80 @@ hz_ot_layout_apply_fit_ligature(hz_ligature_t **ligatures,
                 did_match = HZ_FALSE;
                 break;
             }
-        }
 
-//        if (did_match) {
-//            start_node->id = ligature->ligature_glyph;
-//            start_node->gc |= HZ_GLYPH_CLASS_LIGATURE;
-//            break;
-//        }
+            hz_sequence_node_cache_add(node_cache, step_node);
+        }
 
         if (did_match) {
             /* pattern matches, replace it and tag following mark glyphs with
              * a component id, link all following marks together after the ligature which were attached
              * to the ligature.
              * */
+            /* int comp_count = ligature->component_count; */
+
+            /* if (comp_count - 1) { */
+            /*     if (ignore_flags == HZ_GLYPH_CLASS_ZERO) */
+            /*         hz_sequence_rem_next_n_nodes(start_node, comp_count-1); */
+            /*     else { */
+            /*         hz_sequence_node_t *n1, *n2 = start_node; */
+
+            /*         int comp_index = 0; */
+            /*         while (comp_index < comp_count) { */
+            /*             hz_sequence_node_t *child; */
+            /*             int skip = 0; */
+            /*             n1 = n2; */
+            /*             n2 = hz_next_node_of_class_bound(n1, ignore_flags, &skip, comp_count); */
+
+            /*             if ((comp_index + skip) > comp_count) { */
+            /*                 int rem = HZ_MAX((comp_index + skip) - comp_count, 0); */
+            /*                 if (rem) */
+            /*                     hz_sequence_rem_next_n_nodes(n1, rem); */
+            /*             } else { */
+            /*                 hz_sequence_rem_node_range(n1, n2); */
+            /*             } */
+
+            /*             if (n2 == NULL) break; */
+
+            /*             n1 = n2; */
+            /*             n2 = hz_last_node_of_class(n1, HZ_GLYPH_CLASS_MARK, NULL); */
+
+            /*             for (child = n1; child != n2->next; child = child->next) { */
+            /*                 child->cid = comp_index ? comp_index : skip-1; */
+            /*             } */
+
+            /*             comp_index += comp_index ? skip-1 : skip; */
+            /*         } */
+            /*     } */
+            /* } */
+
             int comp_count = ligature->component_count;
 
-            if (comp_count - 1) {
-                if (ignore_flags == HZ_GLYPH_CLASS_ZERO)
-                    hz_sequence_rem_next_n_nodes(start_node, comp_count-1);
-                else {
-                    hz_sequence_node_t *n1, *n2 = start_node;
+            if (comp_count-1) {
+                /* base and mark temporary nodes, go over to set marks component indices,
+                   then delete bases */
+                hz_sequence_node_t *b, *m;
+                size_t k;
 
-                    int comp_index = 0;
-                    while (comp_index < comp_count) {
-                        hz_sequence_node_t *child;
-                        int skip = 0;
-                        n1 = n2;
-                        n2 = hz_next_node_of_class_bound(n1, ignore_flags, &skip, comp_count);
+                for (k=0; k<node_cache->node_count; ++k) {
+                    b = node_cache->nodes[k];
 
-                        if ((comp_index + skip) > comp_count) {
-                            int rem = HZ_MAX((comp_index + skip) - comp_count, 0);
-                            if (rem)
-                                hz_sequence_rem_next_n_nodes(n1, rem);
-                        } else {
-                            hz_sequence_rem_node_range(n1, n2);
-                        }
-
-                        if (n2 == NULL) break;
-
-                        n1 = n2;
-                        n2 = hz_last_node_of_class(n1, HZ_GLYPH_CLASS_MARK, NULL);
-
-                        for (child = n1; child != n2->next; child = child->next) {
-                            child->cid = comp_index ? comp_index : skip-1;
-                        }
-
-                        comp_index += comp_index ? skip-1 : skip;
+                    for (m=b->next; m != NULL && m->gc & HZ_GLYPH_CLASS_MARK; m=m->next) {
+                        m->cid = k+1;
                     }
+
+                    hz_sequence_pop_node(sequence, b);
                 }
             }
 
-            /* insert ligature glyph */
+            /* modify start node to ligature glyph */
+            start_node->codepoint = 0;
             start_node->id = ligature->ligature_glyph;
             start_node->gc |= HZ_GLYPH_CLASS_LIGATURE;
             break;
         }
+        
+        hz_sequence_node_cache_destroy(node_cache);
     }
-
-    hz_sequence_node_cache_destroy(node_cache);
 }
 
 hz_sequence_rule_t
@@ -1401,7 +1411,6 @@ hz_ot_parse_sequence_rule(hz_byte *data, hz_sequence_rule_t *rule) {
     buf_t buf = createbuf(data, BUF_BSWAP);
 
     unpackv(&buf, "hh", &rule->glyph_count, &rule->seq_lookup_count);
-
     rule->input_sequence = HZ_MALLOC(rule->glyph_count-1);
     unpackv(&buf, "h:*", rule->input_sequence, rule->glyph_count-1);
 
@@ -2043,7 +2052,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                             hz_ligature_decode(ligatures[ligature_index], ligature_set.data + ligature_offset);
                         }
 
-                        hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignore_flags, g);
+                        hz_ot_layout_apply_fit_ligature(ligatures, ligature_count, ignore_flags, sequence, g);
 
                         for (ligature_index = 0; ligature_index < ligature_count; ++ligature_index) {
                             hz_ligature_destroy(ligatures[ligature_index]);

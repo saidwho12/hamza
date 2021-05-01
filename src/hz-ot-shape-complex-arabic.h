@@ -137,6 +137,18 @@ typedef struct hz_arabic_joining_entry_t {
 #include "hz-ot-shape-complex-arabic-joining-list.h"
 
 hz_bool
-hz_ot_shape_complex_arabic_join(hz_feature_t feature, hz_sequence_node_t *node);
+hz_ot_shape_complex_arabic_join(hz_feature_t feature, const hz_sequence_node_t *node);
+
+hz_bool
+hz_ot_shape_complex_arabic_isol(const hz_sequence_node_t *g);
+
+hz_bool
+hz_ot_shape_complex_arabic_init(const hz_sequence_node_t *g);
+
+hz_bool
+hz_ot_shape_complex_arabic_medi(const hz_sequence_node_t *g);
+
+hz_bool
+hz_ot_shape_complex_arabic_fina(const hz_sequence_node_t *g);
 
 #endif /* HZ_OT_SHAPE_COMPLEX_ARABIC_H */

@@ -25,7 +25,10 @@ void hz_bump_allocator_init(hz_bump_allocator_t *ma, uint8_t *data, size_t size)
 
 static void *hz_bump_allocator_alloc(hz_bump_allocator_t *ma, size_t n) {
     void *addr;
-    if (ma->bump_ptr + n > ma->size) return NULL;
+    if (ma->bump_ptr + n > ma->size) {
+        printf("ALLOC ERR\n");
+        return NULL;
+    }
 
     addr = ma->data + ma->bump_ptr;
     ma->bump_ptr += n;

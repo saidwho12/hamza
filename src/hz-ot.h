@@ -595,22 +595,28 @@ static hz_sequence_t *
 hz_sequence_create(void) {
     hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
     sequence->root = NULL;
+    sequence->direction = HZ_DIRECTION_LTR;
     sequence->flags = 0;
     sequence->width = 0;
     return sequence;
 }
 
 static void
-hz_sequence_add(hz_sequence_t *sect, hz_sequence_node_t *new_node)
+hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction) {
+    sequence->direction = direction;
+}
+
+static void
+hz_sequence_add(hz_sequence_t *sequence, hz_sequence_node_t *new_node)
 {
     new_node->prev = NULL;
     new_node->next = NULL;
 
-    if (sect->root == NULL)
-        sect->root = new_node;
+    if (sequence->root == NULL)
+        sequence->root = new_node;
     else {
         hz_sequence_node_t *curr_node;
-        curr_node = sect->root;
+        curr_node = sequence->root;
         while (curr_node->next != NULL) {
             curr_node = curr_node->next;
         }
@@ -860,11 +866,6 @@ hz_sequence_load_unicode(hz_sequence_t *sequence, const hz_unicode_t *codepoints
 static void
 hz_sequence_load_utf8(hz_sequence_t *sequence, const char *text) {
     hz_sequence_load_utf8_full(sequence, text, UINT64_MAX);
-}
-
-static void
-hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction) {
-    sequence->direction = direction;
 }
 
 static void
@@ -1234,9 +1235,9 @@ typedef enum hz_error_t {
     HZ_OK,
     HZ_ERROR_INVALID_TABLE_TAG,
     HZ_ERROR_UNKNOWN_TABLE_VERSION,
-    HZ_ERROR_UNIMPLEMENTED_LOOKUP_SUBTABLE,
+    HZ_ERROR_INVALID_LOOKUP_TYPE,
     HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT,
-    HZ_ERROR_WRONG_PARAM,
+    HZ_ERROR_INVALID_PARAM,
 } hz_error_t;
 
 
@@ -1279,14 +1280,14 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
                                      hz_bool zero_context);
 
 
+
 void
 hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                                  buf_t *subtable,
                                  uint16_t lookup_type,
                                  uint16_t lookup_flags,
                                  hz_feature_t feature,
-                                 hz_sequence_t *sequence,
-                                 hz_sequence_node_t *nested);
+                                 hz_sequence_t *sequence);
 
 void
 hz_ot_layout_apply_gpos_subtable(hz_face_t *face,

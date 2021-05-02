@@ -127,14 +127,14 @@ bswap64(unsigned long val) {
 #define HZ_HEAPARR(V, N, T) T *V = HZ_MALLOC(sizeof(T) * (N))
 
 typedef struct buf_t {
-    unsigned char *data;
+    const unsigned char *data;
     long length;
     long idx;
     int flags;
 } buf_t;
 
 static buf_t
-createbuf(unsigned char *data, int flags) {
+createbuf(const unsigned char *data, int flags) {
     buf_t buf;
     buf.idx = 0;
     buf.data = data;

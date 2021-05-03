@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
 project(Hamza LANGUAGES C CXX)
 
-set(CMAKE_C_STANDARD 90)
-
 set(HAMZA_SOURCES
 		src/hz-ot.h
 		src/hz-ot-shape-complex-arabic.c
@@ -27,6 +25,9 @@ set(HAMZA_SOURCES
 		src/util/hz-blob.h
 		src/util/hz-blob.c
 		src/cmas.h)
+
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -pedantic -Wall")
 
 add_library(hamza ${HAMZA_SOURCES})
 target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)

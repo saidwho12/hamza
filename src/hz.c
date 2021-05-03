@@ -155,7 +155,7 @@ hz_cmap_apply_encoding(buf_t *table, hz_sequence_t *sequence,
     uint16_t format = unpackh(&subtable);
 
     switch (format) {
-        case 0: break;
+        case HZ_CMAP_SUBTABLE_FORMAT_BYTE_ENCODING_TABLE: break;
         case 2: break;
         case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
             hz_cmap_subtable_format4_t st;
@@ -191,53 +191,53 @@ hz_cmap_apply_encoding(buf_t *table, hz_sequence_t *sequence,
     return HZ_TRUE;
 }
 
-hz_bool
-hz_cmap_apply_encoding_to_set(buf_t *table,
-                              hz_set_t *codepoints,
-                              hz_set_t *glyphs,
-                              hz_cmap_encoding_t enc)
-{
-    buf_t subtable = createbuf(table->data + enc.subtable_offset, BUF_BSWAP);
-    uint16_t format = unpackh(&subtable);
-
-    switch (format) {
-        case 0: break;
-        case 2: break;
-        case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
-            hz_cmap_subtable_format4_t st;
-            unpackv(&subtable, "hhhhhh",
-                    &st.length,
-                    &st.language,
-                    &st.seg_count_x2,
-                    &st.search_range,
-                    &st.entry_selector,
-                    &st.range_shift);
-
-            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
-
-            const uint8_t *curr_addr = subtable.data + subtable.idx;
-            st.end_code = (uint16_t *)curr_addr;
-            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
-            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
-            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
-
-            /* map unicode characters to glyph indices in sequenceion */
-            size_t index = 0;
-            size_t num_codes = codepoints->count;
-
-            while (index < num_codes) {
-                hz_set_add_no_duplicate(glyphs, hz_cmap_unicode_to_id(&st, codepoints->values[index]));
-                ++index;
-            }
-
-            break;
-        }
-        default:
-            return HZ_FALSE;
-    }
-
-    return HZ_TRUE;
-}
+//hz_bool
+//hz_cmap_apply_encoding_to_set(buf_t *table,
+//                              hz_set_t *codepoints,
+//                              hz_set_t *glyphs,
+//                              hz_cmap_encoding_t enc)
+//{
+//    buf_t subtable = createbuf(table->data + enc.subtable_offset, BUF_BSWAP);
+//    uint16_t format = unpackh(&subtable);
+//
+//    switch (format) {
+//        case HZ_CMAP_SUBTABLE_FORMAT_BYTE_ENCODING_TABLE: break;
+//        case 2: break;
+//        case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
+//            hz_cmap_subtable_format4_t st;
+//            unpackv(&subtable, "hhhhhh",
+//                    &st.length,
+//                    &st.language,
+//                    &st.seg_count_x2,
+//                    &st.search_range,
+//                    &st.entry_selector,
+//                    &st.range_shift);
+//
+//            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
+//
+//            const uint8_t *curr_addr = subtable.data + subtable.idx;
+//            st.end_code = (uint16_t *)curr_addr;
+//            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
+//            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
+//            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
+//
+//            /* map unicode characters to glyph indices in sequenceion */
+//            size_t index = 0;
+//            size_t num_codes = codepoints->count;
+//
+//            while (index < num_codes) {
+//                hz_set_add_no_duplicate(glyphs, hz_cmap_unicode_to_id(&st, codepoints->values[index]));
+//                ++index;
+//            }
+//
+//            break;
+//        }
+//        default:
+//            return HZ_FALSE;
+//    }
+//
+//    return HZ_TRUE;
+//}
 
 void
 hz_map_to_nominal_forms(hz_context_t *ctx,
@@ -520,16 +520,16 @@ hz_decode_hhea_table(hz_face_t *face, hz_blob_t *blob)
     if (version == 0x00010000) {
         /* version 1.0 */
         unpackv(&table, "hhhhhhhhhh",
-         (uint16_t *) &ascender
-        , (uint16_t *) &descender
-        , (uint16_t *) &line_gap
-        , &advance_width_max
-        , (uint16_t *) &min_left_side_bearing
-        , (uint16_t *) &min_right_side_bearing
-        , (uint16_t *) &x_max_extent
-        , (uint16_t *) &caret_slope_rise
-        , (uint16_t *) &caret_slope_run
-        , (uint16_t *) &caret_offset);
+         (uint16_t *) &ascender,
+         (uint16_t *) &descender,
+         (uint16_t *) &line_gap,
+         &advance_width_max,
+         (uint16_t *) &min_left_side_bearing,
+         (uint16_t *) &min_right_side_bearing,
+         (uint16_t *) &x_max_extent,
+         (uint16_t *) &caret_slope_rise,
+         (uint16_t *) &caret_slope_run,
+         (uint16_t *) &caret_offset);
 
         /* skip over 8 bytes of reserved space */
         bufseek(&table, 8);
@@ -578,7 +578,7 @@ hz_gather_script_glyphs(hz_face_t *face, hz_script_t script, hz_set_t *glyphs)
                 &enc.encoding_id,
                 &enc.subtable_offset);
 
-        hz_cmap_apply_encoding_to_set(&table, codepoints, glyphs, enc);
+//        hz_cmap_apply_encoding_to_set(&table, codepoints, glyphs, enc);
 
     } else {
         /* error, table version must be 0 */

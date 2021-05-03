@@ -2341,17 +2341,18 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                                                    HZ_FALSE)) {
 
                         hz_sequence_node_t *n1, *n2;
+                        hz_bool prefix_match, suffix_match;
                         n1 = hz_prev_node_not_of_class(sequence_context->nodes[0], ignore_flags, NULL);
                         n2 = hz_next_node_not_of_class(sequence_context->nodes[sequence_context->node_count - 1], ignore_flags, NULL);
 
-                        hz_bool prefix_match = hz_ot_layout_pattern_match(n1,
+                        prefix_match = hz_ot_layout_pattern_match(n1,
                                                         table_cache.prefix_maps,
                                                         table_cache.prefix_count,
                                                         ignore_flags,
                                                         NULL,
                                                         HZ_TRUE);
 
-                        hz_bool suffix_match = hz_ot_layout_pattern_match(n2,
+                        suffix_match = hz_ot_layout_pattern_match(n2,
                                                    table_cache.suffix_maps,
                                                    table_cache.suffix_count,
                                                    ignore_flags,
@@ -2675,7 +2676,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
         case HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT: {
             /* attach mark to base glyph point */
             if (format == 1) {
-                hz_byte           buffer[4096];
+                hz_byte             buffer[4096];
                 hz_bump_allocator_t allocator;
                 hz_bump_allocator_init(&allocator, buffer, sizeof buffer);
 

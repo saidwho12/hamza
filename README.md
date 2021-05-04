@@ -36,6 +36,8 @@ int main(int argc, char *argv[]) {
     
     /* set typographic features */
     features = hz_array_create();
+    hz_array_push_back(features, HZ_FEATURE_LIGA); /* enable ligatures */
+    hz_array_push_back(features, HZ_FEATURE_CALT); /* enable contextual alternates */
     
     hz_context_set_direction(context, HZ_DIRECTION_LTR);
     hz_context_set_script(context, HZ_SCRIPT_LATIN);
@@ -51,6 +53,11 @@ int main(int argc, char *argv[]) {
     /* render (using FreeType, or your method of choice) */
     
     /* free resources */
+    hz_array_destroy(features);
+    hz_sequence_destroy(sequence);
+    hz_context_destroy(context);
+    hz_font_destroy(font);
+    FT_Done_Face(ft_face);
     failed_to_load_face:
     FT_Done_FreeType(ft_library);
     failed_to_load_freetype:

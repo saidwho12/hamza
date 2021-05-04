@@ -104,7 +104,7 @@ hz_ft_font_create(FT_Face ft_face) {
         }
     }
 
-    hz_face_load_class_map(face);
+    hz_face_load_class_maps(face);
     hz_font_set_face(font, face);
     return font;
 //

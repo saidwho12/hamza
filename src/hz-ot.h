@@ -565,6 +565,7 @@ struct hz_sequence_node_t {
     int16_t x_advance;
     int16_t y_advance;
     hz_glyph_class_t gc: HZ_GLYPH_CLASS_BIT_FIELD;
+    uint8_t attach_class;
     hz_sequence_node_t *prev, *next;
 };
 
@@ -951,10 +952,10 @@ static const char *hz_GPOS_lookup_type_string(HZ_Uint16 type);
 
 typedef enum hz_lookup_flag_t {
     /*
-    This bit relates only to
-    the correct processing of the cursive attachment lookup type (GPOS lookup type 3).
-    When this bit is set, the last glyph in a given sequence to
-    which the cursive attachment lookup is applied, will be positioned on the baseline.
+        This bit relates only to
+        the correct processing of the cursive attachment lookup type (GPOS lookup type 3).
+        When this bit is set, the last glyph in a given sequence to
+        which the cursive attachment lookup is applied, will be positioned on the baseline.
     */
     HZ_LOOKUP_FLAG_RIGHT_TO_LEFT = 0x0001,
 
@@ -968,8 +969,8 @@ typedef enum hz_lookup_flag_t {
     HZ_LOOKUP_FLAG_IGNORE_MARKS = 0x0008,
 
     /*
-    If set, indicates that the lookup table structure is followed by a MarkFilteringSet field.
-    The layout engine skips over all mark glyphs not in the mark filtering set indicated.
+        If set, indicates that the lookup table structure is followed by a MarkFilteringSet field.
+        The layout engine skips over all mark glyphs not in the mark filtering set indicated.
     */
     HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET = 0x0010,
 

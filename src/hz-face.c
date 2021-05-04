@@ -30,6 +30,7 @@ struct hz_face_t {
     uint16_t upem;
 
     hz_map_t *class_map;
+    hz_map_t *attach_class_map;
 };
 
 hz_face_t *
@@ -46,6 +47,7 @@ hz_face_create()
     face->upem = 0;
     face->tables.root = NULL;
     face->class_map = hz_map_create();
+    face->attach_class_map = hz_map_create();
     return face;
 }
 
@@ -180,7 +182,7 @@ hz_face_load_num_glyphs(hz_face_t *face)
 }
 
 void
-hz_face_load_class_map(hz_face_t *face)
+hz_face_load_class_maps(hz_face_t *face)
 {
     if (hz_face_get_ot_tables(face)->GDEF_table != NULL) {
         buf_t table = createbuf(hz_face_get_ot_tables(face)->GDEF_table, BUF_BSWAP);
@@ -216,7 +218,7 @@ hz_face_load_class_map(hz_face_t *face)
                 break;
         }
 
-        if (glyph_class_def_offset != 0) {
+        if (glyph_class_def_offset) {
             /* glyph class def isn't nil */
             buf_t subtable = createbuf(table.data + glyph_class_def_offset, BUF_BSWAP);
             uint16_t class_format;
@@ -245,6 +247,35 @@ hz_face_load_class_map(hz_face_t *face)
                     break;
             }
         }
+
+        if (mark_attach_class_def_offset) {
+            buf_t subtable = createbuf(table.data + mark_attach_class_def_offset, BUF_BSWAP);
+            uint16_t class_format;
+            class_format = unpackh(&subtable);
+            switch (class_format) {
+                case 1:
+                    break;
+                case 2: {
+                    uint16_t range_index = 0, class_range_count;
+                    class_range_count = unpackh(&subtable);
+
+                    while (range_index < class_range_count) {
+                        uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                        unpackv(&subtable, "hhh",
+                                &start_glyph_id,
+                                &end_glyph_id,
+                                &glyph_class);
+                        HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
+                        hz_map_set_value_for_keys(face->attach_class_map, start_glyph_id, end_glyph_id, HZ_BIT(glyph_class - 1));
+
+                        ++range_index;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
     }
 }
 
@@ -256,6 +287,15 @@ hz_face_get_glyph_class(hz_face_t *face, hz_index_t id)
     }
 
     return HZ_GLYPH_CLASS_BASE;
+}
+
+uint8_t
+hz_face_get_glyph_attach_class(hz_face_t *face, hz_index_t id) {
+    if (hz_map_value_exists(face->attach_class_map, id)) {
+        return hz_map_get_value(face->attach_class_map, id);
+    }
+
+    return 0;
 }
 
 void

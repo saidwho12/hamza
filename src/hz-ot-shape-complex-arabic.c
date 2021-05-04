@@ -42,16 +42,16 @@ hz_ot_shape_complex_arabic_adjacent_char(const hz_sequence_node_t *node, hz_bool
         hz_unicode_t code = curr_node->codepoint;
         hz_glyph_class_t glyph_class = curr_node->gc;
 
-        hz_bool is_arabic_code = code >= 0x0600 && code <= 0x06FF ||
-                code >= 0x0750 && code <= 0x077F ||
-                code >= 0x08A0 && code <= 0x08FF;
+        hz_bool is_arabic_code = (code >= 0x0600 && code <= 0x06FF) ||
+                (code >= 0x0750 && code <= 0x077F) ||
+                (code >= 0x08A0 && code <= 0x08FF);
 
-        if (!is_arabic_code) {
-            /* if current node's codepoint is non-arabic, return NULL */
-            return NULL;
-        }
+//        if (!is_arabic_code) {
+//            /* if current node's codepoint is non-arabic, return NULL */
+//            return NULL;
+//        }
 
-        if (glyph_class & ~HZ_GLYPH_CLASS_MARK) {
+        if (glyph_class & HZ_GLYPH_CLASS_BASE && curr_node->codepoint != 0) {
             /* glyph is anything else than a mark, return NULL */
             break;
         }

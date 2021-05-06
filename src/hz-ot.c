@@ -1409,7 +1409,7 @@ hz_ot_layout_apply_fit_ligature(hz_face_t *face,
             start_node->id = ligature->ligature_glyph;
 //            start_node->gc |= HZ_GLYPH_CLASS_LIGATURE;
             start_node->gc = hz_face_get_glyph_class(face, start_node->id);
-            start_node->attach_class = hz_face_get_glyph_attach_class(face, start_node->id) | HZ_GLYPH_CLASS_LIGATURE;
+            start_node->attach_class = hz_face_get_glyph_attach_class(face, start_node->id);
             break;
         }
         
@@ -2809,17 +2809,17 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                             base_count * mark_class_count);
                 }
 
-
                 /* go over every glyph and position marks in relation to their base */
                 for (m = sequence->root; m != NULL; m = m->next) {
                     if (!hz_should_skip_node(m, lookup_flags)) {
                         if (hz_map_value_exists(mark_map, m->id)) {
                             /* position mark in relation to previous base if it exists */
                             uint16_t mark_index = hz_map_get_value(mark_map, m->id);
+
                             HZ_ASSERT(mark_index < mark_count);
                             hz_mark_record_t *mark = &mark_records[ mark_index ];
                             
-                            b = hz_ot_layout_find_prev_and_class(m, HZ_GLYPH_CLASS_BASE);//hz_ot_layout_find_attach_base_with_anchor(base_map, base_anchor_offsets, mark_class_count, mark_class, m);
+                            b = hz_ot_layout_find_prev_with_class(m, HZ_GLYPH_CLASS_BASE);//hz_ot_layout_find_attach_base_with_anchor(base_map, base_anchor_offsets, mark_class_count, mark_class, m);
 
                             if (hz_map_value_exists(base_map, b->id)) {
                 

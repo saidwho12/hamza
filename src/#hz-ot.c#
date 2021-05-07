@@ -2428,6 +2428,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                                 g = sequence_context->nodes[sequence_context->node_count - 1];
                             }
                         }
+                        
                         hz_sequence_node_cache_destroy(sequence_context);
                     }
                 }

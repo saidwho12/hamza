@@ -583,15 +583,6 @@ typedef struct hz_sequence_t {
     hz_direction_t direction;
 } hz_sequence_t;
 
-static hz_language_t
-hz_lang(const char *s) {
-    if (!strcmp(s, "ar")) return HZ_LANGUAGE_ARABIC;
-    else if (!strcmp(s, "en")) return HZ_LANGUAGE_ENGLISH;
-    return HZ_LANGUAGE_ENGLISH;
-}
-
-#define HZ_LANG(lang_str) hz_lang(lang_str)
-
 static hz_sequence_t *
 hz_sequence_create(void) {
     hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));

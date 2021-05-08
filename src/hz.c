@@ -605,3 +605,15 @@ hz_context_gather_required_glyphs(hz_context_t *ctx)
 
     return glyphs;
 }
+
+hz_language_t
+hz_lang(const char *tag) {
+    if (!strcmp(tag, "ar")) {
+        return HZ_LANGUAGE_ARABIC;
+    } else if (!strcmp(tag, "en")) {
+        return HZ_LANGUAGE_ENGLISH;
+    }
+    return HZ_LANGUAGE_ENGLISH;
+}
+
+

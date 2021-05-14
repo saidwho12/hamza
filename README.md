@@ -80,6 +80,7 @@ There are no bindings yet for Hamza, but I have planned to work on a python one 
 - [ ] Vertical Layouts (for Kanji)
 - [ ] Emojis
 - [ ] Justification
-- [ ] Multi-Threading (TinyCThread?)
-- [ ] BCP47 Parser
+- [ ] OpenMP / TinyCThread parallelization
+- [ ] Optimize shaping
+- [ ] BCP47 / ISO-639 language tag handling
 - [x] Documentation (Natural Docs)

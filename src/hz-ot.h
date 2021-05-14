@@ -541,6 +541,10 @@ typedef enum hz_direction_t {
 } hz_direction_t;
 
 
+typedef enum hz_sequence_flags_t {
+    HZ_NO_MARKS = 0x00000001,
+} hz_sequence_flags_t;
+
 typedef struct hz_sequence_node_t hz_sequence_node_t;
 
 /*  Struct: hz_section_node_t
@@ -578,19 +582,17 @@ struct hz_sequence_node_t {
  * */
 typedef struct hz_sequence_t {
     hz_sequence_node_t *root;
-    int flags;
     int64_t width;
     hz_direction_t direction;
+    hz_sequence_flags_t flags;
 } hz_sequence_t;
 
-static hz_sequence_t *
-hz_sequence_create(void) {
-    hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
-    sequence->root = NULL;
-    sequence->direction = HZ_DIRECTION_LTR;
-    sequence->flags = 0;
-    sequence->width = 0;
-    return sequence;
+hz_sequence_t *
+hz_sequence_create(void);
+
+static void
+hz_sequence_set_flags(hz_sequence_t *sequence, hz_sequence_flags_t flags) {
+    sequence->flags = flags;
 }
 
 static void

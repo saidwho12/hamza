@@ -7,7 +7,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
     /*  Struct: hz_context_t
      *      Shaping context structure.
      *

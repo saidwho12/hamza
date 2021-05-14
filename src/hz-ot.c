@@ -2,6 +2,17 @@
 #include "hz-ot-shape-complex-arabic.h"
 #include "util/hz-map.h"
 
+hz_sequence_t *
+hz_sequence_create(void) {
+    hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
+    sequence->root = NULL;
+    sequence->direction = HZ_DIRECTION_LTR;
+    sequence->flags = 0;
+    sequence->width = 0;
+    return sequence;
+}
+
+
 hz_glyph_class_t
 hz_ignored_classes_from_lookup_flags(hz_lookup_flag_t flags)
 {

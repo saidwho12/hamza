@@ -25,8 +25,8 @@
 #define HZ_MALLOC(size) malloc(size)
 #define HZ_FREE(p) free(p)
 #define HZ_REALLOC(p, size) realloc(p, size)
-#define HZ_ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
-
+#define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
+#define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
 
 #define HZ_PACKED __attribute__((__packed__))
 
@@ -118,7 +118,7 @@ bswap64(unsigned long val) {
 
 #define HZ_ASSERT(cond) assert(cond)
 #define HZ_TAG(c1, c2, c3, c4) ((hz_tag_t)c4 | ((hz_tag_t)c3 << 8U) | ((hz_tag_t)c2 << 16U) | ((hz_tag_t)c1 << 24U))
-#define HZ_UNTAG(tag) (tag >> 24) & 0xFF, (tag >> 16) & 0xFF, (tag >> 8) & 0xFF, tag & 0xFF
+#define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_ALLOC(T) (T *) HZ_MALLOC(sizeof(T))
 
 /* V is the variable name, while T is the type/structure */
@@ -126,22 +126,27 @@ bswap64(unsigned long val) {
 
 #define HZ_HEAPARR(V, N, T) T *V = HZ_MALLOC(sizeof(T) * (N))
 
-typedef struct buf_t {
+typedef struct hz_stream_t {
     const unsigned char *data;
     long length;
     long idx;
     int flags;
-} buf_t;
+} hz_stream_t;
 
-static buf_t
-createbuf(const unsigned char *data, int flags) {
-    buf_t buf;
-    buf.idx = 0;
-    buf.data = data;
-    buf.length = 0;
-    buf.flags = flags;
-    return buf;
+static hz_stream_t
+hz_stream_create(const unsigned char *data, int flags) {
+    hz_stream_t stream;//= (hz_stream_t *)malloc(sizeof(hz_stream_t));
+    stream.idx = 0;
+    stream.data = data;
+    stream.length = 0;
+    stream.flags = flags;
+    return stream;
 }
+
+//static void
+//hz_stream_destroy(hz_stream_t *stream) {
+//    free(stream);
+//}
 
 typedef struct hz_metrics_t {
     int32_t x_advance;
@@ -158,12 +163,10 @@ typedef struct hz_metrics_t {
 } hz_metrics_t;
 
 
-#define BUF_BSWAP  0x01
-#define BUF_OF     0x02 /* overflow */
-#define BUF_BCHECK 0x04 /* bounds check */
+#define HZ_BSWAP  0x01
 
 static unsigned char
-unpackb(buf_t *buf) {
+unpackb(hz_stream_t *buf) {
     return buf->data[buf->idx++];
 }
 /*
@@ -173,31 +176,42 @@ unpacksb(buf_t *buf) {
 }
 */
 static unsigned short
-unpackh(buf_t *buf) {
+unpackh(hz_stream_t *buf) {
     unsigned short val = 0;
     val |= (unsigned short) unpackb(buf);
     val |= (unsigned short) unpackb(buf) << 8;
 
-    if (buf->flags & BUF_BSWAP) val = bswap16(val);
+    if (buf->flags & HZ_BSWAP) val = bswap16(val);
 
     return val;
 }
 
+static short
+unpackhs(hz_stream_t *stream) {
+    unsigned short val = 0;
+    val |= (unsigned short) unpackb(stream);
+    val |= (unsigned short) unpackb(stream) << 8;
+
+    if (stream->flags & HZ_BSWAP) val = bswap16(val);
+
+    return *(short *) &val;
+}
+
 static unsigned int
-unpacki(buf_t *buf) {
+unpacki(hz_stream_t *buf) {
     unsigned int val = 0;
     val |= (unsigned int) unpackb(buf);
     val |= (unsigned int) unpackb(buf) << 8;
     val |= (unsigned int) unpackb(buf) << 16;
     val |= (unsigned int) unpackb(buf) << 24;
 
-    if (buf->flags & BUF_BSWAP) val = bswap32(val);
+    if (buf->flags & HZ_BSWAP) val = bswap32(val);
 
     return val;
 }
 
 static unsigned long
-unpackl(buf_t *buf) {
+unpackl(hz_stream_t *buf) {
     unsigned long val = 0;
     val |= (unsigned long) unpackb(buf);
     val |= (unsigned long) unpackb(buf) << 8;
@@ -208,14 +222,14 @@ unpackl(buf_t *buf) {
     val |= (unsigned long) unpackb(buf) << 48;
     val |= (unsigned long) unpackb(buf) << 56;
 
-    if (buf->flags & BUF_BSWAP) val = bswap64(val);
+    if (buf->flags & HZ_BSWAP) val = bswap64(val);
 
     return val;
 }
 
 static void
-enablebswap(buf_t *buf) {
-    buf->flags |= BUF_BSWAP;
+enablebswap(hz_stream_t *buf) {
+    buf->flags |= HZ_BSWAP;
 }
 
 static char
@@ -224,12 +238,12 @@ peek(const char *p, int i) {
 }
 
 static void
-bufseek(buf_t *buf, int n) {
+bufseek(hz_stream_t *buf, int n) {
     buf->idx += n;
 }
 
 static void
-unpackv(buf_t *buf, const char *f, ...)
+unpackv(hz_stream_t *buf, const char *f, ...)
 {
     const char *c;
     va_list v;
@@ -326,5 +340,17 @@ typedef enum hz_glyph_class_t {
 
 #define HZ_GLYPH_CLASS_BIT_FIELD 4
 #define HZ_BIT(x) (1 << (x))
+
+typedef enum hz_error_t {
+    HZ_OK,
+    HZ_ERROR_INVALID_TABLE_TAG,
+    HZ_ERROR_INVALID_TABLE_VERSION,
+    HZ_ERROR_INVALID_LOOKUP_TYPE,
+    HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT,
+    HZ_ERROR_INVALID_PARAM,
+    HZ_ERROR_INVALID_FORMAT,
+    HZ_ERROR_TABLE_DOES_NOT_EXIST
+} hz_error_t;
+
 
 #endif /* HZ_BASE_H */

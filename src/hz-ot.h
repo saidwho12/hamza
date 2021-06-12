@@ -313,6 +313,19 @@ static const hz_feature_info_t HZ_FEATURE_INFO_LUT[HZ_FEATURE_COUNT] = {
         {HZ_FEATURE_ZERO, HZ_TAG('z', 'e', 'r', 'o')}, /* Slashed Zero */
 };
 
+static const hz_feature_info_t *
+hz_ot_get_feature_info(hz_feature_t feature) {
+    size_t i;
+
+    for (i = 0; i < HZ_ARRLEN(HZ_FEATURE_INFO_LUT); ++i) {
+        if (HZ_FEATURE_INFO_LUT[i].feature == feature) {
+            return &HZ_FEATURE_INFO_LUT[i];
+        }
+    }
+
+    return NULL;
+}
+
 static uint32_t
 hz_ot_calc_table_checksum(const uint32_t *table, uint32_t len) {
     uint32_t sum = 0;
@@ -382,6 +395,7 @@ typedef enum hz_script_t {
     HZ_SCRIPT_TELUGU,
     HZ_SCRIPT_KANNADA,
     HZ_SCRIPT_MALAYALAM,
+    HZ_SCRIPT_ODIA,
     HZ_SCRIPT_SINHALA,
     HZ_SCRIPT_THAI,
     HZ_SCRIPT_LAO,
@@ -530,6 +544,7 @@ typedef enum hz_language_t {
     HZ_LANGUAGE_GERMAN,
     HZ_LANGUAGE_JAPANESE,
     HZ_LANGUAGE_URDU,
+    HZ_LANGUAGE_HEBREW,
 } hz_language_t;
 
 typedef enum hz_direction_t {
@@ -582,7 +597,8 @@ struct hz_sequence_node_t {
  * */
 typedef struct hz_sequence_t {
     hz_sequence_node_t *root;
-    int64_t width;
+    hz_script_t script;
+    hz_language_t language;
     hz_direction_t direction;
     hz_sequence_flags_t flags;
 } hz_sequence_t;
@@ -590,15 +606,17 @@ typedef struct hz_sequence_t {
 hz_sequence_t *
 hz_sequence_create(void);
 
-static void
-hz_sequence_set_flags(hz_sequence_t *sequence, hz_sequence_flags_t flags) {
-    sequence->flags = flags;
-}
+void
+hz_sequence_set_script(hz_sequence_t *sequence, hz_script_t script);
 
-static void
-hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction) {
-    sequence->direction = direction;
-}
+void
+hz_sequence_set_language(hz_sequence_t *sequence, hz_language_t language);
+
+void
+hz_sequence_set_flags(hz_sequence_t *sequence, hz_sequence_flags_t flags);
+
+void
+hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction);
 
 static void
 hz_sequence_add(hz_sequence_t *sequence, hz_sequence_node_t *new_node)
@@ -945,10 +963,10 @@ static const char *hz_GPOS_lookup_type_string(HZ_Uint16 type);
 
 typedef enum hz_lookup_flag_t {
     /*
-        This bit relates only to
-        the correct processing of the cursive attachment lookup type (GPOS lookup type 3).
-        When this bit is set, the last glyph in a given sequence to
-        which the cursive attachment lookup is applied, will be positioned on the baseline.
+      This bit relates only to
+      the correct processing of the cursive attachment lookup type (GPOS lookup type 3).
+      When this bit is set, the last glyph in a given sequence to
+      which the cursive attachment lookup is applied, will be positioned on the baseline.
     */
     HZ_LOOKUP_FLAG_RIGHT_TO_LEFT = 0x0001,
 
@@ -962,8 +980,8 @@ typedef enum hz_lookup_flag_t {
     HZ_LOOKUP_FLAG_IGNORE_MARKS = 0x0008,
 
     /*
-        If set, indicates that the lookup table structure is followed by a MarkFilteringSet field.
-        The layout engine skips over all mark glyphs not in the mark filtering set indicated.
+      If set, indicates that the lookup table structure is followed by a MarkFilteringSet field.
+      The layout engine skips over all mark glyphs not in the mark filtering set indicated.
     */
     HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET = 0x0010,
 
@@ -972,6 +990,32 @@ typedef enum hz_lookup_flag_t {
     /* If not zero, skips over all marks of attachment type different from specified. */
     HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK = 0xFF00
 } hz_lookup_flag_t;
+
+typedef enum hz_value_format_flag_t {
+    /* Includes horizontal adjustment for placement */
+    HZ_VALUE_FORMAT_X_PLACEMENT = 0x0001,
+
+    /* Includes vertical adjustment for placement */
+    HZ_VALUE_FORMAT_Y_PLACEMENT = 0x0002,
+
+    /* Includes horizontal adjustment for advance */
+    HZ_VALUE_FORMAT_X_ADVANCE = 0x0004,
+
+    /* Includes vertical adjustment for advance */
+    HZ_VALUE_FORMAT_Y_ADVANCE = 0x0008,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal placement */
+    HZ_VALUE_FORMAT_X_PLACEMENT_DEVICE = 0x0010,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical placement */
+    HZ_VALUE_FORMAT_Y_PLACEMENT_DEVICE = 0x0020,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal advance */
+    HZ_VALUE_FORMAT_X_ADVANCE_DEVICE = 0x0040,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical advance */
+    HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE = 0x0080,
+} hz_value_format_flag_t;
 
 typedef enum hz_gsub_lookup_type_t {
     HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION = 1,
@@ -1065,159 +1109,101 @@ typedef struct HZ_PACKED hz_delta_table_t {
     hz_uint16 *deltaValues;
 } hz_delta_table_t;
 
-typedef struct HZ_PACKED hz_variation_index_table_t {
-    /* A delta-set outer index — used to select an item variation data subtable within the item variation store. */
-    hz_uint16 outerIndex;
+    typedef struct HZ_PACKED hz_variation_index_table_t {
+        /* A delta-set outer index — used to select an item variation data subtable within the item variation store. */
+        hz_uint16 outerIndex;
 
-    /* A delta-set inner index — used to select a delta-set row within an item variation data subtable. */
-    hz_uint16 innerIndex;
+        /* A delta-set inner index — used to select a delta-set row within an item variation data subtable. */
+        hz_uint16 innerIndex;
 
-    /* Format, = 0x8000 */
-    hz_delta_format_t format;
-} hz_variation_index_table_t;
+        /* Format, = 0x8000 */
+        hz_delta_format_t format;
+    } hz_variation_index_table_t;
 
-typedef struct HZ_PACKED hz_feature_variation_record_t {
-    /* Offset to a condition set table, from beginning of FeatureVariations table. */
-    hz_offset32_t conditionSetOffset;
+    typedef struct HZ_PACKED hz_feature_variation_record_t {
+        /* Offset to a condition set table, from beginning of FeatureVariations table. */
+        hz_offset32_t conditionSetOffset;
 
-    /*
-        Offset to a feature table substitution table,
-        from beginning of the FeatureVariations table.
-    */
-    hz_offset32_t featureTableSubstitutionOffset;
-} hz_feature_variation_record_t;
+        /*
+          Offset to a feature table substitution table,
+          from beginning of the FeatureVariations table.
+        */
+        hz_offset32_t featureTableSubstitutionOffset;
+    } hz_feature_variation_record_t;
 
 
-typedef struct HZ_PACKED hz_feature_variations_table_t {
-    /* Major version of the FeatureVariations table — set to 1. */
-    hz_uint16 versionMajor;
+    typedef struct HZ_PACKED hz_feature_variations_table_t {
+        /* Major version of the FeatureVariations table — set to 1. */
+        hz_uint16 versionMajor;
 
-    /* Minor version of the FeatureVariations table — set to 0. */
-    hz_uint16 versionMinor;
+        /* Minor version of the FeatureVariations table — set to 0. */
+        hz_uint16 versionMinor;
 
-    /* Number of feature variation records. */
-    hz_uint16 featureVariationRecordCount;
+        /* Number of feature variation records. */
+        hz_uint16 featureVariationRecordCount;
 
-    /* Array of feature variation records. */
-    hz_feature_variation_record_t *featureVariationRecord;
-} hz_feature_variations_table_t;
+        /* Array of feature variation records. */
+        hz_feature_variation_record_t *featureVariationRecord;
+    } hz_feature_variations_table_t;
 
-typedef struct HZ_PACKED hz_condition_set_t {
-    /* Number of conditions for this condition set. */
-    hz_uint16 conditionCount;
+    typedef struct HZ_PACKED hz_condition_set_t {
+        /* Number of conditions for this condition set. */
+        hz_uint16 conditionCount;
 
-    /* Array of offsets to condition tables, from beginning of the ConditionSet table. */
-    hz_offset32_t *conditions;
-} hz_condition_set_t;
+        /* Array of offsets to condition tables, from beginning of the ConditionSet table. */
+        hz_offset32_t *conditions;
+    } hz_condition_set_t;
 
-typedef struct HZ_PACKED hz_condition_format1_t {
-    /* Format, = 1 */
-    hz_uint16 format;
+    typedef struct HZ_PACKED hz_condition_format1_t {
+        /* Format, = 1 */
+        hz_uint16 format;
 
-    /* Index (zero-based) for the variation axis within the 'fvar' table. */
-    hz_uint16 axisIndex;
+        /* Index (zero-based) for the variation axis within the 'fvar' table. */
+        hz_uint16 axisIndex;
 
-    /* Minimum value of the font variation instances that satisfy this condition. */
-    HZ_F2DOT14 filterRangeMinValue;
+        /* Minimum value of the font variation instances that satisfy this condition. */
+        HZ_F2DOT14 filterRangeMinValue;
 
-    /* Maximum value of the font variation instances that satisfy this condition. */
-    HZ_F2DOT14 filterRangeMaxValue;
-} hz_condition_format1_t;
+        /* Maximum value of the font variation instances that satisfy this condition. */
+        HZ_F2DOT14 filterRangeMaxValue;
+    } hz_condition_format1_t;
 
-typedef struct HZ_PACKED hz_feature_table_substitution_record_t {
-    /* The feature table index to match. */
-    hz_uint16 featureIndex;
+    typedef struct HZ_PACKED hz_feature_table_substitution_record_t {
+        /* The feature table index to match. */
+        hz_uint16 featureIndex;
 
-    /* Offset to an alternate feature table, from start of the FeatureTableSubstitution table. */
-    hz_offset32_t alternateFeatureOffset;
-} hz_feature_table_substitution_record_t;
+        /* Offset to an alternate feature table, from start of the FeatureTableSubstitution table. */
+        hz_offset32_t alternateFeatureOffset;
+    } hz_feature_table_substitution_record_t;
 
-typedef struct HZ_PACKED hz_feature_table_substitution_table_t {
-    /* Major version of the feature table substitution table — set to 1 */
-    hz_uint16 majorVersion;
+    typedef struct HZ_PACKED hz_feature_table_substitution_table_t {
+        /* Major version of the feature table substitution table — set to 1 */
+        hz_uint16 majorVersion;
 
-    /* Minor version of the feature table substitution table — set to 0. */
-    hz_uint16 minorVersion;
+        /* Minor version of the feature table substitution table — set to 0. */
+        hz_uint16 minorVersion;
 
-    /* Number of feature table substitution records. */
-    hz_uint16 substitutionCount;
+        /* Number of feature table substitution records. */
+        hz_uint16 substitutionCount;
 
-    /* Array of feature table substitution records. */
-    hz_feature_table_substitution_record_t *substitutions;
-} hz_feature_table_substitution_table_t;
+        /* Array of feature table substitution records. */
+        hz_feature_table_substitution_record_t *substitutions;
+    } hz_feature_table_substitution_table_t;
 
-typedef struct hz_bitset_t {
-    uint8_t *data;
-    uint16_t bit_count;
-} hz_bitset_t;
+    typedef struct hz_bitset_t {
+        uint8_t *data;
+        uint16_t bit_count;
+    } hz_bitset_t;
 
-static hz_uint64 hz_next_pow2m1(hz_uint64 x) {
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x |= x >> 32;
-    return x;
-}
-
-static hz_bitset_t *
-hz_bitset_create(uint16_t bit_count) {
-    hz_bitset_t *bitset = (hz_bitset_t *) malloc(sizeof(hz_bitset_t));
-
-    bitset->bit_count = bit_count;
-    uint16_t byte_count = (bit_count / 8) + 1;
-
-    bitset->data = (uint8_t *) calloc(byte_count, 1);
-
-    return bitset;
-}
-
-static void
-hz_bitset_destroy(hz_bitset_t *bitset) {
-    free(bitset);
-}
-
-static hz_bool
-hz_bitset_set(hz_bitset_t *bitset, uint16_t index, hz_bool value) {
-    if (index < bitset->bit_count) {
-        uint8_t *byte = bitset->data + (index / 8);
-        uint8_t mask = 1 << (index % 8);
-
-        if (value == HZ_TRUE)
-            *byte |= mask;
-        else if (value == HZ_FALSE)
-            *byte &= ~mask;
-
-        return HZ_TRUE;
+    static hz_uint64 hz_next_pow2m1(hz_uint64 x) {
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x |= x >> 32;
+        return x;
     }
-
-    return HZ_FALSE;
-}
-
-static hz_bool
-hz_bitset_check(const hz_bitset_t *bitset, uint16_t index) {
-    hz_bool value = HZ_FALSE;
-
-    if (index < bitset->bit_count) {
-        uint8_t byte = *(bitset->data + (index / 8));
-        uint8_t mask = 1 << (index % 8);
-
-        if (byte & mask)
-            value = HZ_TRUE;
-    }
-
-    return value;
-}
-
-static void
-hz_bitset_copy(hz_bitset_t *dst, const hz_bitset_t *src) {
-    size_t byte_count = src->bit_count / 8;
-    HZ_ASSERT(src->bit_count == dst->bit_count);
-
-    memcpy(dst->data, src->data, byte_count);
-}
-
 
 #define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')
 #define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')
@@ -1225,105 +1211,101 @@ hz_bitset_copy(hz_bitset_t *dst, const hz_bitset_t *src) {
 #define HZ_OT_TAG_JSTF HZ_TAG('J','S','T','F')
 
 
-typedef enum hz_error_t {
-    HZ_OK,
-    HZ_ERROR_INVALID_TABLE_TAG,
-    HZ_ERROR_UNKNOWN_TABLE_VERSION,
-    HZ_ERROR_INVALID_LOOKUP_TYPE,
-    HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT,
-    HZ_ERROR_INVALID_PARAM,
-} hz_error_t;
+    hz_feature_t
+    hz_ot_feature_from_tag(hz_tag_t tag);
 
 
-hz_feature_t
-hz_ot_feature_from_tag(hz_tag_t tag);
+    hz_bool
+    hz_ot_layout_gather_glyphs(hz_face_t *face,
+                               hz_tag_t script,
+                               hz_tag_t language,
+                               const hz_array_t *wanted_features,
+                               hz_set_t *glyphs);
+
+    hz_bool
+    hz_ot_layout_apply_gsub_features(hz_face_t *face,
+                                     hz_tag_t script,
+                                     hz_tag_t language,
+                                     const hz_array_t *wanted_features,
+                                     hz_sequence_t *sequence);
+
+    hz_bool
+    hz_ot_layout_apply_gpos_features(hz_face_t *face,
+                                     hz_tag_t script,
+                                     hz_tag_t language,
+                                     const hz_array_t *wanted_features,
+                                     hz_sequence_t *sequence);
+
+    void
+    hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
+                                            const hz_set_t *lookups,
+                                            hz_set_t *glyphs);
 
 
-hz_bool
-hz_ot_layout_gather_glyphs(hz_face_t *face,
-                           hz_tag_t script,
-                           hz_tag_t language,
-                           const hz_array_t *wanted_features,
-                           hz_set_t *glyphs);
-
-hz_bool
-hz_ot_layout_apply_gsub_features(hz_face_t *face,
-                                 hz_tag_t script,
-                                 hz_tag_t language,
-                                 const hz_array_t *wanted_features,
-                                 hz_sequence_t *sequence);
-
-hz_bool
-hz_ot_layout_apply_gpos_features(hz_face_t *face,
-                                 hz_tag_t script,
-                                 hz_tag_t language,
-                                 const hz_array_t *wanted_features,
-                                 hz_sequence_t *sequence);
-
-void
-hz_ot_layout_lookups_substitute_closure(hz_face_t *face,
-                                          const hz_set_t *lookups,
-                                          hz_set_t *glyphs);
-
-
-hz_bool
-hz_ot_layout_lookup_would_substitute(hz_face_t *face,
-                                     unsigned int lookup_index,
-                                     const hz_index_t *glyphs,
-                                     unsigned int glyph_count,
-                                     hz_bool zero_context);
+    hz_bool
+    hz_ot_layout_lookup_would_substitute(hz_face_t *face,
+                                         unsigned int lookup_index,
+                                         const hz_index_t *glyphs,
+                                         unsigned int glyph_count,
+                                         hz_bool zero_context);
 
 
 
-void
-hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
-                                 buf_t *subtable,
-                                 uint16_t lookup_type,
-                                 uint16_t lookup_flags,
-                                 hz_feature_t feature,
-                                 hz_sequence_t *sequence);
+    hz_error_t
+    hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
+                                     hz_stream_t *subtable,
+                                     uint16_t lookup_type,
+                                     uint16_t lookup_flags,
+                                     hz_feature_t feature,
+                                     hz_sequence_t *sequence);
 
-void
-hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
-                                 buf_t *subtable,
-                                 uint16_t lookup_type,
-                                 uint16_t lookup_flags,
-                                 hz_feature_t feature,
-                                 hz_sequence_t *sequence);
+    hz_error_t
+    hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
+                                     hz_stream_t *subtable,
+                                     uint16_t lookup_type,
+                                     uint16_t lookup_flags,
+                                     hz_feature_t feature,
+                                     hz_sequence_t *sequence);
 
-void
-hz_ot_layout_apply_gsub_feature(hz_face_t *face,
-                                buf_t *table,
-                                hz_feature_t feature,
+    void
+    hz_ot_layout_apply_gsub_feature(hz_face_t *face,
+                                    hz_stream_t *table,
+                                    hz_feature_t feature,
+                                    hz_sequence_t *sequence);
+    void
+    hz_ot_layout_apply_gpos_feature(hz_face_t *face,
+                                    hz_stream_t *table,
+                                    hz_feature_t feature,
+                                    hz_sequence_t *sequence);
+
+    hz_bool
+    hz_ot_layout_apply_features(hz_face_t *face,
+                                hz_tag_t table_tag,
+                                hz_tag_t script,
+                                hz_tag_t language,
+                                hz_feature_t *features,
+                                unsigned int num_features,
                                 hz_sequence_t *sequence);
-void
-hz_ot_layout_apply_gpos_feature(hz_face_t *face,
-                                buf_t *table,
-                                hz_feature_t feature,
-                                hz_sequence_t *sequence);
 
 
-hz_bool
-hz_ot_layout_apply_features(hz_face_t *face,
-                            hz_tag_t table_tag,
-                            hz_tag_t script,
-                            hz_tag_t language,
-                            const hz_array_t *wanted_features,
-                            hz_sequence_t *sequence);
+    void
+    hz_ot_parse_gdef_table(hz_face_t *face, hz_sequence_t *sequence);
 
+    void
+    hz_set_sequence_glyph_info(hz_face_t *face, hz_sequence_t *sequence);
 
-void
-hz_ot_parse_gdef_table(hz_face_t *face, hz_sequence_t *sequence);
+    hz_tag_t
+    hz_ot_script_to_tag(hz_script_t script);
 
-void
-hz_set_sequence_glyph_info(hz_face_t *face, hz_sequence_t *sequence);
+    hz_tag_t
+    hz_ot_language_to_tag(hz_language_t language);
 
-hz_tag_t
-hz_ot_script_to_tag(hz_script_t script);
+    hz_bool
+    hz_ot_is_complex_script(hz_script_t script);
 
-hz_tag_t
-hz_ot_language_to_tag(hz_language_t language);
-
+    void
+    hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsigned int *countptr);
+    
 #ifdef __cplusplus
 }
 #endif

@@ -9,7 +9,7 @@ hz_ot_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
     const hz_arabic_joining_entry_t *curr_entry = NULL;
     size_t index = 0;
 
-    while (index < HZ_ARRAY_SIZE(hz_arabic_joining_list)) {
+    while (index < HZ_ARRLEN(hz_arabic_joining_list)) {
         curr_entry = &hz_arabic_joining_list[index];
 
         if (curr_entry->codepoint == codepoint) {

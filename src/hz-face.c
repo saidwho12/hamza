@@ -1,6 +1,5 @@
 #include "hz-face.h"
 #include "util/hz-map.h"
-#include "hz-ot.h"
 
 typedef struct hz_face_table_node_t hz_face_table_node_t;
 
@@ -155,7 +154,7 @@ void
 hz_face_load_num_glyphs(hz_face_t *face)
 {
     hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('m','a','x','p'));
-    buf_t table = createbuf(hz_blob_get_data(blob), BUF_BSWAP);
+    hz_stream_t table = hz_stream_create(hz_blob_get_data(blob), HZ_BSWAP);
 
     uint32_t version;
     uint16_t num_glyphs;
@@ -185,7 +184,7 @@ void
 hz_face_load_class_maps(hz_face_t *face)
 {
     if (hz_face_get_ot_tables(face)->GDEF_table != NULL) {
-        buf_t table = createbuf(hz_face_get_ot_tables(face)->GDEF_table, BUF_BSWAP);
+        hz_stream_t table = hz_stream_create(hz_face_get_ot_tables(face)->GDEF_table, HZ_BSWAP);
         uint32_t version;
 
         hz_offset16_t glyph_class_def_offset;
@@ -220,7 +219,7 @@ hz_face_load_class_maps(hz_face_t *face)
 
         if (glyph_class_def_offset) {
             /* glyph class def isn't nil */
-            buf_t subtable = createbuf(table.data + glyph_class_def_offset, BUF_BSWAP);
+            hz_stream_t subtable = hz_stream_create(table.data + glyph_class_def_offset, HZ_BSWAP);
             uint16_t class_format;
             class_format = unpackh(&subtable);
             switch (class_format) {
@@ -249,7 +248,7 @@ hz_face_load_class_maps(hz_face_t *face)
         }
 
         if (mark_attach_class_def_offset) {
-            buf_t subtable = createbuf(table.data + mark_attach_class_def_offset, BUF_BSWAP);
+            hz_stream_t subtable = hz_stream_create(table.data + mark_attach_class_def_offset, HZ_BSWAP);
             uint16_t class_format;
             class_format = unpackh(&subtable);
             switch (class_format) {
@@ -277,6 +276,59 @@ hz_face_load_class_maps(hz_face_t *face)
             }
         }
     }
+}
+
+typedef struct hz_kern_coverage_field_t {
+    uint16_t horizontal : 1;
+    uint16_t minimum : 1;
+    uint16_t cross_stream : 1;
+    uint16_t override : 1;
+    uint16_t reserved1 : 4;
+    uint16_t format : 8;
+} hz_kern_coverage_field_t;
+
+typedef union hz_kern_coverage_t {
+    uint16_t data;
+    hz_kern_coverage_field_t field;
+} hz_kern_coverage_t;
+
+
+hz_error_t
+hz_face_load_kerning_pairs(hz_face_t *face)
+{
+    hz_stream_t table;
+    uint16_t version;
+    uint16_t i, n_tables;
+    hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('k','e','r','n'));
+
+    if (blob == NULL) {
+        return HZ_ERROR_TABLE_DOES_NOT_EXIST;
+    }
+
+    table = hz_blob_to_stream(blob);
+    version = unpackh(&table);
+    n_tables = unpackh(&table);
+
+    if (version != 0) {
+        return HZ_ERROR_INVALID_TABLE_VERSION;
+    }
+
+    for (i = 0; i < n_tables; ++i) {
+        uint16_t version, length;
+        hz_kern_coverage_field_t coverage;
+        unpackv(&table, "hhh", &version, &length, &coverage);
+
+        switch (coverage.format) {
+            case 0:
+                break;
+            case 2:
+                break;
+            default:
+                return HZ_ERROR_INVALID_FORMAT;
+        }
+    }
+
+    return HZ_OK;
 }
 
 hz_glyph_class_t

@@ -18,12 +18,24 @@ extern "C" {
 static hz_blob_t*
 hz_ft_load_snft_table(FT_Face face, hz_tag_t tag)
 {
-    hz_blob_t *blob = hz_blob_create();
     FT_ULong size = 0;
+    FT_ULong ft_tag = tag;
+    FT_ULong length;
+
     FT_Load_Sfnt_Table(face, tag, 0, NULL, &size);
-    hz_blob_resize(blob, size);
-    FT_Load_Sfnt_Table(face, tag, 0, hz_blob_get_data(blob), &size);
-    return blob;
+
+//    FT_Sfnt_Table_Info(face, 0, &ft_tag, &length);
+//
+//    if (!length) return NULL;
+
+    if (size) {
+        hz_blob_t *blob = hz_blob_create();
+        hz_blob_resize(blob, size);
+        FT_Load_Sfnt_Table(face, tag, 0, hz_blob_get_data(blob), &size);
+        return blob;
+    }
+
+    return NULL;
 }
 
 static hz_font_t *
@@ -35,6 +47,7 @@ hz_ft_font_create(FT_Face ft_face) {
             HZ_TAG('m','a','x','p'),
             HZ_TAG('g','l','y','f'),
             HZ_TAG('h','m','t','x'),
+            HZ_TAG('k','e','r','n'),
     };
 
     size_t tag_index, glyph_index;
@@ -68,7 +81,7 @@ hz_ft_font_create(FT_Face ft_face) {
 
     hz_face_set_ot_tables(face, &ot_tables);
 
-    for (tag_index = 0; tag_index < HZ_ARRAY_SIZE(tags); ++tag_index) {
+    for (tag_index = 0; tag_index < HZ_ARRLEN(tags); ++tag_index) {
         hz_blob_t *blob = hz_ft_load_snft_table(ft_face, tags[tag_index]);
         if (blob != NULL) {
             hz_face_set_table(face, tags[tag_index], blob);
@@ -105,6 +118,7 @@ hz_ft_font_create(FT_Face ft_face) {
     }
 
     hz_face_load_class_maps(face);
+    hz_face_load_kerning_pairs(face);
     hz_font_set_face(font, face);
     return font;
 //

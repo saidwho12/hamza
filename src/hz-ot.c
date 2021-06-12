@@ -2,14 +2,33 @@
 #include "hz-ot-shape-complex-arabic.h"
 #include "util/hz-map.h"
 
+
 hz_sequence_t *
 hz_sequence_create(void) {
     hz_sequence_t *sequence = (hz_sequence_t *) HZ_MALLOC(sizeof(hz_sequence_t));
     sequence->root = NULL;
-    sequence->direction = HZ_DIRECTION_LTR;
     sequence->flags = 0;
-    sequence->width = 0;
     return sequence;
+}
+
+void
+hz_sequence_set_script(hz_sequence_t *sequence, hz_script_t script) {
+    sequence->script = script;
+}
+
+void
+hz_sequence_set_language(hz_sequence_t *sequence, hz_language_t language) {
+    sequence->language = language;
+}
+
+void
+hz_sequence_set_flags(hz_sequence_t *sequence, hz_sequence_flags_t flags) {
+    sequence->flags = flags;
+}
+
+void
+hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction) {
+    sequence->direction = direction;
 }
 
 
@@ -60,7 +79,7 @@ hz_ot_tag_from_feature(hz_feature_t feature) {
 void
 hz_ot_parse_gdef_table(hz_face_t *face, hz_sequence_t *sequence)
 {
-    buf_t table = createbuf(hz_face_get_ot_tables(face)->GDEF_table, BUF_BSWAP);
+    hz_stream_t table = hz_stream_create(hz_face_get_ot_tables(face)->GDEF_table, HZ_BSWAP);
     uint32_t version;
 
     hz_offset16_t glyph_class_def_offset;
@@ -95,7 +114,7 @@ hz_ot_parse_gdef_table(hz_face_t *face, hz_sequence_t *sequence)
 
     if (glyph_class_def_offset != 0) {
         /* glyph class def isn't nil */
-        buf_t subtable = createbuf(table.data + glyph_class_def_offset, BUF_BSWAP);
+        hz_stream_t subtable = hz_stream_create(table.data + glyph_class_def_offset, HZ_BSWAP);
         hz_map_t *class_map = hz_map_create();
         hz_sequence_node_t *curr_node = sequence->root;
         uint16_t class_format;
@@ -314,7 +333,7 @@ hz_sequence_node_cache_destroy(hz_sequence_node_cache_t *cache) {
 
 void
 hz_ligature_decode(hz_ligature_t *ligature, hz_byte *data) {
-    buf_t table = createbuf(data, BUF_BSWAP);
+    hz_stream_t table = hz_stream_create(data, HZ_BSWAP);
     unpackv(&table, "hh", &ligature->ligature_glyph, &ligature->component_count);
     ligature->component_glyph_ids = HZ_MALLOC(sizeof(uint16_t) * (ligature->component_count - 1));
     unpackv(&table, "h:*", ligature->component_glyph_ids, ligature->component_count - 1);
@@ -331,7 +350,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
 
     hz_bump_allocator_init(&allocator, buffer, sizeof(buffer));
 
-    buf_t subtable = createbuf(data, BUF_BSWAP);
+    hz_stream_t subtable = hz_stream_create(data, HZ_BSWAP);
     uint16_t script_count = 0;
     uint16_t index = 0;
     hz_rec16_t *script_records = NULL;
@@ -363,7 +382,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
 
     /* Found script */
     uint16_t script_offset = script_records[found_script].offset;
-    buf_t script_stream = createbuf(data + script_offset, BUF_BSWAP);
+    hz_stream_t script_stream = hz_stream_create(data + script_offset, HZ_BSWAP);
     hz_offset16_t default_lang_sys_offset;
     uint16_t lang_sys_count;
     unpackv(&script_stream, "hh", &default_lang_sys_offset, &lang_sys_count);
@@ -406,7 +425,7 @@ hz_ot_layout_feature_get_lookups(uint8_t *data,
                                  hz_array_t *lookup_indices)
 {
     int i = 0;
-    buf_t table = createbuf(data, BUF_BSWAP);
+    hz_stream_t table = hz_stream_create(data, HZ_BSWAP);
     hz_feature_table_t feature_table;
     unpackv(&table, "hh", &feature_table.feature_params,
             &feature_table.lookup_index_count);
@@ -684,14 +703,14 @@ void
 hz_ot_layout_apply_gsub_lookup(hz_face_t *face,
                                hz_feature_t feature,
                                hz_sequence_t *sequence,
-                               buf_t *lookup)
+                               hz_stream_t *lookup)
 {
     uint16_t type, flags, n, i;
     unpackv(lookup, "hhh", &type, &flags, &n);
 
     for (i=0; i<n; ++i) {
         hz_offset16_t offset = unpackh(lookup);
-        buf_t subtable = createbuf(lookup->data + offset, BUF_BSWAP);
+        hz_stream_t subtable = hz_stream_create(lookup->data + offset, HZ_BSWAP);
         hz_ot_layout_apply_gsub_subtable(face, &subtable, type, flags,
                                          feature, sequence);
     }
@@ -704,7 +723,7 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
                           hz_sequence_t *sequence,
                           uint16_t lookup_index)
 {
-    buf_t    table;
+    hz_stream_t    table;
     uint32_t version;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
@@ -712,9 +731,9 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
     uint32_t feature_variations_offset;
 
     if (table_tag == HZ_OT_TAG_GSUB) {
-        table = createbuf(hz_face_get_ot_tables(face)->GSUB_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GSUB_table, HZ_BSWAP);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-        table = createbuf(hz_face_get_ot_tables(face)->GPOS_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GPOS_table, HZ_BSWAP);
     } else {
         /* error */
         return HZ_ERROR_INVALID_TABLE_TAG;
@@ -739,7 +758,7 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
 
         default:
             /* error */
-            return HZ_ERROR_UNKNOWN_TABLE_VERSION;
+            return HZ_ERROR_INVALID_TABLE_VERSION;
     }
 
     uint8_t *lookup_list = table.data + lookup_list_offset;
@@ -749,7 +768,7 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
         return HZ_ERROR_INVALID_PARAM;
 
     uint16_t lookup_offset = bswap16(((uint16_t*)lookup_list)[1+lookup_index]);
-    buf_t lookup_table = createbuf(lookup_list + lookup_offset, BUF_BSWAP);
+    hz_stream_t lookup_table = hz_stream_create(lookup_list + lookup_offset, HZ_BSWAP);
 
 
     if (table_tag == HZ_OT_TAG_GSUB) {
@@ -918,15 +937,16 @@ hz_ot_layout_apply_features(hz_face_t *face,
                             hz_tag_t table_tag,
                             hz_tag_t script,
                             hz_tag_t language,
-                            const hz_array_t *wanted_features,
+                            hz_feature_t *features,
+                            unsigned int num_features,
                             hz_sequence_t *sequence)
 {
-    buf_t table;
+    hz_stream_t table;
 
     if (table_tag == HZ_OT_TAG_GSUB) {
-        table = createbuf(hz_face_get_ot_tables(face)->GSUB_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GSUB_table, HZ_BSWAP);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-        table = createbuf(hz_face_get_ot_tables(face)->GPOS_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GPOS_table, HZ_BSWAP);
     } else {
         /* error */
         return HZ_ERROR_INVALID_TABLE_TAG;
@@ -955,7 +975,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
                     &feature_variations_offset);
             break;
         default: /* error */
-        return HZ_ERROR_UNKNOWN_TABLE_VERSION;
+        return HZ_ERROR_INVALID_TABLE_VERSION;
             break;
     }
 
@@ -972,7 +992,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
     HZ_LOG("Found language system!\n");
 
     hz_array_t *lang_feature_indices = hz_array_create();
-    buf_t lsbuf = createbuf(lsaddr, BUF_BSWAP);
+    hz_stream_t lsbuf = hz_stream_create(lsaddr, HZ_BSWAP);
 
     hz_lang_sys_t langSys;
     unpackv(&lsbuf, "hhh", &langSys.lookup_order,
@@ -997,7 +1017,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
         ++loopIndex;
     }
 
-    buf_t lookup_list = createbuf(table.data + lookup_list_offset, BUF_BSWAP);
+    hz_stream_t lookup_list = hz_stream_create(table.data + lookup_list_offset, HZ_BSWAP);
     hz_array_t *lookup_offsets = hz_array_create();
 
     {
@@ -1012,7 +1032,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
     }
 
 
-    buf_t feature_list = createbuf(table.data + feature_list_offset, BUF_BSWAP);
+    hz_stream_t feature_list = hz_stream_create(table.data + feature_list_offset, HZ_BSWAP);
 
 
     {
@@ -1033,35 +1053,29 @@ hz_ot_layout_apply_features(hz_face_t *face,
             ++feature_index;
         }
 
-        uint16_t wanted_feature_count = hz_array_size(wanted_features);
-        uint16_t wanted_feature_index = 0;
-        while (wanted_feature_index < wanted_feature_count) {
-            hz_feature_t wanted_feature = hz_array_at(wanted_features, wanted_feature_index);
+        uint16_t i, j;
+        for (i=0; i < num_features; ++i) {
+            hz_feature_t feature = features[i];
 
-            if ( hz_map_value_exists(feature_map, wanted_feature) ) {
+            if ( hz_map_value_exists(feature_map, feature) ) {
                 /* feature is wanted and exists */
-                hz_offset16_t feature_offset = hz_map_get_value(feature_map, wanted_feature);
+                hz_offset16_t feature_offset = hz_map_get_value(feature_map, feature);
                 hz_array_t *lookup_indices = hz_array_create();
                 hz_ot_layout_feature_get_lookups(feature_list.data + feature_offset, lookup_indices);
 
-                int i = 0;
-                while (i < hz_array_size(lookup_indices)) {
-                    uint16_t lookup_offset = hz_array_at(lookup_offsets, hz_array_at(lookup_indices, i));
-                    buf_t lookup_table = createbuf(lookup_list.data + lookup_offset, BUF_BSWAP);
+                for (j=0; j<hz_array_size(lookup_indices); ++j) {
+                    uint16_t lookup_offset = hz_array_at(lookup_offsets, hz_array_at(lookup_indices, j));
+                    hz_stream_t lookup_table = hz_stream_create(lookup_list.data + lookup_offset, HZ_BSWAP);
 
                     if (table_tag == HZ_OT_TAG_GSUB) {
-                        hz_ot_layout_apply_gsub_feature(face, &lookup_table, wanted_feature, sequence);
+                        hz_ot_layout_apply_gsub_feature(face, &lookup_table, feature, sequence);
                     } else if (table_tag == HZ_OT_TAG_GPOS) {
-                        hz_ot_layout_apply_gpos_feature(face, &lookup_table, wanted_feature, sequence);
+                        hz_ot_layout_apply_gpos_feature(face, &lookup_table, feature, sequence);
                     }
-
-                    ++i;
                 }
 
                 hz_array_destroy(lookup_indices);
             }
-
-            ++wanted_feature_index;
         }
 
 
@@ -1093,10 +1107,10 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
 */
 
 hz_bool
-hz_decode_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
+hz_ot_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
 {
     uint16_t coverage_format;
-    buf_t table = createbuf(data, BUF_BSWAP);
+    hz_stream_t table = hz_stream_create(data, HZ_BSWAP);
 
     coverage_format = unpackh(&table);
 
@@ -1158,6 +1172,102 @@ hz_decode_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
     }
 
     return HZ_TRUE;
+}
+
+typedef struct hz_value_record_t {
+    int16_t x_placement;
+    int16_t y_placement;
+    int16_t x_advance;
+    int16_t y_advance;
+    hz_offset16_t x_pla_device_offset;
+    hz_offset16_t y_pla_device_offset;
+    hz_offset16_t x_adv_device_offset;
+    hz_offset16_t y_adv_device_offset;
+} hz_value_record_t;
+
+
+static void
+hz_ot_read_value_record(hz_stream_t *stream, hz_value_record_t *record, uint16_t value_format) {
+
+    if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT)
+        record->x_placement = unpackhs(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT)
+        record->y_placement = unpackhs(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_X_ADVANCE)
+        record->x_advance = unpackhs(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE)
+        record->y_advance = unpackhs(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT_DEVICE)
+        record->x_pla_device_offset = unpackh(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT_DEVICE)
+        record->y_pla_device_offset = unpackh(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_X_ADVANCE_DEVICE)
+        record->x_adv_device_offset = unpackh(stream);
+
+    if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE)
+        record->y_adv_device_offset = unpackh(stream);
+}
+
+typedef struct hz_ot_single_pos_format1_table_t {
+    hz_map_t *coverage;
+    uint16_t value_format;
+    hz_value_record_t value_record;
+} hz_ot_single_pos_format1_table_t;
+
+typedef struct hz_ot_single_pos_format2_table_t {
+    hz_map_t *coverage;
+    uint16_t value_format;
+    uint16_t value_count;
+    hz_value_record_t *value_records;
+} hz_ot_single_pos_format2_table_t;
+
+void
+hz_ot_read_single_pos_format1_table(hz_stream_t *stream, hz_ot_single_pos_format1_table_t *table) {
+    hz_offset16_t coverage_offset = unpackh(stream);
+    table->coverage = hz_map_create();
+    table->value_format = unpackh(stream);
+
+    hz_ot_read_coverage(stream->data + coverage_offset,
+                        table->coverage,
+                        NULL);
+
+    hz_ot_read_value_record(stream, &table->value_record, table->value_format);
+}
+
+void
+hz_ot_free_single_pos_format1_table(hz_ot_single_pos_format1_table_t *table) {
+    hz_map_destroy(table->coverage);
+}
+
+void
+hz_ot_read_single_pos_format2_table(hz_stream_t *stream, hz_ot_single_pos_format2_table_t *table) {
+    uint16_t i;
+    hz_offset16_t coverage_offset = unpackh(stream);
+    table->value_format = unpackh(stream);
+    table->value_count = unpackh(stream);
+    table->coverage = hz_map_create();
+
+    hz_ot_read_coverage(stream->data + coverage_offset,
+                        table->coverage,
+                        NULL);
+
+    table->value_records = malloc(sizeof(hz_value_record_t) * table->value_count);
+
+    for (i = 0; i < table->value_count; ++i) {
+        hz_ot_read_value_record(stream, &table->value_records[i], table->value_format);
+    }
+}
+
+void
+hz_ot_free_single_pos_format2_table(hz_ot_single_pos_format2_table_t *table) {
+    hz_map_destroy(table->coverage);
+    free(table->value_records);
 }
 
 hz_sequence_node_t *
@@ -1448,7 +1558,7 @@ hz_sequence_rule_destroy(hz_sequence_rule_t *rule)
 }
 
 void
-hz_ot_read_sequence_lookup_record(buf_t *buf,
+hz_ot_read_sequence_lookup_record(hz_stream_t *buf,
                                   hz_sequence_lookup_record_t *record)
 {
     unpackv(buf, "hh", &record->sequence_index, &record->lookup_list_index);
@@ -1457,7 +1567,7 @@ hz_ot_read_sequence_lookup_record(buf_t *buf,
 void
 hz_ot_parse_sequence_rule(hz_byte *data, hz_sequence_rule_t *rule) {
     size_t i;
-    buf_t buf = createbuf(data, BUF_BSWAP);
+    hz_stream_t buf = hz_stream_create(data, HZ_BSWAP);
 
     unpackv(&buf, "hh", &rule->glyph_count, &rule->seq_lookup_count);
     rule->input_sequence = HZ_MALLOC(rule->glyph_count-1);
@@ -1473,7 +1583,7 @@ hz_ot_parse_sequence_rule(hz_byte *data, hz_sequence_rule_t *rule) {
 void
 hz_ot_parse_sequence_rule_set(hz_byte *data, hz_sequence_rule_set_t *rule_set)
 {
-    buf_t buf = createbuf(data, BUF_BSWAP);
+    hz_stream_t buf = hz_stream_create(data, HZ_BSWAP);
     rule_set->rule_count = unpackh(&buf);
 
     HZ_HEAPARR(rule_offsets, rule_set->rule_count, uint16_t);
@@ -1500,11 +1610,11 @@ void
 hz_ot_parse_chained_sequence_rule(hz_byte *data, hz_chained_sequence_rule_t *rule) {
     hz_byte                    tmpbuf[1024];
     hz_bump_allocator_t        allocator;
-    buf_t                      buf;
+    hz_stream_t                      buf;
     size_t                     i;
 
     hz_bump_allocator_init(&allocator, tmpbuf, sizeof tmpbuf);
-    buf = createbuf(data, BUF_BSWAP);
+    buf = hz_stream_create(data, HZ_BSWAP);
 
     rule->prefix_count = unpackh(&buf);
     rule->prefix_sequence = HZ_MALLOC(sizeof(uint16_t) * rule->prefix_count);
@@ -1532,9 +1642,9 @@ void
 hz_ot_parse_chained_sequence_rule_set(hz_byte *data, hz_chained_sequence_rule_set_t *rule_set) {
     size_t          i;
     hz_offset16_t   *offsets;
-    buf_t           buf;
+    hz_stream_t           buf;
 
-    buf = createbuf(data, BUF_BSWAP);
+    buf = hz_stream_create(data, HZ_BSWAP);
 
     rule_set->count = unpackh(&buf);
     offsets = HZ_MALLOC(sizeof(uint16_t) * rule_set->count);
@@ -1560,11 +1670,11 @@ typedef struct hz_chained_sequence_context_format3_t {
     hz_map_t **suffix_maps; /* suffix coverages */
     uint16_t lookup_count;
     hz_sequence_lookup_record_t *lookup_records;
-} hz_chained_sequence_context_format3_t;
+} hz_chained_sequence_context_format3_table_t;
 
 void
-hz_ot_read_chained_sequence_context_format3_table(buf_t *buf,
-                                                  hz_chained_sequence_context_format3_t *table)
+hz_ot_read_chained_sequence_context_format3_table(hz_stream_t *buf,
+                                                  hz_chained_sequence_context_format3_table_t *table)
 {
     hz_byte                      tmpbuf[4096];
     hz_bump_allocator_t          allocator;
@@ -1584,9 +1694,9 @@ hz_ot_read_chained_sequence_context_format3_table(buf_t *buf,
         table->prefix_maps = HZ_MALLOC(sizeof(hz_map_t *) * table->prefix_count);
         for (i=0; i<table->prefix_count; ++i) {
             table->prefix_maps[i] = hz_map_create();
-            hz_decode_coverage(buf->data + prefix_offsets[i],
-                               table->prefix_maps[i],
-                               NULL);
+            hz_ot_read_coverage(buf->data + prefix_offsets[i],
+                                table->prefix_maps[i],
+                                NULL);
         }
     }
 
@@ -1601,9 +1711,9 @@ hz_ot_read_chained_sequence_context_format3_table(buf_t *buf,
 
         for (i=0; i<table->input_count; ++i) {
             table->input_maps[i] = hz_map_create();
-            hz_decode_coverage(buf->data + input_offsets[i],
-                               table->input_maps[i],
-                               NULL);
+            hz_ot_read_coverage(buf->data + input_offsets[i],
+                                table->input_maps[i],
+                                NULL);
         }
     }
 
@@ -1618,9 +1728,9 @@ hz_ot_read_chained_sequence_context_format3_table(buf_t *buf,
 
         for (i=0; i<table->suffix_count; ++i) {
             table->suffix_maps[i] = hz_map_create();
-            hz_decode_coverage(buf->data + suffix_offsets[i],
-                               table->suffix_maps[i],
-                               NULL);
+            hz_ot_read_coverage(buf->data + suffix_offsets[i],
+                                table->suffix_maps[i],
+                                NULL);
         }
     }
 
@@ -1644,7 +1754,7 @@ hz_ot_read_chained_sequence_context_format3_table(buf_t *buf,
 }
 
 void
-hz_ot_clear_chained_sequence_context_format3_table(hz_chained_sequence_context_format3_t *table) {
+hz_ot_clear_chained_sequence_context_format3_table(hz_chained_sequence_context_format3_table_t *table) {
     size_t i;
 
     for (i=0; i<table->prefix_count; ++i) {
@@ -1677,7 +1787,7 @@ typedef struct hz_sequence_table_t {
 
 void
 hz_ot_read_sequence_table(hz_byte *data, hz_sequence_table_t *table) {
-    buf_t buf = createbuf(data, BUF_BSWAP);
+    hz_stream_t buf = hz_stream_create(data, HZ_BSWAP);
     table->glyph_count = unpackh(&buf);
     table->glyphs = HZ_MALLOC(sizeof(uint16_t) * table->glyph_count);
     unpackv(&buf, "h:*", table->glyphs, table->glyph_count);
@@ -1695,7 +1805,7 @@ typedef struct hz_multiple_subst_format1_t {
 } hz_multiple_subst_format1_t;
 
 void
-hz_ot_read_multiple_subst_format1(buf_t *buf,
+hz_ot_read_multiple_subst_format1(hz_stream_t *buf,
                                   hz_multiple_subst_format1_t *table)
 {
     hz_byte             tmpbuf[4096];
@@ -1709,7 +1819,7 @@ hz_ot_read_multiple_subst_format1(buf_t *buf,
     /* read coverage table */
     coverage_offset = unpackh(buf);
     table->coverage = hz_map_create();
-    hz_decode_coverage(buf->data + coverage_offset, table->coverage, NULL);
+    hz_ot_read_coverage(buf->data + coverage_offset, table->coverage, NULL);
 
     /* read and decode sequences */
     table->sequence_count = unpackh(buf);
@@ -1750,7 +1860,7 @@ typedef struct hz_reverse_chain_single_subst_format1_t {
 } hz_reverse_chain_single_subst_format1_t;
 
 static void
-hz_read_reverse_chain_single_subst_format1(buf_t *buf,
+hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
                                            hz_reverse_chain_single_subst_format1_t *subst)
 {
     hz_byte             tmpbuf[4096];
@@ -1764,7 +1874,7 @@ hz_read_reverse_chain_single_subst_format1(buf_t *buf,
 
     coverage_offset = unpackh(buf);
     subst->coverage = hz_map_create();
-    hz_decode_coverage(buf->data + coverage_offset, subst->coverage, NULL);
+    hz_ot_read_coverage(buf->data + coverage_offset, subst->coverage, NULL);
 
     subst->prefix_count = unpackh(buf);
     prefix_coverage_offsets = hz_bump_allocator_alloc(&allocator, subst->prefix_count * sizeof(uint16_t));
@@ -1772,9 +1882,9 @@ hz_read_reverse_chain_single_subst_format1(buf_t *buf,
     subst->prefix_maps = HZ_MALLOC(sizeof(hz_map_t *) * subst->prefix_count);
     for (i = 0; i < subst->prefix_count; ++i) {
         subst->prefix_maps[i] = hz_map_create();
-        hz_decode_coverage(buf->data + prefix_coverage_offsets[i],
-                           subst->prefix_maps[i],
-                           NULL);
+        hz_ot_read_coverage(buf->data + prefix_coverage_offsets[i],
+                            subst->prefix_maps[i],
+                            NULL);
     }
 
     subst->suffix_count = unpackh(buf);
@@ -1783,9 +1893,9 @@ hz_read_reverse_chain_single_subst_format1(buf_t *buf,
     subst->suffix_maps = HZ_MALLOC(sizeof(hz_map_t *) * subst->suffix_count);
     for (i = 0; i < subst->suffix_count; ++i) {
         subst->suffix_maps[i] = hz_map_create();
-        hz_decode_coverage(buf->data + suffix_coverage_offsets[i],
-                           subst->suffix_maps[i],
-                           NULL);
+        hz_ot_read_coverage(buf->data + suffix_coverage_offsets[i],
+                            subst->suffix_maps[i],
+                            NULL);
     }
 
     subst->glyph_count = unpackh(buf);
@@ -1877,7 +1987,7 @@ hz_ot_layout_should_apply_subst(hz_map_t *coverage,
 
 hz_error_t
 hz_ot_layout_apply_nested_gsub_lookup1(hz_face_t *face,
-                                       buf_t *subtable,
+                                       hz_stream_t *subtable,
                                        uint16_t format,
                                        hz_glyph_class_t class_skip,
                                        hz_feature_t feature,
@@ -1896,7 +2006,7 @@ hz_ot_layout_apply_nested_gsub_lookup1(hz_face_t *face,
             hz_sequence_node_t *g;
 
             unpackv(subtable, "hh", &coverage_offset, &id_delta);
-            hz_decode_coverage(subtable->data + coverage_offset, coverage, NULL);
+            hz_ot_read_coverage(subtable->data + coverage_offset, coverage, NULL);
 
             /* If nested glyph meets requirements, apply delta */
             if (hz_ot_layout_should_apply_subst(coverage, feature, nested_node)) {
@@ -1924,7 +2034,7 @@ hz_ot_layout_apply_nested_gsub_lookup1(hz_face_t *face,
                 hz_array_set(subst, index, val);
             }
 
-            hz_decode_coverage(subtable->data + coverage_offset, coverage, subst);
+            hz_ot_read_coverage(subtable->data + coverage_offset, coverage, subst);
 
             /* If nested glyph meets requirements, replace glyph ID */
             if (hz_ot_layout_should_apply_subst(coverage, feature, nested_node)) {
@@ -1946,7 +2056,7 @@ hz_ot_layout_apply_nested_gsub_lookup1(hz_face_t *face,
 
 hz_error_t
 hz_ot_layout_apply_gsub_lookup1(hz_face_t *face,
-                                buf_t *subtable,
+                                hz_stream_t *subtable,
                                 uint16_t format,
                                 uint16_t lookup_flags,
                                 hz_feature_t feature,
@@ -1961,7 +2071,7 @@ hz_ot_layout_apply_gsub_lookup1(hz_face_t *face,
             hz_sequence_node_t *g;
 
             unpackv(subtable, "hh", &coverage_offset, &id_delta);
-            hz_decode_coverage(subtable->data + coverage_offset, coverage, NULL);
+            hz_ot_read_coverage(subtable->data + coverage_offset, coverage, NULL);
 
             /* Loop over every glyph in the sequence, check condition and substitute. */
             for (g = sequence->root; g != NULL; g = g->next)
@@ -1992,7 +2102,7 @@ hz_ot_layout_apply_gsub_lookup1(hz_face_t *face,
                 hz_array_set(subst, index, val);
             }
 
-            hz_decode_coverage(subtable->data + coverage_offset, coverage, subst);
+            hz_ot_read_coverage(subtable->data + coverage_offset, coverage, subst);
 
             /* Loop over every glyph in the sequence, check condition and substitute. */
             for (g = sequence->root; g != NULL; g = g->next)
@@ -2017,7 +2127,7 @@ hz_ot_layout_apply_gsub_lookup1(hz_face_t *face,
 hz_error_t
 hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
                                         hz_feature_t feature,
-                                        buf_t *subtable,
+                                        hz_stream_t *subtable,
                                         uint16_t lookup_type,
                                         uint16_t lookup_flags,
                                         hz_sequence_t *sequence,
@@ -2027,7 +2137,7 @@ hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
 hz_error_t
 hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
                                         hz_feature_t feature,
-                                        buf_t *subtable,
+                                        hz_stream_t *subtable,
                                         uint16_t lookup_type,
                                         uint16_t lookup_flags,
                                         hz_sequence_t *sequence,
@@ -2092,7 +2202,7 @@ hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
                 unpackv(subtable, "hh", &coverage_offset, &ligature_set_count);
                 ligature_set_offsets = HZ_MALLOC(ligature_set_count * sizeof(uint16_t));
                 unpackv(subtable, "h:*", ligature_set_offsets, ligature_set_count);
-                hz_decode_coverage(subtable->data + coverage_offset, coverage_map, NULL);
+                hz_ot_read_coverage(subtable->data + coverage_offset, coverage_map, NULL);
 
 
                 hz_sequence_node_t *g = sequence_context->nodes[nested_index];
@@ -2100,7 +2210,7 @@ hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
                 if (hz_ot_layout_should_apply_subst(coverage_map, feature, g)) {
                     /* current glyph is covered, check pattern and replace */
                     hz_offset16_t ligature_set_offset = ligature_set_offsets[ hz_map_get_value(coverage_map, g->id) ];
-                    buf_t ligature_set = createbuf(subtable->data + ligature_set_offset, BUF_BSWAP);
+                    hz_stream_t ligature_set = hz_stream_create(subtable->data + ligature_set_offset, HZ_BSWAP);
                     uint16_t ligature_count = unpackh(&ligature_set);
                     hz_ligature_t **ligatures = HZ_MALLOC(sizeof(hz_ligature_t*) * ligature_count);
                     uint16_t ligature_index = 0;
@@ -2163,9 +2273,130 @@ hz_ot_layout_apply_gsub_nested_subtable(hz_face_t *face,
 }
 
 hz_error_t
+hz_ot_layout_apply_gpos_nested_subtable(hz_face_t *face,
+                                        hz_feature_t feature,
+                                        hz_stream_t *subtable,
+                                        uint16_t lookup_type,
+                                        uint16_t lookup_flags,
+                                        hz_sequence_t *sequence,
+                                        hz_sequence_node_cache_t *sequence_context,
+                                        uint16_t nested_index);
+
+#define HZ_BOOLSTR(x) ((x)?"true":"false")
+
+hz_bool
+hz_ot_apply_repos_value(hz_sequence_node_t *g, uint16_t value_format, const hz_value_record_t *record) {
+    if (!value_format) return HZ_FALSE;
+
+    if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT)
+        g->x_offset += record->x_placement;
+    if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT)
+        g->y_offset += record->y_placement;
+    if (value_format & HZ_VALUE_FORMAT_X_ADVANCE)
+        g->x_advance += record->x_advance;
+    if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE)
+        g->y_advance += record->y_advance;
+
+    return HZ_TRUE;
+}
+
+
+hz_error_t
+hz_ot_layout_apply_gpos_nested_subtable(hz_face_t *face,
+                                        hz_feature_t feature,
+                                        hz_stream_t *subtable,
+                                        uint16_t lookup_type,
+                                        uint16_t lookup_flags,
+                                        hz_sequence_t *sequence,
+                                        hz_sequence_node_cache_t *sequence_context,
+                                        uint16_t nested_index)
+{
+    hz_sequence_node_t *g = sequence_context->nodes[nested_index];
+    hz_glyph_class_t class_skip = hz_ignored_classes_from_lookup_flags(lookup_flags);
+    uint16_t format = unpackh(subtable);
+
+    switch (lookup_type) {
+        case HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT: {
+            switch (format) {
+                case 1: {
+                    hz_ot_single_pos_format1_table_t table;
+                    hz_ot_read_single_pos_format1_table(subtable, &table);
+
+                    if (hz_map_value_exists(table.coverage, g->id)) {
+                        hz_ot_apply_repos_value(g, table.value_format, &table.value_record);
+                    }
+
+                    hz_ot_free_single_pos_format1_table(&table);
+                    break;
+                }
+
+                case 2: {
+                    hz_ot_single_pos_format2_table_t table;
+                    hz_ot_read_single_pos_format2_table(subtable, &table);
+
+                    if (hz_map_value_exists(table.coverage, g->id)) {
+                        uint32_t value_index = hz_map_get_value(table.coverage, g->id);
+                        hz_value_record_t value_record = table.value_records[value_index];
+
+                        hz_ot_apply_repos_value(g, table.value_format, &value_record);
+                    }
+
+                    hz_ot_free_single_pos_format2_table(&table);
+                    break;
+                }
+
+                default:
+                    return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            }
+            break;
+        }
+        case HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT: {
+            break;
+        }
+        case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
+            break;
+        }
+        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT: {
+            break;
+        }
+        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT: {
+            break;
+        }
+        case HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING: {
+            if (format == 1) {
+                uint16_t extension_lookup_type;
+                hz_offset32_t extension_offset;
+
+                unpackv(subtable, "hi",
+                        &extension_lookup_type,
+                        &extension_offset);
+
+                HZ_ASSERT(extension_lookup_type < 9);
+
+                subtable->data += extension_offset;
+                subtable->idx = 0;
+
+                hz_ot_layout_apply_gpos_nested_subtable(face, feature, subtable, extension_lookup_type, lookup_flags,
+                                                 sequence, sequence_context, nested_index);
+            } else {
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            }
+
+            break;
+        }
+
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_TYPE;
+    }
+
+    return HZ_OK;
+}
+
+
+hz_error_t
 hz_ot_layout_apply_gsub_nested_lookup(hz_face_t *face,
                                       hz_feature_t feature,
-                                      buf_t *lookup,
+                                      hz_stream_t *lookup,
                                       hz_sequence_t *sequence,
                                       hz_sequence_node_cache_t *sequence_context,
                                       uint16_t nested_index)
@@ -2175,8 +2406,34 @@ hz_ot_layout_apply_gsub_nested_lookup(hz_face_t *face,
 
     for (i=0; i<n; ++i) {
         hz_offset16_t offset = unpackh(lookup);
-        buf_t subtable = createbuf(lookup->data + offset, BUF_BSWAP);
+        hz_stream_t subtable = hz_stream_create(lookup->data + offset, HZ_BSWAP);
         hz_ot_layout_apply_gsub_nested_subtable(face,
+                                                feature,
+                                                &subtable,
+                                                type, flags,
+                                                sequence, sequence_context,
+                                                nested_index);
+    }
+
+    return HZ_OK;
+}
+
+
+hz_error_t
+hz_ot_layout_apply_gpos_nested_lookup(hz_face_t *face,
+                                      hz_feature_t feature,
+                                      hz_stream_t *lookup,
+                                      hz_sequence_t *sequence,
+                                      hz_sequence_node_cache_t *sequence_context,
+                                      uint16_t nested_index)
+{
+    uint16_t type, flags, n, i;
+    unpackv(lookup, "hhh", &type, &flags, &n);
+
+    for (i=0; i<n; ++i) {
+        hz_offset16_t offset = unpackh(lookup);
+        hz_stream_t subtable = hz_stream_create(lookup->data + offset, HZ_BSWAP);
+        hz_ot_layout_apply_gpos_nested_subtable(face,
                                                 feature,
                                                 &subtable,
                                                 type, flags,
@@ -2195,7 +2452,7 @@ hz_ot_layout_apply_nested_lookup(hz_face_t *face,
                                  hz_sequence_node_cache_t *sequence_context,
                                  hz_sequence_lookup_record_t *record)
 {
-    buf_t    table;
+    hz_stream_t    table;
     uint32_t version;
     uint16_t script_list_offset;
     uint16_t feature_list_offset;
@@ -2203,9 +2460,9 @@ hz_ot_layout_apply_nested_lookup(hz_face_t *face,
     uint32_t feature_variations_offset;
 
     if (table_tag == HZ_OT_TAG_GSUB) {
-        table = createbuf(hz_face_get_ot_tables(face)->GSUB_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GSUB_table, HZ_BSWAP);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-        table = createbuf(hz_face_get_ot_tables(face)->GPOS_table, BUF_BSWAP);
+        table = hz_stream_create(hz_face_get_ot_tables(face)->GPOS_table, HZ_BSWAP);
     } else {
         /* error */
         return HZ_ERROR_INVALID_TABLE_TAG;
@@ -2230,7 +2487,7 @@ hz_ot_layout_apply_nested_lookup(hz_face_t *face,
 
         default:
             /* error */
-            return HZ_ERROR_UNKNOWN_TABLE_VERSION;
+            return HZ_ERROR_INVALID_TABLE_VERSION;
     }
 
     uint8_t *lookup_list = table.data + lookup_list_offset;
@@ -2240,22 +2497,24 @@ hz_ot_layout_apply_nested_lookup(hz_face_t *face,
         return HZ_ERROR_INVALID_PARAM;
 
     uint16_t lookup_offset = bswap16(((uint16_t*)lookup_list)[1+record->lookup_list_index]);
-    buf_t lookup_table = createbuf(lookup_list + lookup_offset, BUF_BSWAP);
+    hz_stream_t lookup_table = hz_stream_create(lookup_list + lookup_offset, HZ_BSWAP);
 
     if (table_tag == HZ_OT_TAG_GSUB) {
         hz_ot_layout_apply_gsub_nested_lookup(face, feature, &lookup_table, sequence,
                                               sequence_context,
                                               record->sequence_index);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-
+        hz_ot_layout_apply_gpos_nested_lookup(face, feature, &lookup_table, sequence,
+                                              sequence_context,
+                                              record->sequence_index);
     }
 
     return HZ_OK;
 }
 
-void
+hz_error_t
 hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
-                                 buf_t *subtable,
+                                 hz_stream_t *subtable,
                                  uint16_t lookup_type,
                                  uint16_t lookup_flags,
                                  hz_feature_t feature,
@@ -2328,7 +2587,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                 unpackv(subtable, "hh", &coverage_offset, &ligature_set_count);
                 ligature_set_offsets = HZ_MALLOC(ligature_set_count * sizeof(uint16_t));
                 unpackv(subtable, "h:*", ligature_set_offsets, ligature_set_count);
-                hz_decode_coverage(subtable->data + coverage_offset, coverage_map, NULL);
+                hz_ot_read_coverage(subtable->data + coverage_offset, coverage_map, NULL);
 
                 /* loop over every non-ignored glyph in the section */
                 for (g = sequence->root; g != NULL; g = g->next) {
@@ -2336,7 +2595,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                         if (hz_map_value_exists(coverage_map, g->id)) {
                             /* current glyph is covered, check pattern and replace */
                             hz_offset16_t ligature_set_offset = ligature_set_offsets[ hz_map_get_value(coverage_map, g->id) ];
-                            buf_t ligature_set = createbuf(subtable->data + ligature_set_offset, BUF_BSWAP);
+                            hz_stream_t ligature_set = hz_stream_create(subtable->data + ligature_set_offset, HZ_BSWAP);
                             uint16_t ligature_count = unpackh(&ligature_set);
                             hz_ligature_t **ligatures = HZ_MALLOC(sizeof(hz_ligature_t*) * ligature_count);
                             uint16_t ligature_index = 0;
@@ -2386,7 +2645,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
             } else if (format == 2) {
 
             } else if (format == 3) {
-                hz_chained_sequence_context_format3_t table_cache;
+                hz_chained_sequence_context_format3_table_t table_cache;
                 hz_sequence_node_t *g;
                 hz_ot_read_chained_sequence_context_format3_table(subtable, &table_cache);
 
@@ -2533,11 +2792,12 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
             break;
     }
 
+    return HZ_OK;
 }
 
 void
 hz_ot_layout_apply_gsub_feature(hz_face_t *face,
-                                buf_t *table,
+                                hz_stream_t *table,
                                 hz_feature_t feature,
                                 hz_sequence_t *sequence)
 {
@@ -2550,7 +2810,7 @@ hz_ot_layout_apply_gsub_feature(hz_face_t *face,
 
     for (i=0; i<n; ++i) {
         hz_offset16_t offset = unpackh(table);
-        buf_t subtable = createbuf(table->data + offset, BUF_BSWAP);
+        hz_stream_t subtable = hz_stream_create(table->data + offset, HZ_BSWAP);
         hz_ot_layout_apply_gsub_subtable(face, &subtable, type, flags,
                                          feature, sequence);
     }
@@ -2572,7 +2832,7 @@ typedef struct hz_anchor_pair_t {
 
 hz_anchor_t
 hz_ot_layout_read_anchor(const unsigned char *data) {
-    buf_t stream = createbuf(data, BUF_BSWAP);
+    hz_stream_t stream = hz_stream_create(data, HZ_BSWAP);
     hz_anchor_t anchor;
     uint16_t format = unpackh(&stream);
     HZ_ASSERT(format >= 1 && format <= 3);
@@ -2677,9 +2937,90 @@ hz_ot_layout_find_attach_base_with_anchor(hz_map_t *base_map, uint16_t mark_clas
     return 0;
 }
 
-void
+typedef struct hz_ot_class2_record_t {
+    hz_value_record_t value_record1;
+    hz_value_record_t value_record2;
+} hz_ot_class2_record_t;
+
+typedef struct hz_ot_class1_record_t {
+    hz_ot_class2_record_t *class2_records;
+} hz_ot_class1_record_t;
+
+typedef struct hz_ot_pair_pos_format2_table_t {
+    hz_map_t *coverage;
+    uint16_t value_format1;
+    uint16_t value_format2;
+    hz_map_t *class_def1;
+    hz_map_t *class_def2;
+    uint16_t class1_count;
+    uint16_t class2_count;
+    hz_ot_class1_record_t *class1_records;
+} hz_ot_pair_pos_format2_table_t;
+
+static hz_error_t
+hz_ot_read_class_def_table(const uint8_t *data, hz_map_t *class_map) {
+    hz_stream_t table = hz_stream_create(data, HZ_BSWAP);
+    uint16_t class_format;
+    class_format = unpackh(&table);
+    switch (class_format) {
+        case 1:
+            break;
+        case 2: {
+            uint16_t range_index = 0, class_range_count;
+            class_range_count = unpackh(&table);
+
+            while (range_index < class_range_count) {
+                uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                unpackv(&table, "hhh", &start_glyph_id, &end_glyph_id, &glyph_class);
+                hz_map_set_value_for_keys(class_map, start_glyph_id, end_glyph_id, glyph_class);
+                ++range_index;
+            }
+            break;
+        }
+        default:
+            return HZ_ERROR_INVALID_FORMAT;
+    }
+
+    return HZ_OK;
+}
+
+static void
+hz_ot_read_pair_pos_format2_table(hz_stream_t *stream, hz_ot_pair_pos_format2_table_t *table) {
+    uint16_t i, j;
+    hz_offset16_t coverage_offset, class_def1_offset, class_def2_offset;
+
+    table->coverage = hz_map_create();
+    table->class_def1 = hz_map_create();
+    table->class_def2 = hz_map_create();
+
+    coverage_offset = unpackh(stream);
+    hz_ot_read_coverage(stream->data + coverage_offset, table->coverage, NULL);
+    table->value_format1 = unpackh(stream);
+    table->value_format2 = unpackh(stream);
+    class_def1_offset = unpackh(stream);
+    class_def2_offset = unpackh(stream);
+
+    hz_ot_read_class_def_table(stream->data + class_def1_offset, table->class_def1);
+    hz_ot_read_class_def_table(stream->data + class_def2_offset, table->class_def2);
+
+    table->class1_count = unpackh(stream);
+    table->class2_count = unpackh(stream);
+    table->class1_records = malloc(sizeof(hz_ot_class1_record_t *) * table->class1_count);
+    for (i = 0; i < table->class1_count; ++i) {
+        hz_ot_class1_record_t *c1 = &table->class1_records[i];
+        c1->class2_records = malloc(sizeof(hz_ot_class2_record_t) * table->class2_count);
+
+        for (j = 0; j < table->class2_count; ++j) {
+            hz_ot_class2_record_t *c2 = &c1->class2_records[j];
+            hz_ot_read_value_record(stream, &c2->value_record1, table->value_format1);
+            hz_ot_read_value_record(stream, &c2->value_record2, table->value_format2);
+        }
+    }
+}
+
+hz_error_t
 hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
-                                 buf_t *subtable,
+                                 hz_stream_t *subtable,
                                  uint16_t lookup_type,
                                  uint16_t lookup_flags,
                                  hz_feature_t feature,
@@ -2687,15 +3028,72 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 {
     uint16_t class_ignore = hz_ignored_classes_from_lookup_flags(lookup_flags);
     uint16_t format = unpackh(subtable);
+    hz_sequence_node_t *g;
 
-    /* printf("%d.%d\n", lookup_type, format); */
+//    if (feature == HZ_FEATURE_KERN && lookup_type != 9 && lookup_type != 8 && lookup_type != 1) {
+//        printf("%d.%d\n", lookup_type, format);
+//    }
 
     switch (lookup_type) {
         case HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT: {
-            printf("A\n");
+            switch (format) {
+                case 1: {
+//                    hz_ot_single_pos_format1_table_t table;
+//                    hz_ot_read_single_pos_format1_table(subtable, &table);
+                    break;
+                }
+                default:
+                    break;
+            }
             break;
         }
         case HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT: {
+            switch (format) {
+                case 1: {
+                    break;
+                }
+
+                case 2: {
+                    hz_ot_pair_pos_format2_table_t table;
+                    hz_ot_read_pair_pos_format2_table(subtable, &table);
+
+                    for (g = sequence->root; g != NULL; g = g->next) {
+                        if (!hz_should_skip_node(g, lookup_flags)) {
+                            if (hz_map_value_exists(table.coverage, g->id)) {
+                                hz_sequence_node_t *q = hz_next_valid_node(g, lookup_flags);
+
+                                if (q != NULL) {
+                                    if (hz_map_value_exists(table.class_def1, g->id)
+                                            && hz_map_value_exists(table.class_def2, q->id)) {
+                                        uint16_t group_class1, group_class2;
+                                        group_class1 = hz_map_get_value(table.class_def1, g->id);
+                                        group_class2 = hz_map_get_value(table.class_def2, q->id);
+
+                                        /* group_class1 should be less than the table's class1_count, similarly,
+                                         * group_class2 should be less than class2_count. */
+                                        if (group_class1 < table.class1_count && group_class2 < table.class2_count) {
+                                            const hz_ot_class2_record_t *cr = &table.class1_records[group_class1]
+                                                    .class2_records[group_class2];
+
+                                            hz_ot_apply_repos_value(g, table.value_format1, &cr->value_record1);
+                                            if (hz_ot_apply_repos_value(q, table.value_format2, &cr->value_record2))
+                                                g = q;
+
+                                            printf("MATCH\n");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                    break;
+                }
+
+                default:
+                    return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            }
             break;
         }
         case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
@@ -2721,7 +3119,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 }
 
                 /* get coverage glyph to index map */
-                hz_decode_coverage(subtable->data + coverage_offset, coverage_map, NULL);
+                hz_ot_read_coverage(subtable->data + coverage_offset, coverage_map, NULL);
 
                 /* position glyphs */
                 hz_sequence_node_t *g;
@@ -2754,7 +3152,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 hz_bump_allocator_release(&allocator);
                 hz_map_destroy(coverage_map);
             } else {
-                /* error */
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
             }
 
             break;
@@ -2785,8 +3183,8 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                         &base_array_offset);
 
                 /* parse coverages */
-                hz_decode_coverage(subtable->data + mark_coverage_offset, mark_map, NULL);
-                hz_decode_coverage(subtable->data + base_coverage_offset, base_map, NULL);
+                hz_ot_read_coverage(subtable->data + mark_coverage_offset, mark_map, NULL);
+                hz_ot_read_coverage(subtable->data + base_coverage_offset, base_map, NULL);
 
                 /* parse arrays */
                 uint16_t mark_count;
@@ -2794,7 +3192,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 
                 {
                     /* parsing mark array */
-                    buf_t marks = createbuf(subtable->data + mark_array_offset, BUF_BSWAP);
+                    hz_stream_t marks = hz_stream_create(subtable->data + mark_array_offset, HZ_BSWAP);
                     mark_count = unpackh(&marks);
                     mark_records = hz_bump_allocator_alloc(&allocator, sizeof(hz_mark_record_t) * mark_count);
                     uint16_t mark_index = 0;
@@ -2811,7 +3209,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 
                 {
                     /* parsing base array */
-                    buf_t bases = createbuf(subtable->data + base_array_offset, BUF_BSWAP);
+                    hz_stream_t bases = hz_stream_create(subtable->data + base_array_offset, HZ_BSWAP);
                     base_count = unpackh(&bases);
                     base_anchor_offsets = HZ_MALLOC(base_count * mark_class_count * sizeof(uint32_t));
                     unpackv(&bases, "h:*", base_anchor_offsets,
@@ -2848,8 +3246,8 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 
                                      int32_t x1 = mark_anchor.x_coord;
                                      int32_t y1 = mark_anchor.y_coord;
-                                     int32_t x2 = base_anchor.x_coord;
-                                     int32_t y2 = base_anchor.y_coord;
+                                     int32_t x2 = base_anchor.x_coord + b->x_offset;
+                                     int32_t y2 = base_anchor.y_coord + b->y_offset;
 
                                      m->x_offset = x2 - x1;
                                      m->y_offset = y2 - y1;
@@ -2865,7 +3263,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 hz_map_destroy(mark_map);
                 hz_map_destroy(base_map);
             } else {
-                /* error */
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
             }
 
             break;
@@ -2897,13 +3295,13 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                         &ligature_array_offset);
 
                 /* parse coverages */
-                hz_decode_coverage(subtable->data + mark_coverage_offset, mark_map, NULL);
-                hz_decode_coverage(subtable->data + ligature_coverage_offset, ligature_map, NULL);
+                hz_ot_read_coverage(subtable->data + mark_coverage_offset, mark_map, NULL);
+                hz_ot_read_coverage(subtable->data + ligature_coverage_offset, ligature_map, NULL);
 
                 {
                     /* parse mark array */
                     uint16_t mark_index;
-                    buf_t marks = createbuf(subtable->data + mark_array_offset, BUF_BSWAP);
+                    hz_stream_t marks = hz_stream_create(subtable->data + mark_array_offset, HZ_BSWAP);
                     mark_count = unpackh(&marks);
                     mark_records = HZ_MALLOC(sizeof(hz_mark_record_t) * mark_count);
 
@@ -2918,7 +3316,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 {
                     /* parse ligature array */
                     uint16_t ligature_index;
-                    buf_t ligatures = createbuf(subtable->data + ligature_array_offset, BUF_BSWAP);
+                    hz_stream_t ligatures = hz_stream_create(subtable->data + ligature_array_offset, HZ_BSWAP);
                     ligature_count = unpackh(&ligatures);
                     ligature_attach_offsets = HZ_MALLOC(ligature_count * sizeof(uint16_t));
 
@@ -2940,9 +3338,9 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                                     uint16_t ligature_index = hz_map_get_value(ligature_map, l->id);
                                     hz_offset16_t ligature_attach_offset = ligature_attach_offsets[ligature_index];
 
-                                    buf_t ligature_attach_table = createbuf(
+                                    hz_stream_t ligature_attach_table = hz_stream_create(
                                             subtable->data + ligature_array_offset + ligature_attach_offset,
-                                            BUF_BSWAP);
+                                            HZ_BSWAP);
 
                                     uint16_t component_count = unpackh(&ligature_attach_table);
 
@@ -2982,7 +3380,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 hz_map_destroy(mark_map);
                 hz_map_destroy(ligature_map);
             } else {
-                /* error */
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
             }
             break;
         }
@@ -3008,14 +3406,14 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                         &mark2_array_offset);
 
                 /* parse coverages */
-                hz_decode_coverage(subtable->data + mark1_coverage_offset, mark1_map, NULL);
-                hz_decode_coverage(subtable->data + mark2_coverage_offset, mark2_map, NULL);
+                hz_ot_read_coverage(subtable->data + mark1_coverage_offset, mark1_map, NULL);
+                hz_ot_read_coverage(subtable->data + mark2_coverage_offset, mark2_map, NULL);
 
                 /* parse mark arrays */
                 {
                     /* parse mark1 array */
                     uint16_t mark_index;
-                    buf_t mark_array = createbuf(subtable->data + mark1_array_offset, BUF_BSWAP);
+                    hz_stream_t mark_array = hz_stream_create(subtable->data + mark1_array_offset, HZ_BSWAP);
                     mark1_count = unpackh(&mark_array);
                     mark1_records = HZ_MALLOC(sizeof(hz_mark_record_t) * mark1_count);
                     for (mark_index = 0; mark_index < mark1_count; ++mark_index) {
@@ -3028,7 +3426,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
 
                 {
                     /* parse mark2 array */
-                    buf_t mark_array = createbuf(subtable->data + mark2_array_offset, BUF_BSWAP);
+                    hz_stream_t mark_array = hz_stream_create(subtable->data + mark2_array_offset, HZ_BSWAP);
                     mark2_count = unpackh(&mark_array);
                     mark2_anchor_offsets = HZ_MALLOC(sizeof(uint16_t) * mark_class_count * mark2_count);
                     unpackv(&mark_array, "h:*",
@@ -3087,14 +3485,84 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 hz_map_destroy(mark2_map);
 
             } else {
-                /* error */
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
             }
+
             break;
         }
         case HZ_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING: {
             break;
         }
         case HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING: {
+            switch (format) {
+                case 1: {
+                    break;
+                }
+                case 2: {
+                    break;
+                }
+                case 3: {
+                    hz_sequence_node_t *g;
+                    hz_chained_sequence_context_format3_table_t table_cache;
+                    hz_ot_read_chained_sequence_context_format3_table(subtable, &table_cache);
+
+                    for (g = sequence->root; g != NULL; g = g->next) {
+                        if (!hz_should_skip_node(g, lookup_flags)) {
+                            hz_sequence_node_cache_t *sequence_context = hz_sequence_node_cache_create();
+
+                            if (hz_ot_layout_pattern_match(g,
+                                                           table_cache.input_maps,
+                                                           table_cache.input_count,
+                                                           lookup_flags,
+                                                           sequence_context,
+                                                           HZ_FALSE)) {
+
+                                hz_sequence_node_t *n1, *n2;
+                                hz_bool prefix_match, suffix_match;
+                                n1 = hz_prev_valid_node(sequence_context->nodes[0], lookup_flags);
+                                n2 = hz_next_valid_node(sequence_context->nodes[sequence_context->node_count - 1], lookup_flags);
+
+                                prefix_match = hz_ot_layout_pattern_match(n1,
+                                                                          table_cache.prefix_maps,
+                                                                          table_cache.prefix_count,
+                                                                          lookup_flags,
+                                                                          NULL,
+                                                                          HZ_TRUE);
+
+                                suffix_match = hz_ot_layout_pattern_match(n2,
+                                                                          table_cache.suffix_maps,
+                                                                          table_cache.suffix_count,
+                                                                          lookup_flags,
+                                                                          NULL,
+                                                                          HZ_FALSE);
+
+                                if (prefix_match && suffix_match) {
+                                    size_t k;
+
+                                    /* apply lookups to input, within context */
+                                    for (k=0; k<table_cache.lookup_count; ++k) {
+                                        hz_sequence_lookup_record_t *record = table_cache.lookup_records + k;
+                                        hz_ot_layout_apply_nested_lookup(face,
+                                                                         feature,
+                                                                         HZ_OT_TAG_GPOS,
+                                                                         sequence,
+                                                                         sequence_context,
+                                                                         record);
+                                    }
+
+                                    g = sequence_context->nodes[sequence_context->node_count - 1];
+                                }
+                            }
+                            hz_sequence_node_cache_destroy(sequence_context);
+                        }
+                    }
+
+                    hz_ot_clear_chained_sequence_context_format3_table(&table_cache);
+                    break;
+                }
+                default:
+                    return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            }
             break;
         }
         case HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING: {
@@ -3114,19 +3582,22 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 hz_ot_layout_apply_gpos_subtable(face, subtable, extension_lookup_type, lookup_flags,
                                                  feature, sequence);
             } else {
-                /* error */
+                return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
             }
+
             break;
         }
         default: {
             break;
         }
     }
+
+    return HZ_OK;
 }
 
 void
 hz_ot_layout_apply_gpos_feature(hz_face_t *face,
-                                buf_t *table,
+                                hz_stream_t *table,
                                 hz_feature_t feature,
                                 hz_sequence_t *sequence)
 {
@@ -3135,7 +3606,7 @@ hz_ot_layout_apply_gpos_feature(hz_face_t *face,
 
     for (i=0; i<n; ++i) {
         hz_offset16_t offset = unpackh(table);
-        buf_t subtable = createbuf(table->data + offset, BUF_BSWAP);
+        hz_stream_t subtable = hz_stream_create(table->data + offset, HZ_BSWAP);
         hz_ot_layout_apply_gpos_subtable(face, &subtable, type, flags, feature, sequence);
     }
 }
@@ -3166,4 +3637,169 @@ hz_ot_language_to_tag(hz_language_t language)
     }
 
     return 0;
+}
+
+static const hz_script_t complex_script_list[] = {
+    HZ_SCRIPT_ARABIC,
+    HZ_SCRIPT_BUGINESE,
+    HZ_SCRIPT_HANGUL,
+    HZ_SCRIPT_HEBREW,
+    HZ_SCRIPT_BENGALI,
+    HZ_SCRIPT_DEVANAGARI,
+    HZ_SCRIPT_GUJARATI,
+    HZ_SCRIPT_GURMUKHI,
+    HZ_SCRIPT_KANNADA,
+    HZ_SCRIPT_MALAYALAM,
+    HZ_SCRIPT_ODIA,
+    HZ_SCRIPT_TAMIL,
+    HZ_SCRIPT_TELUGU,
+    HZ_SCRIPT_JAVANESE,
+    HZ_SCRIPT_KHMER,
+    HZ_SCRIPT_LAO,
+    HZ_SCRIPT_MYANMAR,
+    HZ_SCRIPT_SINHALA,
+    HZ_SCRIPT_SYRIAC,
+    HZ_SCRIPT_THAANA,
+    HZ_SCRIPT_THAI,
+    HZ_SCRIPT_TIBETAN
+};
+
+typedef enum hz_feature_flag_t {
+    HZ_FEATURE_FLAG_NONE = 0,
+    HZ_FEATURE_FLAG_REQUIRED = 0x00000001,
+    HZ_FEATURE_FLAG_ALWAYS_APPLIED = 0x00000002,
+    HZ_FEATURE_FLAG_ON_BY_DEFAULT = 0x00000004,
+    HZ_FEATURE_FLAG_OFF_BY_DEFAULT = 0x00000008
+} hz_feature_flag_t;
+
+typedef struct hz_feature_layout_op_t {
+    hz_feature_t feature;
+    hz_tag_t layout_op; /* GSUB or GPOS */
+    uint8_t flags;
+} hz_feature_layout_op_t;
+
+static const hz_feature_layout_op_t std_feature_ops_arabic[] = {
+    /* Language based forms */
+    { HZ_FEATURE_CCMP, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_ISOL, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_FINA, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_MEDI, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_INIT, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_RLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_RCLT, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_CALT, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED},
+    /* Typographical forms */
+    { HZ_FEATURE_LIGA, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ON_BY_DEFAULT },
+    { HZ_FEATURE_DLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_OFF_BY_DEFAULT },
+    { HZ_FEATURE_CSWH, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_OFF_BY_DEFAULT },
+    { HZ_FEATURE_MSET, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    /* Positioning features */
+    { HZ_FEATURE_CURS, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_KERN, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_MARK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_ALWAYS_APPLIED },
+    { HZ_FEATURE_MKMK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_ALWAYS_APPLIED }
+};
+
+static const hz_feature_layout_op_t std_feature_ops_buginese[] = {
+    /* Localized forms */
+    { HZ_FEATURE_LOCL, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    /* Presentation forms */
+    { HZ_FEATURE_CCMP, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_RLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_LIGA, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_CLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    /* Kerning */
+    { HZ_FEATURE_KERN, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_DIST, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
+    /* Mark placement */
+    { HZ_FEATURE_MARK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_MKMK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED }
+};
+
+static const hz_feature_layout_op_t std_feature_ops_hangul[] = {
+    /* Language based forms */
+    { HZ_FEATURE_CCMP, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_LJMO, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_VJMO, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_TJMO, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_REQUIRED }
+};
+
+static const hz_feature_layout_op_t std_feature_ops_hebrew[] = {
+    /* Language based forms */
+    { HZ_FEATURE_CCMP, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    /* Typographical forms */
+    { HZ_FEATURE_DLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    /* Positioning features */
+    { HZ_FEATURE_KERN, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_MARK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED }
+};
+
+/* TODO: complete remaining tables */
+
+typedef struct hz_script_feature_order_t {
+    hz_script_t script;
+    const hz_feature_layout_op_t *ops;
+    size_t num_ops;
+} hz_script_feature_order_t;
+
+static const hz_script_feature_order_t complex_script_feature_orders[] = {
+    { HZ_SCRIPT_ARABIC, HZ_UNARR(std_feature_ops_arabic) },
+    { HZ_SCRIPT_BUGINESE, HZ_UNARR(std_feature_ops_buginese) },
+    { HZ_SCRIPT_HANGUL, HZ_UNARR(std_feature_ops_hangul) },
+    { HZ_SCRIPT_HEBREW, HZ_UNARR(std_feature_ops_hebrew) }
+};
+
+hz_bool
+hz_ot_is_complex_script(hz_script_t script)
+{
+    int i;
+
+    for (i = 0; i < HZ_ARRLEN(complex_script_list); ++i) {
+        if (complex_script_list[i] == script) {
+            return HZ_TRUE;
+        }
+    }
+    
+    return HZ_FALSE;
+}
+
+void
+hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsigned int *countptr)
+{
+    unsigned int i, j, inclmask;
+
+    inclmask = HZ_FEATURE_FLAG_REQUIRED | HZ_FEATURE_FLAG_ALWAYS_APPLIED
+        | HZ_FEATURE_FLAG_ON_BY_DEFAULT;
+
+    if (hz_ot_is_complex_script(script)) {
+        for (i=0; i<HZ_ARRLEN(complex_script_feature_orders); ++i) {
+            hz_script_feature_order_t order = complex_script_feature_orders[i];
+            if (order.script == script) {
+                unsigned int cnt = 0;
+
+                /* count required, on by default and always applied features */
+                for (j=0;j<order.num_ops;++j)
+                    if (order.ops[j].flags & inclmask)
+                        ++cnt;
+
+                if (cnt) {
+                    unsigned int f;
+                    *featuresptr = malloc(cnt * sizeof(hz_feature_t));
+                    *countptr = cnt;
+
+                    /* again, go over the list and copy features */
+                    for (j=f=0; f<cnt && j<order.num_ops; ++j) {
+                        if (order.ops[j].flags & inclmask) {
+                            (*featuresptr)[f] = order.ops[j].feature;
+                            ++f;
+                        }
+                    }
+                }
+                
+                break;
+            }
+        }
+    } else {
+        /* standard scripts (Latin, Cyrillic, Greek, etc) */ 
+    }
 }

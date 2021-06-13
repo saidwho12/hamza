@@ -346,10 +346,10 @@ typedef struct HZ_PACKED hz_ttc_header_t {
     hz_tag_t ttcTag;
 
     /* 	Major version of the TTC Header */
-    hz_uint16 majorVersion;
+    uint16_t majorVersion;
 
     /* Minor version of the TTC Header */
-    hz_uint16 minorVersion;
+    uint16_t minorVersion;
 
     /* Number of fonts in TTC */
     uint32_t numFonts;
@@ -535,17 +535,6 @@ typedef enum hz_script_t {
     HZ_SCRIPT_KHITAN_SMALL_SCRIPT,
     HZ_SCRIPT_YEZIDI
 } hz_script_t;
-
-typedef enum hz_language_t {
-    HZ_LANGUAGE_ARABIC,
-    HZ_LANGUAGE_ENGLISH,
-    HZ_LANGUAGE_FRENCH,
-    HZ_LANGUAGE_SPANISH,
-    HZ_LANGUAGE_GERMAN,
-    HZ_LANGUAGE_JAPANESE,
-    HZ_LANGUAGE_URDU,
-    HZ_LANGUAGE_HEBREW,
-} hz_language_t;
 
 typedef enum hz_direction_t {
     HB_DIRECTION_INVALID = 0,
@@ -907,13 +896,13 @@ typedef struct hz_rec32_t {
 } hz_rec32_t;
 
 typedef struct hz_script_list_t {
-    hz_uint16 scriptCount;
+    uint16_t scriptCount;
     //hz_rec32_t *scriptRecords;
 } hz_script_list_t;
 
 typedef struct hz_script_table_t {
     hz_offset16_t defaultLangSys;
-    hz_uint16 langSysCount;
+    uint16_t langSysCount;
     //hz_rec16_t *langSysRecords;
 } hz_script_table_t;
 
@@ -922,17 +911,17 @@ typedef struct hz_lang_sys_t {
     hz_offset16_t lookup_order;
 
     /* Index of a feature required for this language system; if no required features = 0xFFFF */
-    hz_uint16 required_feature_index;
+    uint16_t required_feature_index;
 
     /* Number of feature index values for this language system — excludes the required feature */
-    hz_uint16 feature_index_count;
+    uint16_t feature_index_count;
 
     /* Array of indices into the FeatureList, in arbitrary order */
     //HZ_Uint16 *featureIndices;
 } hz_lang_sys_t;
 
 typedef struct hz_feature_list_t {
-    hz_uint16 featureCount;
+    uint16_t featureCount;
     hz_rec16_t *featureRecord;
 } hz_feature_list_t;
 
@@ -950,7 +939,7 @@ typedef struct hz_feature_table_t {
 
 struct hz_lookup_list_t {
     /* Number of lookups in this table */
-    hz_uint16 lookupCount;
+    uint16_t lookupCount;
 
     /* Array of offsets to Lookup tables, from beginning of LookupList — zero based (first lookup is Lookup index = 0) */
     //HZ_Offset16 *lookups;
@@ -1049,8 +1038,8 @@ typedef struct hz_lookup_table_t {
 } hz_lookup_table_t;
 
 typedef struct hz_coverage_format1_t {
-    hz_uint16 coverageFormat; /* Format identifier — format = 1 */
-    hz_uint16 glyphCount; /* Number of glyphs in the glyph array */
+    uint16_t coverageFormat; /* Format identifier — format = 1 */
+    uint16_t glyphCount; /* Number of glyphs in the glyph array */
     hz_index_t *glyphArray; /* Array of glyph IDs — in numerical order */
 } hz_coverage_format1_t;
 
@@ -1061,28 +1050,28 @@ typedef struct hz_range_rec_t {
 } hz_range_rec_t;
 
 typedef struct hz_coverage_format2_t {
-    hz_uint16 coverageFormat; /* Format identifier — format = 2 */
-    hz_uint16 rangeCount; /* Number of RangeRecords */
+    uint16_t coverageFormat; /* Format identifier — format = 2 */
+    uint16_t rangeCount; /* Number of RangeRecords */
     hz_range_rec_t *rangeRecords; /* Array of glyph ranges — ordered by startGlyphID. */
 } hz_coverage_format2_t;
 
 
 struct hz_class_def_format1_t {
-    hz_uint16 format; /* Format identifier — format = 1 */
+    uint16_t format; /* Format identifier — format = 1 */
     hz_index_t startGID; /* First glyph ID of the classValueArray */
-    hz_uint16 glyphCount; /* Size of the classValueArray */
-    hz_uint16 *classValues; /* Array of Class Values — one per glyph ID */
+    uint16_t glyphCount; /* Size of the classValueArray */
+    uint16_t *classValues; /* Array of Class Values — one per glyph ID */
 };
 
 struct hz_class_range_rec_t {
     hz_index_t startGlyphID;
     hz_index_t endGlyphID;
-    hz_uint16 classValue;
+    uint16_t classValue;
 };
 
 struct hz_class_def_format2_t {
-    hz_uint16 format;
-    hz_uint16 ranageCount;
+    uint16_t format;
+    uint16_t ranageCount;
     struct hz_class_range_rec_t *rangeRecords;
 };
 
@@ -1103,18 +1092,18 @@ typedef enum hz_delta_format_t {
 } hz_delta_format_t;
 
 typedef struct HZ_PACKED hz_delta_table_t {
-    hz_uint16 smallestPPEM;
-    hz_uint16 largestPPEM;
+    uint16_t smallestPPEM;
+    uint16_t largestPPEM;
     hz_delta_format_t format;
-    hz_uint16 *deltaValues;
+    uint16_t *deltaValues;
 } hz_delta_table_t;
 
     typedef struct HZ_PACKED hz_variation_index_table_t {
         /* A delta-set outer index — used to select an item variation data subtable within the item variation store. */
-        hz_uint16 outerIndex;
+        uint16_t outerIndex;
 
         /* A delta-set inner index — used to select a delta-set row within an item variation data subtable. */
-        hz_uint16 innerIndex;
+        uint16_t innerIndex;
 
         /* Format, = 0x8000 */
         hz_delta_format_t format;
@@ -1134,13 +1123,13 @@ typedef struct HZ_PACKED hz_delta_table_t {
 
     typedef struct HZ_PACKED hz_feature_variations_table_t {
         /* Major version of the FeatureVariations table — set to 1. */
-        hz_uint16 versionMajor;
+        uint16_t versionMajor;
 
         /* Minor version of the FeatureVariations table — set to 0. */
-        hz_uint16 versionMinor;
+        uint16_t versionMinor;
 
         /* Number of feature variation records. */
-        hz_uint16 featureVariationRecordCount;
+        uint16_t featureVariationRecordCount;
 
         /* Array of feature variation records. */
         hz_feature_variation_record_t *featureVariationRecord;
@@ -1148,7 +1137,7 @@ typedef struct HZ_PACKED hz_delta_table_t {
 
     typedef struct HZ_PACKED hz_condition_set_t {
         /* Number of conditions for this condition set. */
-        hz_uint16 conditionCount;
+        uint16_t conditionCount;
 
         /* Array of offsets to condition tables, from beginning of the ConditionSet table. */
         hz_offset32_t *conditions;
@@ -1156,10 +1145,10 @@ typedef struct HZ_PACKED hz_delta_table_t {
 
     typedef struct HZ_PACKED hz_condition_format1_t {
         /* Format, = 1 */
-        hz_uint16 format;
+        uint16_t format;
 
         /* Index (zero-based) for the variation axis within the 'fvar' table. */
-        hz_uint16 axisIndex;
+        uint16_t axisIndex;
 
         /* Minimum value of the font variation instances that satisfy this condition. */
         HZ_F2DOT14 filterRangeMinValue;
@@ -1170,7 +1159,7 @@ typedef struct HZ_PACKED hz_delta_table_t {
 
     typedef struct HZ_PACKED hz_feature_table_substitution_record_t {
         /* The feature table index to match. */
-        hz_uint16 featureIndex;
+        uint16_t featureIndex;
 
         /* Offset to an alternate feature table, from start of the FeatureTableSubstitution table. */
         hz_offset32_t alternateFeatureOffset;
@@ -1178,13 +1167,13 @@ typedef struct HZ_PACKED hz_delta_table_t {
 
     typedef struct HZ_PACKED hz_feature_table_substitution_table_t {
         /* Major version of the feature table substitution table — set to 1 */
-        hz_uint16 majorVersion;
+        uint16_t majorVersion;
 
         /* Minor version of the feature table substitution table — set to 0. */
-        hz_uint16 minorVersion;
+        uint16_t minorVersion;
 
         /* Number of feature table substitution records. */
-        hz_uint16 substitutionCount;
+        uint16_t substitutionCount;
 
         /* Array of feature table substitution records. */
         hz_feature_table_substitution_record_t *substitutions;
@@ -1194,16 +1183,6 @@ typedef struct HZ_PACKED hz_delta_table_t {
         uint8_t *data;
         uint16_t bit_count;
     } hz_bitset_t;
-
-    static hz_uint64 hz_next_pow2m1(hz_uint64 x) {
-        x |= x >> 1;
-        x |= x >> 2;
-        x |= x >> 4;
-        x |= x >> 8;
-        x |= x >> 16;
-        x |= x >> 32;
-        return x;
-    }
 
 #define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')
 #define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')

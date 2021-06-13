@@ -13,15 +13,6 @@
 
 #include <stdarg.h>
 
-#ifdef HZ_ENABLE_LOGGING
-#define HZ_LOG(...) fprintf(stdout, __VA_ARGS__)
-#define HZ_DBGLOG(...) fprintf(stdout, __VA_ARGS__)
-#define HZ_ERROR(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define HZ_LOG(...)
-#define HZ_DBGLOG(...)
-#define HZ_ERROR(...)
-#endif
 #define HZ_MALLOC(size) malloc(size)
 #define HZ_FREE(p) free(p)
 #define HZ_REALLOC(p, size) realloc(p, size)
@@ -29,21 +20,6 @@
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
 
 #define HZ_PACKED __attribute__((__packed__))
-
-/*
- * Define base sized integer and float types
- * */
-typedef unsigned char hz_uint8;
-typedef unsigned short hz_uint16;
-typedef unsigned long hz_uint32;
-typedef unsigned long long hz_uint64;
-typedef char hz_int8;
-typedef short hz_int16;
-typedef long hz_int32;
-typedef long long hz_int64;
-typedef float hz_float32;
-typedef double hz_float64;
-typedef void hz_void;
 
 typedef int32_t hz_position;
 
@@ -71,14 +47,6 @@ typedef uint32_t HZ_Version16Dot16;
 
 typedef uint64_t hz_uintptr;
 typedef size_t hz_size_t;
-
-static hz_float32
-hz_cast_f32_f2d14(const HZ_F2DOT14 x)
-{
-    hz_float32 dec = (x & 0x3FFFU) / (hz_float32) 0x3FFFU;
-    hz_float32 unit = (x & 0xC000U) >> 14U;
-    return unit + dec;
-}
 
 static unsigned short
 bswap16(unsigned short val) {

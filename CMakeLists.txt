@@ -27,7 +27,7 @@ set(HAMZA_SOURCES
 		src/cmas.h)
 
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -pedantic -Wall")
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -pedantic -Wall")
 
 add_library(hamza ${HAMZA_SOURCES})
 target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR}/src)

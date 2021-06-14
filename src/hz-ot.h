@@ -6,6 +6,7 @@
 #include "util/hz-array.h"
 #include "hz-base.h"
 #include "hz-font.h"
+#include "hz-ot-language-list.h"
 
 
 #ifdef __cplusplus
@@ -541,12 +542,12 @@ typedef enum hz_direction_t {
     HZ_DIRECTION_LTR = 1,
     HZ_DIRECTION_RTL = 2,
     HZ_DIRECTION_TTB = 3,
-    HZ_DIRECTION_BTT = 4,
+    HZ_DIRECTION_BTT = 4
 } hz_direction_t;
 
 
 typedef enum hz_sequence_flags_t {
-    HZ_NO_MARKS = 0x00000001,
+    HZ_NO_MARKS = 0x00000001
 } hz_sequence_flags_t;
 
 typedef struct hz_sequence_node_t hz_sequence_node_t;
@@ -572,7 +573,7 @@ struct hz_sequence_node_t {
     int16_t y_offset;
     int16_t x_advance;
     int16_t y_advance;
-    hz_glyph_class_t gc: HZ_GLYPH_CLASS_BIT_FIELD;
+    unsigned gc: HZ_GLYPH_CLASS_BIT_FIELD;
     uint8_t attach_class;
     hz_sequence_node_t *prev, *next;
 };
@@ -897,13 +898,11 @@ typedef struct hz_rec32_t {
 
 typedef struct hz_script_list_t {
     uint16_t scriptCount;
-    //hz_rec32_t *scriptRecords;
 } hz_script_list_t;
 
 typedef struct hz_script_table_t {
     hz_offset16_t defaultLangSys;
     uint16_t langSysCount;
-    //hz_rec16_t *langSysRecords;
 } hz_script_table_t;
 
 typedef struct hz_lang_sys_t {
@@ -915,9 +914,6 @@ typedef struct hz_lang_sys_t {
 
     /* Number of feature index values for this language system — excludes the required feature */
     uint16_t feature_index_count;
-
-    /* Array of indices into the FeatureList, in arbitrary order */
-    //HZ_Uint16 *featureIndices;
 } hz_lang_sys_t;
 
 typedef struct hz_feature_list_t {
@@ -932,17 +928,12 @@ typedef struct hz_feature_table_t {
     /* Number of LookupList indices for this feature */
     uint16_t lookup_index_count;
 
-    /* 	Array of indices into the LookupList — zero-based (first lookup is LookupListIndex = 0) */
-//    uint16_t *lookup_list_indices;
 } hz_feature_table_t;
 
 
 struct hz_lookup_list_t {
     /* Number of lookups in this table */
     uint16_t lookupCount;
-
-    /* Array of offsets to Lookup tables, from beginning of LookupList — zero based (first lookup is Lookup index = 0) */
-    //HZ_Offset16 *lookups;
 };
 /*
 static const char *hz_GSUB_lookup_type_string(HZ_Uint16 type);
@@ -1003,7 +994,7 @@ typedef enum hz_value_format_flag_t {
     HZ_VALUE_FORMAT_X_ADVANCE_DEVICE = 0x0040,
 
     /* Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical advance */
-    HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE = 0x0080,
+    HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE = 0x0080
 } hz_value_format_flag_t;
 
 typedef enum hz_gsub_lookup_type_t {
@@ -1014,7 +1005,7 @@ typedef enum hz_gsub_lookup_type_t {
     HZ_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION = 5,
     HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION = 6,
     HZ_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION = 7,
-    HZ_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION = 8,
+    HZ_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION = 8
 } hz_gsub_lookup_type_t;
 
 typedef enum hz_gpos_lookup_type_t {
@@ -1026,7 +1017,7 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT = 6,
     HZ_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING = 7,
     HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING = 8,
-    HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9,
+    HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
 typedef struct hz_lookup_table_t {
@@ -1086,7 +1077,7 @@ typedef enum hz_delta_format_t {
     HZ_DELTA_FORMAT_LOCAL_8_BIT = 0x0003,
 
     /* VariationIndex table, contains a delta-set index pair. */
-    HZ_DELTA_FORMAT_VARIATION_INDEX = 0x8000,
+    HZ_DELTA_FORMAT_VARIATION_INDEX = 0x8000
 
     /* 0x7FFC Reserved */
 } hz_delta_format_t;

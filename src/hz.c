@@ -1,3 +1,4 @@
+
 #include "hz.h"
 #include "util/hz-array.h"
 #include "util/hz-map.h"
@@ -207,8 +208,6 @@ hz_map_to_nominal_forms(hz_face_t *face,
     uint16_t num_encodings, enc_idx;
     num_encodings = unpackh(&table);
 
-    HZ_LOG("cmap table encoding count: %d\n", num_encodings);
-
 //    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx)
     {
         hz_cmap_encoding_t enc = {};
@@ -217,9 +216,6 @@ hz_map_to_nominal_forms(hz_face_t *face,
                 &enc.encoding_id,
                 &enc.subtable_offset);
 
-        HZ_LOG("platform: %s\n", hz_cmap_platform_to_string(enc.platform_id));
-        HZ_LOG("encoding: %d\n", enc.encoding_id);
-        HZ_LOG("subtable-offset: %d\n", enc.subtable_offset);
         hz_cmap_apply_encoding(&table, sequence, enc);
 //        if (enc.platform_id == HZ_CMAP_PLATFORM_WINDOWS) {
 //            hz_cmap_apply_encoding(table, sequence, enc);
@@ -460,7 +456,7 @@ hz_gather_script_codepoints(hz_script_t script)
     return codepoints;
 }
 
-static void
+static hz_error_t
 hz_gather_script_glyphs(hz_face_t *face, hz_script_t script, hz_set_t *glyphs)
 {
     hz_set_t *codepoints = hz_gather_script_codepoints(script);
@@ -483,676 +479,59 @@ hz_gather_script_glyphs(hz_face_t *face, hz_script_t script, hz_set_t *glyphs)
 
     } else {
         /* error, table version must be 0 */
-        HZ_ERROR("cmap table version must be zero!");
+        return HZ_ERROR_INVALID_TABLE_VERSION;
     }
 
     hz_set_destroy(codepoints);
+    return HZ_OK;
 }
 
-/* hz_set_t * */
-/* hz_context_gather_required_glyphs(hz_context_t *ctx) */
-/* { */
-/*     hz_set_t *glyphs = hz_set_create(); */
-/*     hz_face_t *face = hz_font_get_face(ctx->font); */
-/*     hz_tag_t script_tag = hz_ot_script_to_tag(ctx->script); */
-/*     hz_tag_t language_tag = hz_ot_language_to_tag(ctx->language); */
-
-/*     hz_gather_script_glyphs(face, HZ_SCRIPT_COMMON, glyphs); */
-/*     hz_gather_script_glyphs(face, HZ_SCRIPT_INHERITED, glyphs); */
-/*     hz_gather_script_glyphs(face, ctx->script, glyphs); */
-
-/*     if (hz_face_get_ot_tables(face)->GSUB_table != NULL) */
-/*         //hz_ot_layout_gather_glyphs(face, script_tag, language_tag, ctx->features, glyphs); */
-
-/*     return glyphs; */
-/* } */
-
-typedef struct hz_language_map_t {
-    hz_language_t language;
-    hz_tag_t tag;
-    const char *iso_639_codes;
-} hz_language_map_t;
-
-/*
-  ISO 639-2 and ISO 639-3 codes to language system map created list manually by hand  from https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags
-  took me more than 4 days so if there was a faster way, don't tell me it will make me cry >:'(
- */
-
-/* static const hz_language_map_t */
-/* language_map_list[] = */
-/* { */
-/*     {HZ_LANGUAGE_ABAZA, HZ_TAG('A','B','A',' '), "abq"}, */
-/*     {HZ_LANGUAGE_ABKHAZIAN, HZ_TAG('A','B','K',' '), "abk"}, */
-/*     {HZ_LANGUAGE_ACHOLI, HZ_TAG('A','C','H',' '), "ach"}, */
-/*     {HZ_LANGUAGE_ACHI, HZ_TAG('A','C','R',' '), "acr"}, */
-/*     {HZ_LANGUAGE_ADYGHE, HZ_TAG('A','D','Y',' '), "ady"}, */
-/*     {HZ_LANGUAGE_AFRIKAANS, HZ_TAG('A','F','K',' '), "afr"}, */
-/*     {HZ_LANGUAGE_AFAR, HZ_TAG('A','F','R',' '), "aar"}, */
-/*     {HZ_LANGUAGE_AGAW, HZ_TAG('A','G','W',' '), "ahg"}, */
-/*     {HZ_LANGUAGE_AITON, HZ_TAG('A','I','O',' '), "aio"}, */
-/*     {HZ_LANGUAGE_AKAN, HZ_TAG('A','K','A',' '), "aka, fat, twi"}, */
-/*     {HZ_LANGUAGE_BATAK_ALGKOLA, HZ_TAG('A','K','B',' '), "akb"}, */
-/*     {HZ_LANGUAGE_ALSATIAN, HZ_TAG('A','L','S',' '), "gsw"}, */
-/*     {HZ_LANGUAGE_ALTAI, HZ_TAG('A','L','T',' '), "atv, alt"}, */
-/*     {HZ_LANGUAGE_AMHARIC, HZ_TAG('A','M','H',' '), "amh"}, */
-/*     {HZ_LANGUAGE_ANGLO_SAXON, HZ_TAG('A','N','G',' '), "ang"}, */
-/*     {HZ_LANGUAGE_PHONETIC_TRANSCRIPTION, HZ_TAG('A','P','P','H'), NULL}, */
-/*     {HZ_LANGUAGE_ARABIC, HZ_TAG('A','R','A',' '), "ara"}, */
-/*     {HZ_LANGUAGE_ARGONESE, HZ_TAG('A','R','G',' '), "arg"}, */
-/*     {HZ_LANGUAGE_AARI, HZ_TAG('A','R','I',' '), "aiw"}, */
-/*     {HZ_LANGUAGE_RAKHINE, HZ_TAG('A','R','K',' '), "mhv, rmz, rki"}, */
-/*     {HZ_LANGUAGE_ASSAMESE, HZ_TAG('A','S','M',' '), "asm"}, */
-/*     {HZ_LANGUAGE_ASTURIAN, HZ_TAG('A','S','T',' '), "ast"}, */
-/*     {HZ_LANGUAGE_ATHAPASKAN, HZ_TAG('A','T','H',' '), "aht, apa, apk, apj, apl, apm, apw, ath, bea, sek, bcr, caf, chp, clc, coq, crx, ctc, den, dgr, gce, gwi, haa, hoi, hup, ing, kkz, koy, ktw, kuu, mvb, nav, qwt, scs, srs, taa, tau, tcb, tce, tfn, tgx, tht, tol, ttm, tuu, txc, wlk, xup, xsl"}, */
-/*     {HZ_LANGUAGE_AVAR, HZ_TAG('A','V','R',' '), "ava"}, */
-/*     {HZ_LANGUAGE_AWADHI, HZ_TAG('A','W','A',' '), "awa"}, */
-/*     {HZ_LANGUAGE_AYMARA, HZ_TAG('A','Y','M',' '), "aym"}, */
-/*     {HZ_LANGUAGE_TORKI, HZ_TAG('A','Z','B',' '), "azb"}, */
-/*     {HZ_LANGUAGE_AZERBEIJANI, HZ_TAG('A','Z','E',' '), "aze"}, */
-/*     {HZ_LANGUAGE_BADAGA, HZ_TAG('B','A','D',' '), "bfq"}, */
-/*     {HZ_LANGUAGE_BANDA, HZ_TAG('B','A','D','0'), "bad, bbp, bfl, bjo, bpd, bqk, gox, kuw, liy, lna, lnl, mnh, nue, nuu, tor, yaj, zmz"}, */
-/*     {HZ_LANGUAGE_BAGHELKHANDI, HZ_TAG('B','A','G',' '), "bfy"}, */
-/*     {HZ_LANGUAGE_BALKAR, HZ_TAG('B','A','L',' '), "krc"}, */
-/*     {HZ_LANGUAGE_BALINESE, HZ_TAG('B','A','N',' '), "ban"}, */
-/*     {HZ_LANGUAGE_BAVARIAN, HZ_TAG('B','A','R',' '), "bar"}, */
-/*     {HZ_LANGUAGE_BAULE, HZ_TAG('B','A','U',' '), "bci"}, */
-/*     {HZ_LANGUAGE_BATAK_TOBA, HZ_TAG('B','B','C',' '), "bbc"}, */
-/*     {HZ_LANGUAGE_BERBER, HZ_TAG('B','B','R',' '), "auj, ber, cnu, gha, gho, grr, jbe, jbn, kab, mzb, oua, rif, sds, shi, shy, siz, sjs, swn, taq, tez, thv, thz, tia, tjo, tmh, ttq, tzm, zen, zgh"}, */
-/*     {HZ_LANGUAGE_BENCH, HZ_TAG('B','C','H',' '), "bcq"}, */
-/*     {HZ_LANGUAGE_BIBLE_CREE, HZ_TAG('B','C','R',' '), NULL}, */
-/*     {HZ_LANGUAGE_BANDJALANG, HZ_TAG('B','D','Y',' '), "bdy"}, */
-/*     {HZ_LANGUAGE_BELARUSSIAN, HZ_TAG('B','E','L',' '), "bel"}, */
-/*     {HZ_LANGUAGE_BEMBA, HZ_TAG('B','E','M',' '), "bem"}, */
-/*     {HZ_LANGUAGE_BENGALI, HZ_TAG('B','E','N',' '), "ben"}, */
-/*     {HZ_LANGUAGE_HARYANVI, HZ_TAG('B','G','C',' '), "bgc"}, */
-/*     {HZ_LANGUAGE_BAGRI, HZ_TAG('B','G','Q',' '), "bgq"}, */
-/*     {HZ_LANGUAGE_BULGARIAN, HZ_TAG('B','G','R',' '), "bul"}, */
-/*     {HZ_LANGUAGE_BHILI, HZ_TAG('B','H','I',' '), "bhi, bhb"}, */
-/*     {HZ_LANGUAGE_BHOJPURI, HZ_TAG('B','H','O',' '), "bho"}, */
-/*     {HZ_LANGUAGE_BIKOL, HZ_TAG('B','I','K',' '), "bik, bhk, bcl, bto, cts, bln, fbl, lbl, rbl, ubl"}, */
-/*     {HZ_LANGUAGE_BILEN, HZ_TAG('B','I','L',' '), "byn"}, */
-/*     {HZ_LANGUAGE_BISLAMA, HZ_TAG('B','I','S',' '), "bis"}, */
-/*     {HZ_LANGUAGE_KANAUJI, HZ_TAG('B','J','J',' '), "bjj"}, */
-/*     {HZ_LANGUAGE_BLACKFOOT, HZ_TAG('B','K','F',' '), "bla"}, */
-/*     {HZ_LANGUAGE_BALUCHI, HZ_TAG('B','L','I',' '), "bal"}, */
-/*     {HZ_LANGUAGE_PAO_KAREN, HZ_TAG('B','L','K',' '), "blk"}, /\* Pa’o Karen *\/ */
-/*     {HZ_LANGUAGE_BALANTE, HZ_TAG('B','L','N',' '), "bjt, ble"}, */
-/*     {HZ_LANGUAGE_BALTI, HZ_TAG('B','L','T',' '), "bft"}, */
-/*     {HZ_LANGUAGE_BAMBARA, HZ_TAG('B','M','B',' '), "bam"}, /\* Bambara (Bamanankan)  *\/ */
-/*     {HZ_LANGUAGE_BAMILEKE, HZ_TAG('B','M','L',' '), "bai, bbj, bko, byv, fmp, jgo, nla, nnh, nnz, nwe, xmg, ybb"}, */
-/*     {HZ_LANGUAGE_BOSNIAN, HZ_TAG('B','O','S',' '), "bos"}, */
-/*     {HZ_LANGUAGE_BISHNUPRIYA_MANIPURI, HZ_TAG('B','P','Y',' '), "bpy"}, */
-/*     {HZ_LANGUAGE_BRETON, HZ_TAG('B','R','E',' '), "bre"}, */
-/*     {HZ_LANGUAGE_BRAHUI, HZ_TAG('B','R','H',' '), "brh"}, */
-/*     {HZ_LANGUAGE_BRAJ_BHASHA, HZ_TAG('B','R','I',' '), "bra"}, */
-/*     {HZ_LANGUAGE_BURMESE, HZ_TAG('B','R','M',' '), "mya"}, */
-/*     {HZ_LANGUAGE_BODO, HZ_TAG('B','R','X',' '), "brx"}, */
-/*     {HZ_LANGUAGE_BASHKIR, HZ_TAG('B','S','H',' '), "bak"}, */
-/*     {HZ_LANGUAGE_BURUSHASKI, HZ_TAG('B','S','K',' '), "bsk"}, */
-/*     {HZ_LANGUAGE_BATAK_DAIRI, HZ_TAG('B','T','D',' '), "btd"}, /\* Batak Dairi (Pakpak) *\/ */
-/*     {HZ_LANGUAGE_BETI, HZ_TAG('B','T','I',' '), "btb, beb, bum, bxp, eto, ewo, mct"}, */
-/*     {HZ_LANGUAGE_BETAK_LANGUAGES, HZ_TAG('B','T','K',' '), "akb, bbc, btd, btk, btm, bts, btx, btz"}, /\* Betak languages *\/ */
-/*     {HZ_LANGUAGE_BATAK_MANDAILING, HZ_TAG('B','T','M',' '), "btm"}, */
-/*     {HZ_LANGUAGE_BATAK_SIMALUNGUN, HZ_TAG('B','T','S',' '), "bts"}, */
-/*     {HZ_LANGUAGE_BATAK_KARO, HZ_TAG('B','T','X',' '), "btx"}, */
-/*     {HZ_LANGUAGE_BATAK_ALAS_KLUET, HZ_TAG('B','T','Z',' '), "btz"}, /\* Batak Alas-Kluet *\/ */
-/*     {HZ_LANGUAGE_BUGIS, HZ_TAG('B','U','G',' '), "bug"}, */
-/*     {HZ_LANGUAGE_MEDUMBA, HZ_TAG('B','Y','V',' '), "byv"}, */
-/*     {HZ_LANGUAGE_KAQCHIKEL, HZ_TAG('C','A','K',' '), "cak"}, */
-/*     {HZ_LANGUAGE_CATALAN, HZ_TAG('C','A','T',' '), "cat"}, */
-/*     {HZ_LANGUAGE_ZAMBOANGA_CHAVACANO, HZ_TAG('C','B','K',' '), "cbk"}, */
-/*     {HZ_LANGUAGE_CHINANTEC, HZ_TAG('C','C','H','N'), "cco, chj, chq, chz, cle, cnl, cnt, cpa, csa, cso, cte, ctl, cuc, cvn"}, */
-/*     {HZ_LANGUAGE_CEBUANO, HZ_TAG('C','E','B',' '), "ceb"}, */
-/*     {HZ_LANGUAGE_CHIGA, HZ_TAG('C','G','G',' '), "cgg"}, */
-/*     {HZ_LANGUAGE_CHAMORRO, HZ_TAG('C','H','A',' '), "cha"}, */
-/*     {HZ_LANGUAGE_CHECHEN, HZ_TAG('C','H','E',' '), "che"}, */
-/*     {HZ_LANGUAGE_CHAHA_GURAGE, HZ_TAG('C','H','G',' '), "sgw"}, */
-/*     {HZ_LANGUAGE_CHATTISGARHI, HZ_TAG('C','H','H',' '), "hne"}, */
-/*     {HZ_LANGUAGE_CHICHEWA, HZ_TAG('C','H','I',' '),"nya"}, /\* Chichewa (Chewa, Nyanja) *\/ */
-/*     {HZ_LANGUAGE_CHUKCHI, HZ_TAG('C','H','K',' '), "ckt"}, */
-/*     {HZ_LANGUAGE_CHUUKESE, HZ_TAG('C','H','K','0'), "chk"}, */
-/*     {HZ_LANGUAGE_CHOCTAW, HZ_TAG('C','H','O',' '), "cho"}, */
-/*     {HZ_LANGUAGE_CHIPEWYAN, HZ_TAG('C','H','P',' '), "chp"}, */
-/*     {HZ_LANGUAGE_CHEROKEE, HZ_TAG('C','H','R',' '), "chr"}, */
-/*     {HZ_LANGUAGE_CHUVASH, HZ_TAG('C','H','U',' '), "chv"}, */
-/*     {HZ_LANGUAGE_CHEYENNE, HZ_TAG('C','H','Y',' '), "chy"}, */
-/*     {HZ_LANGUAGE_WESTERN_CHAM, HZ_TAG('C','J','A',' '), "cja"}, */
-/*     {HZ_LANGUAGE_EASTERN_CHAM, HZ_TAG('C','J','M',' '), "cjm"}, */
-/*     {HZ_LANGUAGE_COMORIAN, HZ_TAG('C','M','R',' '), "swb, wlc, wni, zdj"}, */
-/*     {HZ_LANGUAGE_COPTIC, HZ_TAG('C','O','P',' '), "cop"}, */
-/*     {HZ_LANGUAGE_CORNISH, HZ_TAG('C','O','R',' '), "cor"}, */
-/*     {HZ_LANGUAGE_CORSICAN, HZ_TAG('C','O','S',' '), "cos"}, */
-/*     {HZ_LANGUAGE_CREOLES, HZ_TAG('C','P','P',' '), "abs, acf, afs, aig, aoa, bah, bew, bis, bjs, bpl, bpq, brc, bxo, bzj, bzk, cbk, ccl, ccm, chn, cks, cpe, cpf, cpi, cpp, cri, crp, crs, dcr, dep, djk, fab, fng, fpe, gac, gcf, gcl, gcr, gib, goq, gpe, gul, gyn, hat, hca, hmo, hwc, icr, idb, ihb, jam, jvd, kcn, kea, kmv, kri, kww, lir, lou, lrt, max, mbf, mcm, mfe, mfp, mkn, mod, msi, mud, mzs, nag, nef, ngm, njt, onx, oor, pap, pcm, pea, pey, pga, pih, pis, pln, pml, pmy, pov, pre, rcf, rop, scf, sci, skw, srm, srn, sta, svc, tas, tch, tcs, tgh, tmg, tpi, trf, tvy, uln, vic, vkp, wes, xmm"}, */
-/*     {HZ_LANGUAGE_CREE, HZ_TAG('C','R','E',' '), "cre"}, */
-/*     {HZ_LANGUAGE_CARRIER, HZ_TAG('C','R','R',' '), "crx, caf"}, */
-/*     {HZ_LANGUAGE_CRIMEAN_TATAR, HZ_TAG('C','R','T',' '), "crh"}, */
-/*     {HZ_LANGUAGE_KASHUBIAN, HZ_TAG('C','S','B',' '), "csb"}, */
-/*     {HZ_LANGUAGE_CHURCH_SLAVONIC, HZ_TAG('C','S','L',' '), "chu"}, */
-/*     {HZ_LANGUAGE_CZECH, HZ_TAG('C','S','Y',' '), "ces"}, */
-/*     {HZ_LANGUAGE_CHITTAGONIAN, HZ_TAG('C','T','G',' '), "ctg"}, */
-/*     {HZ_LANGUAGE_SAN_BLAS_KUNA, HZ_TAG('C','U','K',' '), "cuk"}, */
-/*     {HZ_LANGUAGE_DAGBANI, HZ_TAG('D','A','G',' '), "dag"}, */
-/*     {HZ_LANGUAGE_DANISH, HZ_TAG('D','A','N',' '), "dan"}, */
-/*     {HZ_LANGUAGE_DARGWA, HZ_TAG('D','A','R',' '), "dar"}, */
-/*     {HZ_LANGUAGE_DAYI, HZ_TAG('D','A','X',' '), "dax"}, */
-/*     {HZ_LANGUAGE_WOODS_CREE, HZ_TAG('D','C','R',' '), "cwd"}, */
-/*     {HZ_LANGUAGE_GERMAN, HZ_TAG('D','E','U',' '), "deu"}, */
-/*     {HZ_LANGUAGE_DOGRI, HZ_TAG('D','G','O',' '), "dgo"}, /\* Dogri (individual language) *\/ */
-/*     {HZ_LANGUAGE_DOGRI_MACRO, HZ_TAG('D','G','R',' '), "doi"}, /\* Dogri (macrolanguage) *\/ */
-/*     {HZ_LANGUAGE_DHANGU, HZ_TAG('D','H','G',' '), "dhg"}, */
-/* /\*    {HZ_LANGUAGE_DIVEHI, HZ_TAG('D','H','V',' '), "div"},*\/ /\* deprecated tag 'DHV ' *\/ */
-/*     {HZ_LANGUAGE_DIMLI, HZ_TAG('D','I','Q',' '), "diq"}, */
-/*     {HZ_LANGUAGE_DIVEHI, HZ_TAG('D','I','V',' '), "div"}, /\* Divehi (Dhivehi, Maldivian) *\/ */
-/*     {HZ_LANGUAGE_ZARMA, HZ_TAG('D','J','R',' '), "dje"}, */
-/*     {HZ_LANGUAGE_DJAMBARRPUYNGU, HZ_TAG('D','J','R','0'), "djr"}, */
-/*     {HZ_LANGUAGE_DANGME, HZ_TAG('D','N','G',' '), "ada"}, */
-/*     {HZ_LANGUAGE_DAN, HZ_TAG('D','N','J',' '), "dnj"}, */
-/*     {HZ_LANGUAGE_DINKA, HZ_TAG('D','N','K',' '), "din"}, */
-/*     {HZ_LANGUAGE_DARI, HZ_TAG('D','R','I',' '), "prs"}, */
-/*     {HZ_LANGUAGE_DHUWAL, HZ_TAG('D','U','J',' '), "duj, dwu, dwy"}, */
-/*     {HZ_LANGUAGE_DUNGAN, HZ_TAG('D','U','N',' '), "dng"}, */
-/*     {HZ_LANGUAGE_DZONGKHA, HZ_TAG('D','Z','N',' '), "dzo"}, */
-/*     {HZ_LANGUAGE_EBIRA, HZ_TAG('E','B','I',' '), "igb"}, */
-/*     {HZ_LANGUAGE_EASTERN_CREE, HZ_TAG('E','C','R',' '), "crj, crl"}, */
-/*     {HZ_LANGUAGE_EDO, HZ_TAG('E','D','O',' '), "bin"}, */
-/*     {HZ_LANGUAGE_EFIK, HZ_TAG('E','F','I',' '), "efi"}, */
-/*     {HZ_LANGUAGE_GREEK, HZ_TAG('E','L','L',' '), "ell"}, */
-/*     {HZ_LANGUAGE_EASTERN_MANINKAKAN, HZ_TAG('E','M','K',' '), "emk"}, */
-/*     {HZ_LANGUAGE_ENGLISH, HZ_TAG('E','N','G',' '), "eng"}, */
-/*     {HZ_LANGUAGE_ERZYA, HZ_TAG('E','R','Z',' '), "myv"}, */
-/*     {HZ_LANGUAGE_SPANISH, HZ_TAG('E','S','P',' '), "spa"}, */
-/*     {HZ_LANGUAGE_CENTRAL_YUPIK, HZ_TAG('E','S','U',' '), "esu"}, */
-/*     {HZ_LANGUAGE_ESTONIAN, HZ_TAG('E','T','I',' '), "est"}, */
-/*     {HZ_LANGUAGE_BASQUE, HZ_TAG('E','U','Q',' '), "eus"}, */
-/*     {HZ_LANGUAGE_EVENKI, HZ_TAG('E','V','K',' '), "evn"}, */
-/*     {HZ_LANGUAGE_EVEN, HZ_TAG('E','V','N',' '), "eve"}, */
-/*     {HZ_LANGUAGE_EWE, HZ_TAG('E','W','E',' '), "ewe"}, */
-/*     {HZ_LANGUAGE_FRENCH_ANTILLEAN, HZ_TAG('F','A','N',' '), "acf"}, */
-/*     {HZ_LANGUAGE_FANG, HZ_TAG('F','A','N','0'), "fan"}, */
-/*     {HZ_LANGUAGE_PERSIAN, HZ_TAG('F','A','R',' '), "fas"}, */
-/*     {HZ_LANGUAGE_FANTI, HZ_TAG('F','A','T',' '), "fat"}, */
-/*     {HZ_LANGUAGE_FINNISH, HZ_TAG('F','I','N',' '), "fin"}, */
-/*     {HZ_LANGUAGE_FIJIAN, HZ_TAG('F','J','I',' '), "fij"}, */
-/*     {HZ_LANGUAGE_DUTCH, HZ_TAG('F','L','E',' '), "vls"}, /\* Dutch (Flemish) *\/ */
-/*     {HZ_LANGUAGE_FEFE, HZ_TAG('F','M','P',' '), "fmp"}, /\* Fe'fe' *\/ */
-/*     {HZ_LANGUAGE_FOREST_ENETS, HZ_TAG('F','N','E',' '), "enf"}, */
-/*     {HZ_LANGUAGE_FON, HZ_TAG('F','O','N',' '), "fon"}, */
-/*     {HZ_LANGUAGE_FAROESE, HZ_TAG('F','O','S',' '), "fao"}, */
-/*     {HZ_LANGUAGE_FRENCH, HZ_TAG('F','R','A',' '), "fra"}, */
-/*     {HZ_LANGUAGE_CAJUN_FRENCH, HZ_TAG('F','R','C',' '), "frc"}, */
-/*     {HZ_LANGUAGE_FRISIAN, HZ_TAG('F','R','I',' '), "fry"}, */
-/*     {HZ_LANGUAGE_FRIULIAN, HZ_TAG('F','R','L',' '), "fur"}, */
-/*     {HZ_LANGUAGE_ARPITAN, HZ_TAG('F','R','P',' '), "frp"}, */
-/*     {HZ_LANGUAGE_FUTA, HZ_TAG('F','T','A',' '), "fuf"}, */
-/*     {HZ_LANGUAGE_FULAH, HZ_TAG('F','U','L',' '), "ful"}, */
-/*     {HZ_LANGUAGE_NIGERIAN_FULFULDE, HZ_TAG('F','U','V',' '), "fuv"}, */
-/*     {HZ_LANGUAGE_GA, HZ_TAG('G','A','D',' '), "gaa"}, */
-/*     {HZ_LANGUAGE_SCOTTISH_GAELIC, HZ_TAG('G','A','E',' '), "gla"}, /\* Scottish Gaelic (Gaelic) *\/ */
-/*     {HZ_LANGUAGE_GAGAUZ, HZ_TAG('G','A','G',' '), "gag"}, */
-/*     {HZ_LANGUAGE_GALICIAN, HZ_TAG('G','A','L',' '), "glg"}, */
-/*     {HZ_LANGUAGE_GARSHUNI, HZ_TAG('G','A','R',' '), NULL}, */
-/*     {HZ_LANGUAGE_GARHWALI, HZ_TAG('G','A','W',' '), "gbm"}, */
-/*     {HZ_LANGUAGE_GEEZ, HZ_TAG('G','E','Z',' '), "gez"}, */
-/*     {HZ_LANGUAGE_GITHABUL, HZ_TAG('G','I','H',' '), "gih"}, */
-/*     {HZ_LANGUAGE_GILYAK, HZ_TAG('G','I','L',' '), "niv"}, */
-/*     {HZ_LANGUAGE_KIRIBATI, HZ_TAG('G','I','L','0'), "gil"}, /\* Kiribati (Gilbertese) *\/ */
-/*     {HZ_LANGUAGE_KPELLE, HZ_TAG('G','K','P',' '), "gkp"}, /\* Kpelle (Guinea) *\/ */
-/*     {HZ_LANGUAGE_GILAKI, HZ_TAG('G','L','K',' '), "glk"}, */
-/*     {HZ_LANGUAGE_GUMUZ, HZ_TAG('G','M','Z',' '), "guk"}, */
-/*     {HZ_LANGUAGE_GUMATJ, HZ_TAG('G','N','N',' '), "gnn"}, */
-/*     {HZ_LANGUAGE_GOGO, HZ_TAG('G','O','G',' '), "gog"}, */
-/*     {HZ_LANGUAGE_GONDI, HZ_TAG('G','O','N',' '), "gon"}, */
-/*     {HZ_LANGUAGE_GREENLANDIC, HZ_TAG('G','R','N',' '), "kal"}, */
-/*     {HZ_LANGUAGE_GARO, HZ_TAG('G','R','O',' '), "grt"}, */
-/*     {HZ_LANGUAGE_GUARANI, HZ_TAG('G','U','A',' '), "grn"}, */
-/*     {HZ_LANGUAGE_WAYUU, HZ_TAG('G','U','C',' '), "guc"}, */
-/*     {HZ_LANGUAGE_GUPAPUYNGU, HZ_TAG('G','U','F',' '), "guf"}, */
-/*     {HZ_LANGUAGE_GUJARATI, HZ_TAG('G','U','J',' '), "guj"}, */
-/*     {HZ_LANGUAGE_GUSII, HZ_TAG('G','U','Z',' '), "guz"}, */
-/*     {HZ_LANGUAGE_HAITIAN, HZ_TAG('H','A','I',' '), "hat"}, /\* Haitian (Haitian Creole) *\/ */
-/*     {HZ_LANGUAGE_HALAM, HZ_TAG('H','A','L',' '), "cfm"}, /\* Halam (Falam Chin) *\/ */
-/*     {HZ_LANGUAGE_HARAUTI, HZ_TAG('H','A','R',' '), "hoj"}, */
-/*     {HZ_LANGUAGE_HAUSA, HZ_TAG('H','A','U',' '), "hau"}, */
-/*     {HZ_LANGUAGE_HAWAIIAN, HZ_TAG('H','A','W',' '), "haw"}, */
-/*     {HZ_LANGUAGE_HAYA, HZ_TAG('H','A','Y', ' '), "hay"}, */
-/*     {HZ_LANGUAGE_HAZARAGI, HZ_TAG('H','A','Z',' '), "haz"}, */
-/*     {HZ_LANGUAGE_HAMMER_BANNA, HZ_TAG('H','B','N',' '), "amf"}, /\* Hammer-Banna *\/ */
-/*     {HZ_LANGUAGE_HERERO, HZ_TAG('H','E','R',' '), "her"}, */
-/*     {HZ_LANGUAGE_HILIGAYNON, HZ_TAG('H','I','L',' '), "hil"}, */
-/*     {HZ_LANGUAGE_HINDI, HZ_TAG('H','I','N',' '), "hin"}, */
-/*     {HZ_LANGUAGE_HIGH_MARI, HZ_TAG('H','M','A',' '), "mrj"}, */
-/*     {HZ_LANGUAGE_HMONG, HZ_TAG('H','M','N',' '), "hmn"}, */
-/*     {HZ_LANGUAGE_HIRI_MOTU, HZ_TAG('H','M','O',' '), "hmo"}, */
-/*     {HZ_LANGUAGE_HINDKO, HZ_TAG('H','N','D',' '), "hno, hnd"}, */
-/*     {HZ_LANGUAGE_HO, HZ_TAG('H','O',' ',' '), "hoc"}, */
-/*     {HZ_LANGUAGE_HARARI, HZ_TAG('H','R','I',' '), "har"}, */
-/*     {HZ_LANGUAGE_CROATIAN, HZ_TAG('H','R','V',' '), "hrv"}, */
-/*     {HZ_LANGUAGE_HUNGARIAN, HZ_TAG('H','U','N',' '), "hun"}, */
-/*     {HZ_LANGUAGE_ARMENIAN, HZ_TAG('H','Y','E',' '), "hye, hyw"}, */
-/*     {HZ_LANGUAGE_ARMENIAN_EAST, HZ_TAG('H','Y','E','0'), "hye"}, */
-/*     {HZ_LANGUAGE_IBAN, HZ_TAG('I','B','A',' '), "iba"}, */
-/*     {HZ_LANGUAGE_IBIBIO, HZ_TAG('I','B','B',' '), "ibb"}, */
-/*     {HZ_LANGUAGE_IGBO, HZ_TAG('I','B','O',' '), "ibo"}, */
-/*     {HZ_LANGUAGE_IDO, HZ_TAG('I','D','O',' '), "ido"}, */
-/*     {HZ_LANGUAGE_IJO_LANGUAGES, HZ_TAG('I','J','O',' '), "iby, ijc, ije, ijn, ijo, ijs, nkx, okd, okr, orr"}, */
-/*     {HZ_LANGUAGE_INTERLINGUE, HZ_TAG('I','L','E',' '), "ile"}, */
-/*     {HZ_LANGUAGE_ILOKANO, HZ_TAG('I','L','O',' '), "ilo"}, */
-/*     {HZ_LANGUAGE_INTERLINGUA, HZ_TAG('I','N','A',' '), "ina"}, */
-/*     {HZ_LANGUAGE_INDONESIAN, HZ_TAG('I','N','D',' '), "ind"}, */
-/*     {HZ_LANGUAGE_INGUSH, HZ_TAG('I','N','G',' '), "inh"}, */
-/*     {HZ_LANGUAGE_INUKTITUT, HZ_TAG('I','N','U',' '), "iku"}, */
-/*     {HZ_LANGUAGE_INUPIAT, HZ_TAG('I','P','K',' '), "ipk"}, */
-/*     {HZ_LANGUAGE_PHONETIC_TRANSCRIPTION_IPA_CONVENTIONS, HZ_TAG('I','P','P','H'), NULL}, /\* Phonetic transcription—IPA conventions  *\/ */
-/*     {HZ_LANGUAGE_IRISH, HZ_TAG('I','R','I',' '), "gle"}, */
-/*     {HZ_LANGUAGE_IRISH_TRADITIONAL, HZ_TAG('I','R','T',' '), "gle"}, */
-/*     {HZ_LANGUAGE_ICELANDIC, HZ_TAG('I','S','L',' '), "isl"}, */
-/*     {HZ_LANGAUGE_INARI_SAMI, HZ_TAG('I','S','M',' '), "smn"}, */
-/*     {HZ_LANGUAGE_ITALIAN, HZ_TAG('I','T','A',' '), "ita"}, */
-/*     {HZ_LANGUAGE_HEBREW, HZ_TAG('I','W','R',' '), "heb"}, */
-/*     {HZ_LANGUAGE_JAMAICAN_CREOLE, HZ_TAG('J','A','M',' '), "jam"}, */
-/*     {HZ_LANGUAGE_JAPANESE, HZ_TAG('J','A','N',' '), "jpn"}, */
-/*     {HZ_LANGUAGE_JAVANESE, HZ_TAG('J','A','V',' '), "jav"}, */
-/*     {HZ_LANGUAGE_LOJBAN, HZ_TAG('J','B','O',' '), "jbo"}, */
-/*     {HZ_LANGUAGE_KRYMCHAK, HZ_TAG('J','C','T',' '), "jct"}, */
-/*     {HZ_LANGUAGE_YIDDISH, HZ_TAG('J','I','I',' '), "yid"}, */
-/*     {HZ_LANGUAGE_LADINO, HZ_TAG('J','U','D',' '), "lad"}, */
-/*     {HZ_LANGUAGE_JULA, HZ_TAG('J','U','L',' '), "dyu"}, */
-/*     {HZ_LANGUAGE_KABARDIAN, HZ_TAG('K','A','B',' '), "kbd"}, */
-/*     {HZ_LANGUAGE_KABYLE, HZ_TAG('K','A','B','0'), "kab"}, */
-/*     {HZ_LANGUAGE_KACHCHI, HZ_TAG('K','A','C',' '), "kfr"}, */
-/*     {HZ_LANGUAGE_KALENJIN, HZ_TAG('K','A','L',' '), "kln"}, */
-/*     {HZ_LANGUAGE_KANNADA, HZ_TAG('K','A','N',' '), "kan"}, */
-/*     {HZ_LANGUAGE_KARACHAY, HZ_TAG('K','A','R',' '), "krc"}, */
-/*     {HZ_LANGUAGE_GEORGIAN, HZ_TAG('K','A','T',' '), "kat"}, */
-/*     {HZ_LANGUAGE_KAZAKH, HZ_TAG('K','A','Z',' '), "kaz"}, */
-/*     {HZ_LANGUAGE_MAKONDE, HZ_TAG('K','D','E',' '), "kde"}, */
-/*     {HZ_LANGUAGE_KABUVERDIANU, HZ_TAG('K','E','A',' '), "kea"}, /\* Kabuverdianu (Crioulo) *\/ */
-/*     {HZ_LANGUAGE_KEBENA, HZ_TAG('K','E','B',' '), "ktb"}, */
-/*     {HZ_LANGUAGE_KEKCHI, HZ_TAG('K','E','K',' '), "kek"}, */
-/*     {HZ_LANGUAGE_KHUTSURI_GEORGIAN, HZ_TAG('K','G','E',' '), "kat"}, */
-/*     {HZ_LANGUAGE_KHAKASS, HZ_TAG('K','H','A',' '), "kjh"}, */
-/*     {HZ_LANGUAGE_KHANTY_KAZIM, HZ_TAG('K','H','K',' '), "kca"}, /\* Khanty-Kazim *\/ */
-/*     {HZ_LANGUAGE_KHMER, HZ_TAG('K','H','M',' '), "khm"}, */
-/*     {HZ_LANGUAGE_KHANTI_SHURISHKAR, HZ_TAG('K','H','S',' '), "kca"}, /\* Khanty-Shurishkar *\/ */
-/*     {HZ_LANGUAGE_KHAMTI_SHAN, HZ_TAG('K','H','T',' '), "kht"}, */
-/*     {HZ_LANGUAGE_KHANTY_VAKHI, HZ_TAG('K','H','V',' '), "kca"}, /\* Khanty-Shurishkar *\/ */
-/*     {HZ_LANGUAGE_KHOWAR, HZ_TAG('K','H','W',' '), "khw"}, */
-/*     {HZ_LANGUAGE_KIKUYU, HZ_TAG('K','I','K',' '), "kik"}, /\* Kikuyu (Gikuyu) *\/ */
-/*     {HZ_LANGUAGE_KIRGHIZ, HZ_TAG('K','I','R',' '), "kir"}, */
-/*     {HZ_LANGUAGE_KISII, HZ_TAG('K','I','S',' '), "kqs, kss"}, */
-/*     {HZ_LANGUAGE_KIRMANJKI, HZ_TAG('K','I','U',' '), "kiu"}, */
-/*     {HZ_LANGUAGE_SOUTHERN_KIWAI, HZ_TAG('K','J','D',' '), "kjd"}, */
-/*     {HZ_LANGUAGE_EASTERN_PWO_KAREN, HZ_TAG('K','J','P',' '), "kjp"}, */
-/*     {HZ_LANGUAGE_BUMTHANKGKHA, HZ_TAG('K','J','Z',' '), "jkz"}, */
-/*     {HZ_LANGUAGE_KOKNI, HZ_TAG('K','K','N',' '), "kex"}, */
-/*     {HZ_LANGUAGE_KALMYK, HZ_TAG('K','L','M',' '), "xal"}, */
-/*     {HZ_LANGUAGE_KAMBA, HZ_TAG('K','M','B',' '), "kam"}, */
-/*     {HZ_LANGUAGE_KUMAONI, HZ_TAG('K','M','O',' '), "kfw"}, */
-/*     {HZ_LANGUAGE_KOMO, HZ_TAG('K','M','O',' '), "kmw"}, */
-/*     {HZ_LANGUAGE_KOMSO, HZ_TAG('K','M','S',' '), "kxc"}, */
-/*     {HZ_LANGUAGE_KHORASANI_TURKIC, HZ_TAG('K','M','Z',' '), "kmz"}, */
-/*     {HZ_LANGUAGE_KANURI, HZ_TAG('K','N','R',' '), "kau"}, */
-/*     {HZ_LANGUAGE_KODAGU, HZ_TAG('K','O','D',' '), "kfa"}, */
-/*     {HZ_LANGUAGE_KOREAN_OLD_HANGUL, HZ_TAG('K','O','H',' '), "kor, okm"}, */
-/*     {HZ_LANGUAGE_KONKANI, HZ_TAG('K','O','K',' '), "kok"}, */
-/*     {HZ_LANGUAGE_KOMI, HZ_TAG('K','O','M',' '), "kom"}, */
-/*     {HZ_LANGUAGE_KIKONGO, HZ_TAG('K','O','N',' '), "ktu"}, */
-/*     {HZ_LANGUAGE_KONGO, HZ_TAG('K','O','N','0'), "kon"}, */
-/*     {HZ_LANGUAGE_KOMI_PERMYAK, HZ_TAG('K','O','P',' '), "koi"}, /\* Komi-Permyak *\/ */
-/*     {HZ_LANGUAGE_KOREAN, HZ_TAG('K','O','R',' '), "kor"}, */
-/*     {HZ_LANGUAGE_KOSRAEAN, HZ_TAG('K','O','S',' '), "kos"}, */
-/*     {HZ_LANGUAGE_KOMI_ZYRIAN, HZ_TAG('K','O','Z',' '), "kpv"}, /\* Komi-Zyrian *\/ */
-/*     {HZ_LANGUAGE_KPELLE, HZ_TAG('K','P','L',' '), "kpe"}, */
-/*     {HZ_LANGUAGE_KRIO, HZ_TAG('K','R','I',' '), "kri"}, */
-/*     {HZ_LANGUAGE_KARAKALPAK, HZ_TAG('K','R','K',' '), "kaa"}, */
-/*     {HZ_LANGUAGE_KARELIAN, HZ_TAG('K','R','L',' '), "krl"}, */
-/*     {HZ_LANGUAGE_KARAIM, HZ_TAG('K','R','M',' '), "kdr"}, */
-/*     {HZ_LANGUAGE_KAREN, HZ_TAG('K','R','N',' '), "blk, bwe, eky, ghk, jkm, jkp, kar, kjp, kjt, ksw, kvl, kvq, kvt, kvu, kvy, kxf, kxk, kyu, pdu, pwo, pww, wea"}, */
-/*     {HZ_LANGUAGE_KOORETE, HZ_TAG('K','R','T',' '), "kqy"}, */
-/*     {HZ_LANGUAGE_KASHMIRI, HZ_TAG('K','S','H',' '), "kas"}, */
-/*     {HZ_LANGUAGE_RIPUARIAN, HZ_TAG('K','S','H','0'), "ksh"}, */
-/*     {HZ_LANGUAGE_KHASI, HZ_TAG('K','S','I',' '), "kha"}, */
-/*     {HZ_LANGUAGE_KILDIN_SAMI, HZ_TAG('K','S','M',' '), "sjd"}, */
-/*     {HZ_LANGUAGE_SGAW_KAREN, HZ_TAG('K','S','W',' '), "ksw"}, /\* S’gaw Karen *\/ */
-/*     {HZ_LANGUAGE_KUANYAMA, HZ_TAG('K','U','A',' '), "kua"}, */
-/*     {HZ_LANGUAGE_KUI, HZ_TAG('K','U','I',' '), "kxu"}, */
-/*     {HZ_LANGUAGE_KULVI, HZ_TAG('K','U','L',' '), "kfx"}, */
-/*     {HZ_LANGUAGE_KUMYK, HZ_TAG('K','U','M',' '), "kum"}, */
-/*     {HZ_LANGUAGE_KURDISH, HZ_TAG('K','U','R',' '), "kur"}, */
-/*     {HZ_LANGUAGE_KURUKH, HZ_TAG('K','U','U',' '), "kru"}, */
-/*     {HZ_LANGUAGE_KUY, HZ_TAG('K','U','Y',' '), "kdt"}, */
-/*     {HZ_LANGUAGE_KORYAK, HZ_TAG('K','Y','K',' '), "kpy"}, */
-/*     {HZ_LANGUAGE_WESTERN_KAYAH, HZ_TAG('K','Y','U',' '), "kyu"}, */
-/*     {HZ_LANGUAGE_LADIN, HZ_TAG('L','A','D',' '), "lld"}, */
-/*     {HZ_LANGUAGE_LAHULI, HZ_TAG('L','A','H',' '), "bfu"}, */
-/*     {HZ_LANGUAGE_LAK, HZ_TAG('L','A','K',' '), "lbe"}, */
-/*     {HZ_LANGUAGE_LAMBANI, HZ_TAG('L','A','M',' '), "lmn"}, */
-/*     {HZ_LANGUAGE_LAO, HZ_TAG('L','A','O',' '), "lao"}, */
-/*     {HZ_LANGUAGE_LATIN, HZ_TAG('L','A','T',' '), "lat"}, */
-/*     {HZ_LANGUAGE_LAZ, HZ_TAG('L','A','Z',' '), "llz"}, */
-/*     {HZ_LANGUAGE_L_CREE, HZ_TAG('L','C','R',' '), "crm"}, /\* L-Cree *\/ */
-/*     {HZ_LANGUAGE_LADAKHI, HZ_TAG('L','D','K',' '), "lbj"}, */
-/*     {HZ_LANGUAGE_LEZGI, HZ_TAG('L','E','Z',' '), "lez"}, */
-/*     {HZ_LANGUAGE_LIGURIAN, HZ_TAG('L','I','J',' '), "lij"}, */
-/*     {HZ_LANGUAGE_LIMBURGISH, HZ_TAG('L','I','M',' '), "lim"}, */
-/*     {HZ_LANGUAGE_LINGALA, HZ_TAG('L','I','N',' '), "lin"}, */
-/*     {HZ_LANGUAGE_LISU, HZ_TAG('L','I','S',' '), "lis"}, */
-/*     {HZ_LANGUAGE_LAMPUNG, HZ_TAG('L','J','P',' '), "ljp"}, */
-/*     {HZ_LANGUAGE_LAKI, HZ_TAG('L','K','I',' '), "lki"}, */
-/*     {HZ_LANGUAGE_LOW_MARI, HZ_TAG('L','M','A',' '), "mhr"}, */
-/*     {HZ_LANGUAGE_LIMBU, HZ_TAG('L','M','B',' '), "lif"}, */
-/*     {HZ_LANGUAGE_LOMBARD, HZ_TAG('L','M','O',' '), "lmo"}, */
-/*     {HZ_LANGUAGE_LOMWE, HZ_TAG('L','M','W',' '), "ngl"}, */
-/*     {HZ_LANGUAGE_LOMA, HZ_TAG('L','O','M',' '), "lom"}, */
-/*     {HZ_LANGUAGE_LURI, HZ_TAG('L','R','C',' '), "lrc, luz, bqi, zum"}, */
-/*     {HZ_LANGUAGE_LOWER_SORBIAN, HZ_TAG('L','S','B',' '), "dsb"}, */
-/*     {HZ_LANGUAGE_LULE_SAMI, HZ_TAG('L','S','M',' '), "smj"}, */
-/*     {HZ_LANGUAGE_LITHUANIAN, HZ_TAG('L','T','H',' '), "lit"}, */
-/*     {HZ_LANGUAGE_LUXEMBOURGISH, HZ_TAG('L','T','Z',' '), "ltz"}, */
-/*     {HZ_LANGUAGE_LUBA_LULUA, HZ_TAG('L','U','A',' '), "lua"}, /\* Luba-Lulua *\/ */
-/*     {HZ_LANGUAGE_LUBA_KATANGA, HZ_TAG('L','U','B',' '), "lub"}, */
-/*     {HZ_LANGUAGE_GANDA, HZ_TAG('L','U','G',' '), "lug"}, */
-/*     {HZ_LANGUAGE_LUYIA, HZ_TAG('L','U','H',' '), "luy"}, */
-/*     {HZ_LANGUAGE_LUO, HZ_TAG('L','U','O',' '), "luo"}, */
-/*     {HZ_LANGUAGE_LAYVIAN, HZ_TAG('L','V','I',' '), "lav"}, */
-/*     {HZ_LANGUAGE_MADURA, HZ_TAG('M','A','D',' '), "mad"}, */
-/*     {HZ_LANGUAGE_MAGAHI, HZ_TAG('M','A','G',' '), "mag"}, */
-/*     {HZ_LANGUAGE_MARSHALLESE, HZ_TAG('M','A','H',' '), "mah"}, */
-/*     {HZ_LANGUAGE_MAJANG, HZ_TAG('M','A','J',' '), "mpe"}, */
-/*     {HZ_LANGUAGE_MAKHUWA, HZ_TAG('M','A','K',' '), "vmw"}, */
-/*     {HZ_LANGUAGE_MALAYALAM, HZ_TAG('M','A','L',' '), "mal"}, */
-/*     {HZ_LANGUAGE_MAM, HZ_TAG('M','A','M',' '), "mam"}, */
-/*     {HZ_LANGUAGE_MANSI, HZ_TAG('M','A','N',' '), "mns"}, */
-/*     {HZ_LANGUAGE_MAPUDUNGUN, HZ_TAG('M','A','P',' '), "arn"}, */
-/*     {HZ_LANGUAGE_MARATHI, HZ_TAG('M','A','R',' '), "mar"}, */
-/*     {HZ_LANGUAGE_MARWARI, HZ_TAG('M','A','W',' '), "mwr, dhd, rwr, mve, wry, mtr, swv"}, */
-/*     {HZ_LANGUAGE_MBUNDU, HZ_TAG('M','B','N',' '), "kmb"}, */
-/*     {HZ_LANGUAGE_MBO, HZ_TAG('M','B','O',' '), "mbo"}, */
-/*     {HZ_LANGUAGE_MANCHU, HZ_TAG('M','C','H',' '), "mnc"}, */
-/*     {HZ_LANGUAGE_MOOSE_CREE, HZ_TAG('M','C','R',' '), "crm"}, */
-/*     {HZ_LANGUAGE_MENDE, HZ_TAG('M','D','E',' '), "men"}, */
-/*     {HZ_LANGUAGE_MANDAR, HZ_TAG('M','D','R',' '), "mdr"}, */
-/*     {HZ_LANGUAGE_MEEN, HZ_TAG('M','E','N',' '), "mym"}, /\* Me'en  *\/ */
-/*     {HZ_LANGUAGE_MERU, HZ_TAG('M','E','R',' '), "mer"}, */
-/*     {HZ_LANGUAGE_PATTANI_MALAY, HZ_TAG('M','F','A',' '), "mfa"}, */
-/*     {HZ_LANGUAGE_MORISYEN, HZ_TAG('M','F','E',' '), "mfe"}, */
-/*     {HZ_LANGUAGE_MINANGKABAU, HZ_TAG('M','I','N',' '), "min"}, */
-/*     {HZ_LANGUAGE_MIZO, HZ_TAG('M','I','Z',' '), "lus"}, */
-/*     {HZ_LANGUAGE_MACEDONIAN, HZ_TAG('M','K','D',' '), "mkd"}, */
-/*     {HZ_LANGUAGE_MAKASAR, HZ_TAG('M','K','R',' '), "mak"}, */
-/*     {HZ_LANGUAGE_KITUBA, HZ_TAG('M','K','W',' '), "mkw"}, */
-/*     {HZ_LANGUAGE_MALE, HZ_TAG('M','L','E',' '), "mdy"}, */
-/*     {HZ_LANGUAGE_MALAGASY, HZ_TAG('M','L','G',' '), "mlg"}, */
-/*     {HZ_LANGUAGE_MALINKE, HZ_TAG('M','L','N',' '), "mlq"}, */
-/*     {HZ_LANGUAGE_MALAYALAM_REFORMED, HZ_TAG('M','L','R',' '), "mal"}, */
-/*     {HZ_LANGUAGE_MALAY, HZ_TAG('M','L','Y',' '), "msa"}, */
-/*     {HZ_LANGUAGE_MANDINKA, HZ_TAG('M','N','D',' '), "mnk"}, */
-/*     {HZ_LANGUAGE_MONGOLIAN, HZ_TAG('M','N','G',' '), "mon"}, */
-/*     {HZ_LANGUAGE_MANIPURI, HZ_TAG('M','N','I',' '), "mni"}, */
-/*     {HZ_LANGUAGE_MANINKA, HZ_TAG('M','N','K',' '), "man, mnk, myq, mku, msc, emk, mwk, mlq"}, */
-/*     {HZ_LANGUAGE_MANX, HZ_TAG('M','N','X',' '), "glv"}, */
-/*     {HZ_LANGUAGE_MOHAWK, HZ_TAG('M','O','H',' '), "moh"}, */
-/*     {HZ_LANGUAGE_MOKSHA, HZ_TAG('M','O','K',' '), "mdf"}, */
-/*     {HZ_LANGUAGE_MOLDAVIAN, HZ_TAG('M','O','L',' '), "mol"}, */
-/*     {HZ_LANGUAGE_MON, HZ_TAG('M','O','N',' '), "mnw"}, */
-/*     {HZ_LANGUAGE_MOROCCAN, HZ_TAG('M','O','R',' '), NULL}, */
-/*     {HZ_LANGUAGE_MOSSI, HZ_TAG('M','O','S',' '), "mos"}, */
-/*     {HZ_LANGUAGE_MAORI, HZ_TAG('M','R','I',' '), "mri"}, */
-/*     {HZ_LANGUAGE_MAITHILI, HZ_TAG('M','T','H',' '), "mai"}, */
-/*     {HZ_LANGUAGE_MALTESE, HZ_TAG('M','T','S',' '), "mlt"}, */
-/*     {HZ_LANGUAGE_MUNDARI, HZ_TAG('M','U','N',' '), "unr"}, */
-/*     {HZ_LANGUAGE_MUSCOGEE, HZ_TAG('M','U','S',' '), "mus"}, */
-/*     {HZ_LANGUAGE_MIRANDESE, HZ_TAG('M','W','L',' '), "mwl"}, */
-/*     {HZ_LANGUAGE_HMONG_DAW, HZ_TAG('M','W','W',' '), "mww"}, */
-/*     {HZ_LANGUAGE_MAYAN, HZ_TAG('M','Y','N',' '), "acr, agu, caa, cac, cak, chf, ckz, cob, ctu, emy, hus, itz, ixl, jac, kek, kjb, knj, lac, mam, mhc, mop, myn, poc, poh, quc, qum, quv, toj, ttc, tzh, tzj, tzo, usp, yua"}, */
-/*     {HZ_LANGUAGE_MAZANDERANI, HZ_TAG('M','Z','N',' '), "mzn"}, */
-/*     {HZ_LANGUAGE_NAGA_ASSAMESE, HZ_TAG('N','A','G',' '), "nag"}, /\* Naga-Assamese *\/ */
-/*     {HZ_LANGUAGE_NAHUATL, HZ_TAG('N','A','H',' '), "azd, azn, azz, nah, naz, nch, nci, ncj, ncl, ncx, ngu, nhc, nhe, nhg, nhi, nhk, nhm, nhn, nhp, nhq, nht, nhv, nhw, nhx, nhy, nhz, nlv, npl, nsu, nuz"}, */
-/*     {HZ_LANGUAGE_NANAI, HZ_TAG('N','A','N',' '), "gld"}, */
-/*     {HZ_LANGUAGE_NEAPOLITAN, HZ_TAG('N','A','P',' '), "nap"}, */
-/*     {HZ_LANGUAGE_NASKAPI, HZ_TAG('N''A','S',' '), "nsk"}, */
-/*     {HZ_LANGUAGE_NAURUAN, HZ_TAG('N','A','U',' '), "nau"}, */
-/*     {HZ_LANGUAGE_NAVAJO, HZ_TAG('N','A','V',' '), "nav"}, */
-/*     {HZ_LANGUAGE_N_CREE, HZ_TAG('N','C','R',' '), "csw"}, /\* N-Cree *\/ */
-/*     {HZ_LANGUAGE_NDEBELE, HZ_TAG('N','D','B',' '), "nbl, nde"}, */
-/*     {HZ_LANGUAGE_NDAU, HZ_TAG('N','D','C',' '), "ndc"}, */
-/*     {HZ_LANGUAGE_NDONGA, HZ_TAG('N','D','G',' '), "ndo"}, */
-/*     {HZ_LANGUAGE_LOW_SAXON, HZ_TAG('N','D','S',' '), "nds"}, */
-/*     {HZ_LANGUAGE_NEPALI, HZ_TAG('N','E','P',' '), "nep"}, */
-/*     {HZ_LANGUAGE_NEWARI, HZ_TAG('N','E','W',' '), "new"}, */
-/*     {HZ_LANGUAGE_NGBAKA, HZ_TAG('N','G','A',' '), "nga"}, */
-/*     {HZ_LANGUAGE_NAGARI, HZ_TAG('N','G','R',' '), NULL}, */
-/*     {HZ_LANGUAGE_NORWAY_HOUSE_CREE, HZ_TAG('N','H','C',' '), "csw"}, */
-/*     {HZ_LANGUAGE_NISI, HZ_TAG('N','I','S',' '), "dap, njz, tgj"}, */
-/*     {HZ_LANGUAGE_NIUEAN, HZ_TAG('N','I','U',' '), "niu"}, */
-/*     {HZ_LANGUAGE_NYANKOLE, HZ_TAG('N','K','L',' '), "nyn"}, */
-/*     {HZ_LANGUAGE_NKO, HZ_TAG('N','K','O',' '), "nqo"}, /\* N'ko *\/ */
-/*     {HZ_LANGUAGE_DUTCH, HZ_TAG('N','L','D',' '), "nld"}, */
-/*     {HZ_LANGUAGE_NIMADI, HZ_TAG('N','O','E',' '), "noe"}, */
-/*     {HZ_LANGUAGE_NOGAI, HZ_TAG('N','O','G',' '), "nog"}, */
-/*     {HZ_LANGUAGE_NORWEGIAN, HZ_TAG('N','O','R',' '), "nob"}, */
-/*     {HZ_LANGUAGE_NOVIAL, HZ_TAG('N','O','V',' '), "nov"}, */
-/*     {HZ_LANGUAGE_NORTHERN_SAMI, HZ_TAG('N','S','M',' '), "sme"}, */
-/*     {HZ_LANGUAGE_NORTHERN_SOTHO, HZ_TAG('N','S','O',' '), "nso"}, */
-/*     {HZ_LANGUAGE_NORTHERN_TAI, HZ_TAG('N','T','A',' '), "nod"}, */
-/*     {HZ_LANGUAGE_ESPERANTO, HZ_TAG('N','T','O',' '), "epo"}, */
-/*     {HZ_LANGUAGE_NYAMWEZI, HZ_TAG('N','Y','M',' '), "nym"}, */
-/*     {HZ_LANGUAGE_NORWEGIAN_NYNORSK, HZ_TAG('N','Y','N',' '), "nno"}, /\* Norwegian Nynorsk (Nynorsk, Norwegian) *\/ */
-/*     {HZ_LANGUAGE_MBEMBE_TIGON, HZ_TAG('N','Z','A',' '), "nza"}, */
-/*     {HZ_LANGUAGE_OCCITAN, HZ_TAG('O','C','I',' '), "oci"}, */
-/*     {HZ_LANGUAGE_OJI_CREE, HZ_TAG('O','C','R',' '), "ojs"}, /\* Oji-Cree *\/ */
-/*     {HZ_LANGUAGE_OJIBWAY, HZ_TAG('O','J','B',' '), "oji"}, */
-/*     {HZ_LANGUAGE_ODIA, HZ_TAG('O','R','I',' '), "ori"} /\* Odia (formerly Oriya) *\/ */
-/*     {HZ_LANGUAGE_OROMO, HZ_TAG('O','R','O',' '), "orm"}, */
-/*     {HZ_LANGUAGE_OSSETIAN, HZ_TAG('O','S','S',' '), "oss"}, */
-/*     {HZ_LANGUAGE_PALESTINIAN_ARAMAIC, HZ_TAG('P','A','A',' '), "sam"}, */
-/*     {HZ_LANGUAGE_PANGASINAN, HZ_TAG('P','A','G',' '), "pag"}, */
-/*     {HZ_LANGUAGE_PALI, HZ_TAG('P','A','L',' '), "pli"}, */
-/*     {HZ_LANGUAGE_PAMPANGAN, HZ_TAG('P','A','M',' '), "pam"}, */
-/*     {HZ_LANGUAGE_PUNJABI, HZ_TAG('P','A','N',' '), "pan"}, */
-/*     {HZ_LANGUAGE_PALPA, HZ_TAG('P','A','P',' '), "plp"}, */
-/*     {HZ_LANGUAGE_PAPIAMENTU, HZ_TAG('P','A','P','0'), "pap"}, */
-/*     {HZ_LANGUAGE_PASHTO, HZ_TAG('P','A','S',' '), "pus"}, */
-/*     {HZ_LANGUAGE_PALAUAN, HZ_TAG('P','A','U',' '), "pau"}, */
-/*     {HZ_LANGUAGE_BOUYEI, HZ_TAG('P','C','C',' '), "pcc"}, */
-/*     {HZ_LANGUAGE_PICARD, HZ_TAG('P','C','D',' '), "pcd"}, */
-/*     {HZ_LANGUAGE_PENNSYLVANIA, HZ_TAG('P','D','C',' '), "pdc"}, */
-/*     {HZ_LANGUAGE_POLYTONIC_GREEK, HZ_TAG('P','G','R',' '), "ell"}, */
-/*     {HZ_LANGUAGE_PHAKE, HZ_TAG('P','H','K',' '), "phk"}, */
-/*     {HZ_LANGUAGE_NORFOLK, HZ_TAG('P','I','H',' '), "pih"}, */
-/*     {HZ_LANGUAGE_FILIPINO, HZ_TAG('P','I','L',' '), "fil"}, */
-/*     {HZ_LANGUAGE_PALAUNG, HZ_TAG('P','L','G',' '), "pce, rbb, pll"}, */
-/*     {HZ_LANGUAGE_POLISH, HZ_TAG('P','L','K',' '), "pol"}, */
-/*     {HZ_LANGUAGE_PIEMONTESE, HZ_TAG('P','M','S',' '), "pms"}, */
-/*     {HZ_LANGUAGE_WESTERN_PUNJABI, HZ_TAG('P','N','B',' '), "pnb"}, */
-/*     {HZ_LANGUAGE_POCOMCHI, HZ_TAG('P','O','H',' '), "poh"}, */
-/*     {HZ_LANGUAGE_POHNPEIAN, HZ_TAG('P','O','N',' '), "pon"}, */
-/*     {HZ_LANGUAGE_PROVENCAL, HZ_TAG('P','R','O',' '), "pro"}, /\* Provencal / Old Provencal *\/ */
-/*     {HZ_LANGUAGE_PORTUGUESE, HZ_TAG('P','T','G',' '), "por"}, */
-/*     {HZ_LANGUAGE_WESTERN_PWO_KAREN, HZ_TAG('P','W','O',' '), "pwo"}, */
-/*     {HZ_LANGUAGE_CHIN, HZ_TAG('Q','I','N',' '), "bgr, biu, cek, cey, cfm, cbl, cka, ckn, clj, clt, cmr, cnb, cnh, cnk, cnw, csh, csj, csv, csy, ctd, cth, czt, dao, gnb, hlt, hmr, hra, lus, mrh, mwq, pck, pkh, pub, ral, rtc, sch, sez, shl, smt, tcp, tcz, vap, weu, zom, zyp"}, */
-/*     {HZ_LANGUAGE_KICHE, HZ_TAG('Q','U','C',' '), "quc"}, */
-/*     {HZ_LANGUAGE_QUECHUA_BOLIVIA, HZ_TAG('Q','U','H',' '), "quh"}, /\* Quechua (Bolivia) *\/ */
-/*     {HZ_LANGUAGE_QUECHUA, HZ_TAG('Q','U','Z',' '), "quz"}, */
-/*     {HZ_LANGUAGE_QUECHUA_ECUADOR, HZ_TAG('Q','V','I',' '), "qvi"}, /\* Quechua (Ecuador) *\/ */
-/*     {HZ_LANGUAGE_QUECHUA_PERU, HZ_TAG('Q','W','H',' '), "qwh"}, /\* Quechua (Peru) *\/ */
-/*     {HZ_LANGUAGE_RAJASTHANI, HZ_TAG('R','A','J',' '), "raj"}, */
-/*     {HZ_LANGUAGE_RAROTONGAN, HZ_TAG('R','A','R',' '), "rar"}, */
-/*     {HZ_LANGUAGE_RUSSIAN_BURIAT, HZ_TAG('R','B','U',' '), "bxr"}, */
-/*     {HZ_LANGUAGE_R_CREE, HZ_TAG('R','C','R',' '), "atj"}, /\* R-Cree *\/ */
-/*     {HZ_LANGUAGE_REJANG, HZ_TAG('R','E','J',' '), "rej"}, */
-/*     {HZ_LANGUAGE_RIANG, HZ_TAG('R','I','A',' '), "ria"}, */
-/*     {HZ_LANGUAGE_TARIFIT, HZ_TAG('R','I','F',' '), "rif"}, */
-/*     {HZ_LANGUAGE_RITARUNGO, HZ_TAG('R','I','T',' '), "rit"}, */
-/*     {HZ_LANGUAGE_ARAWKAL, HZ_TAG('R','K','W',' '), "rkw"}, */
-/*     {HZ_LANGUAGE_ROMANSH, HZ_TAG('R','M','S',' '), "roh"}, */
-/*     {HZ_LANGUAGE_VLAX_ROMANI, HZ_TAG('R','M','Y',' '), "rmy"}, */
-/*     {HZ_LANGUAGE_ROMANIAN, HZ_TAG('R','O','M',' '), "ron"}, */
-/*     {HZ_LANGUAGE_ROMANY, HZ_TAG('R','O','Y',' '), "rom"}, */
-/*     {HZ_LANGUAGE_RUSYN, HZ_TAG('R','S','Y',' '), "rue"}, */
-/*     {HZ_LANGUAGE_ROTUMAN, HZ_TAG('R','T','M',' '), "rtm"}, */
-/*     {HZ_LANGUAGE_KINYARWANDA, HZ_TAG('R','U','A',' '), "kin"}, */
-/*     {HZ_LANGUAGE_RUNDI, HZ_TAG('R','U','N',' '), "run"}, */
-/*     {HZ_LANGUAGE_AROMANIAN, HZ_TAG('R','U','P',' '), "rup"}, */
-/*     {HZ_LANGUAGE_RUSSIAN, HZ_TAG('R','U','S',' '), "rus"}, */
-/*     {HZ_LANGUAGE_SADRI, HZ_TAG('S','A','D',' '), "sck"}, */
-/*     {HZ_LANGUAGE_SANSKRIT, HZ_TAG('S','A','N',' '), "san"}, */
-/*     {HZ_LANGUAGE_SASAK, HZ_TAG('S','A','S',' '), "sas"}, */
-/*     {HZ_LANGUAGE_SANTALI, HZ_TAG('S','A','T',' '), "sat"}, */
-/*     {HZ_LANGUAGE_SAYISI, HZ_TAG('S','A','Y',' '), "chp"}, */
-/*     {HZ_LANGUAGE_SICILIAN, HZ_TAG('S','C','N',' '), "scn"}, */
-/*     {HZ_LANGUAGE_SCOTS, HZ_TAG('S','C','O',' '), "sco"}, */
-/*     {HZ_LANGUAGE_NORTH_SLAVERY, HZ_TAG('S','C','S',' '), "scs"}, */
-/*     {HZ_LANGUAGE_SEKOTA, HZ_TAG('S','E','K',' '), "xan"}, */
-/*     {HZ_LANGUAGE_SELKUP, HZ_TAG('S','E','L',' '), "sel"}, */
-/*     {HZ_LANGUAGE_OLD_IRISH, HZ_TAG('S','G','A',' '), "sga"}, */
-/*     {HZ_LANGUAGE_SANGO, HZ_TAG('S','G','O',' '), "sag"}, */
-/*     {HZ_LANGUAGE_SAMOGITIAN, HZ_TAG('S','G','S',' '), "sgs"}, */
-/*     {HZ_LANGUAGE_TACHELHIT, HZ_TAG('S','H','I',' '), "shi"}, */
-/*     {HZ_LANGUAGE_SHAN, HZ_TAG('S','H','N',' '), "shn"}, */
-/*     {HZ_LANGUAGE_SIBE, HZ_TAG('S','I','B',' '), "sjo"}, */
-/*     {HZ_LANGUAGE_SIDAMO, HZ_TAG('S','I','D',' '), "sid"}, */
-/*     {HZ_LANGUAGE_SILTE_GURAGE, HZ_TAG('S','I','G',' '), "xst, stv, wle"}, */
-/*     {HZ_LANGUAGE_SKOLT_SAMI, HZ_TAG('S','K','S',' '), "sms"}, */
-/*     {HZ_LANGUAGE_SLOVAK, HZ_TAG('S','K','Y',' '), "slk"}, */
-/*     {HZ_LANGUAGE_SLAVERY, HZ_TAG('S','L','A',' '), "den, scs, xsl"}, */
-/*     {HZ_LANGUAGE_SLOVENIAN, HZ_TAG('S','L','V',' '), "slv"}, */
-/*     {HZ_LANGUAGE_SOMALI, HZ_TAG('S','M','L',' '), "som"}, */
-/*     {HZ_LANGUAGE_SAMOAN, HZ_TAG('S','M','O',' '), "smo"}, */
-/*     {HZ_LANGUAGE_SENA, HZ_TAG('S','N','A',' '), "seh"}, */
-/*     {HZ_LANGUAGE_SHONA, HZ_TAG('S','N','A','0'), "sna"}, */
-/*     {HZ_LANGUAGE_SINDHI, HZ_TAG('S','N','D',' '), "snd"}, */
-/*     {HZ_LANGUAGE_SINHALA, HZ_TAG('S','N','H',' '), "sin"}, /\* Sinhala (Sinhalese) *\/ */
-/*     {HZ_LANGUAGE_SONINKE, HZ_TAG('S','N','K',' '), "snk"}, */
-/*     {HZ_LANGUAGE_SODO_GURAGE, HZ_TAG('S','O','G',' '), "gru"}, */
-/*     {HZ_LANGUAGE_SONGE, HZ_TAG('S','O','P',' '), "sop"}, */
-/*     {HZ_LANGUAGE_SOUTHERN_SOTHO, HZ_TAG('S','O','T',' '), "sot"}, */
-/*     {HZ_LANGUAGE_ALBANIAN, HZ_TAG('S','Q','I',' '), "sqi"}, */
-/*     {HZ_LANGUAGE_SERBIAN, HZ_TAG('S','R','B',' '), "cnr, srp"}, */
-/*     {HZ_LANGUAGE_SARDINIAN, HZ_TAG('S','R','D',' '), "srd"}, */
-/*     {HZ_LANGUAGE_SARAIKI, HZ_TAG('S','R','K',' '), "skr"}, */
-/*     {HZ_LANGUAGE_SERER, HZ_TAG('S','R','R',' '), "srr"}, */
-/*     {HZ_LANGUAGE_SOUTH_SLAVERY, HZ_TAG('S','S','L',' '), "xsl"}, */
-/*     {HZ_LANGUAGE_SOUTHERN_SAMI, HZ_TAG('S','S','M',' '), "sma"}, */
-/*     {HZ_LANGUAGE_SATERLAND_FRISIAN, HZ_TAG('S','T','Q',' '), "stq"}, */
-/*     {HZ_LANGUAGE_SUKUMA, HZ_TAG('S','U','K',' '), "suk"}, */
-/*     {HZ_LANGUAGE_SUNDANESE, HZ_TAG('S','U','N',' '), "sun"}, */
-/*     {HZ_LANGUAGE_SURI, HZ_TAG('S','U','R',' '), "suq"}, */
-/*     {HZ_LANGUAGE_SVAN, HZ_TAG('S','V','A',' '), "sva"}, */
-/*     {HZ_LANGUAGE_SWEDISH, HZ_TAG('S','V','E',' '), "swe"}, */
-/*     {HZ_LANGUAGE_SWADAYA_ARAMAIC, HZ_TAG('S','W','A',' '), "aii"}, */
-/*     {HZ_LANGUAGE_SWAHILI, HZ_TAG('S','W','K',' '), "swa"}, */
-/*     {HZ_LANGUAGE_SWATI, HZ_TAG('S','W','Z',' '), "ssw"}, */
-/*     {HZ_LANGUAGE_SUTU, HZ_TAG('S','X','T',' '), "ngo, xnj, xnq"}, */
-/*     {HZ_LANGUAGE_UPPER_SAXON, HZ_TAG('S','X','U',' '), "sxu"}, */
-/*     {HZ_LANGUAGE_SYLHETI, HZ_TAG('S','Y','L',' '), "syl"}, */
-/*     {HZ_LANGUAGE_SYRIAC, HZ_TAG('S','Y','R',' '), "aii, amw, cld, syc, syr, tru"}, */
-/*     {HZ_LANGUAGE_ESTRANGELA_SYRIAC, HZ_TAG('S','Y','R','E'), "syc, syr"}, /\* Syriac, Estrangela script-variant (equivalent to ISO 15924 'Syre') *\/ */
-/*     {HZ_LANGUAGE_WESTERN_SYRIAC, HZ_TAG('S','Y','R','J'), "syc, syr"}, /\* Syriac, Western script-variant (equivalent to ISO 15924 'Syrj') *\/ */
-/*     {HZ_LANGUAGE_EASTERN_SYRIAC, HZ_TAG('S','Y','R','N'), "syc, syr"}, /\* Syriac, Eastern script-variant (equivalent to ISO 15924 'Syrn') *\/ */
-/*     {HZ_LANGUAGE_SILESIAN, HZ_TAG('S','Z','L',' '), "szl"}, */
-/*     {HZ_LANGUAGE_TABASARAN, HZ_TAG('T','A','B',' '), "tab"}, */
-/*     {HZ_LANGUAGE_TAIJIKI, HZ_TAG('T','A','J',' '), "tgk"}, */
-/*     {HZ_LANGUAGE_TAMIL, HZ_TAG('T','A','M',' '), "tam"}, */
-/*     {HZ_LANGUAGE_TATAR, HZ_TAG('T','A','T',' '), "tat"}, */
-/*     {HZ_LANGUAGE_TH_CREE, HZ_TAG('T','C','R',' '), "cwd"}, /\* TH-Cree *\/ */
-/*     {HZ_LANGUAGE_DEHONG_DAI, HZ_TAG('T','D','D',' '), "tdd"}, */
-/*     {HZ_LANGUAGE_TELUGU, HZ_TAG('T','E','L',' '), "tel"}, */
-/*     {HZ_LANGUAGE_TETUM, HZ_TAG('T','E','T',' '), "tet"}, */
-/*     {HZ_LANGUAGE_TAGALOG, HZ_TAG('T','G','L',' '), "tgl"}, */
-/*     {HZ_LANGUAGE_TONGAN, HZ_TAG('T','G','N',' '), "ton"}, */
-/*     {HZ_LANGUAGE_TIGRE, HZ_TAG('T','G','R',' '), "tig"}, */
-/*     {HZ_LANGUAGE_TIGRINYA, HZ_TAG('T','G','Y',' '), "tir"}, */
-/*     {HZ_LANGUAGE_THAI, HZ_TAG('T','H','A',' '), "tha"}, */
-/*     {HZ_LANGUAGE_TAHITIAN, HZ_TAG('T','H','T',' '), "tah"}, */
-/*     {HZ_LANGUAGE_TIBETAN, HZ_TAG('T','I','B',' '), "bod"}, */
-/*     {HZ_LANGUAGE_TIV, HZ_TAG('T','I','V',' '), "tiv"}, */
-/*     {HZ_LANGUAGE_TURKMEN, HZ_TAG('T','K','M',' '), "tuk"}, */
-/*     {HZ_LANGUAGE_TAMASHEK, HZ_TAG('T','M','H',' '), "taq, thv, thz, tmh, ttq"}, */
-/*     {HZ_LANGUAGE_TEMNE, HZ_TAG('T','M','N',' '), "tem"}, */
-/*     {HZ_LANGUAGE_TSWANA, HZ_TAG('T','N','A',' '), "tsn"}, */
-/*     {HZ_LANGUAGE_TUNDRA_ENETS, HZ_TAG('T','N','E',' '), "enh"}, */
-/*     {HZ_LANGUAGE_TONGA, HZ_TAG('T','N','G',' '), "toi"}, */
-/*     {HZ_LANGUAGE_TODO, HZ_TAG('T','O','D',' '), "xal"}, */
-/*     {HZ_LANGUAGE_TOMA, HZ_TAG('T','O','D','0'), "tod"}, */
-/*     {HZ_LANGUAGE_TOK_PISIN, HZ_TAG('T','P','I',' '), "tpi"}, */
-/*     {HZ_LANGUAGE_TURKISH, HZ_TAG('T','R','K',' '), "tur"}, */
-/*     {HZ_LANGUAGE_TSONGA, HZ_TAG('T','S','G',' '), "tso"}, */
-/*     {HZ_LANGUAGE_TSHANGLA, HZ_TAG('T','S','J',' '), "tsj"}, */
-/*     {HZ_LANGUAGE_TUROYO_ARAMAIC, HZ_TAG('T','U','A',' '), "tru"}, */
-/*     {HZ_LANGUAGE_TUMBUKA, HZ_TAG('T','U','L',' '), "tcy"}, */
-/*     {HZ_LANGUAGE_TULU, HZ_TAG('T','U','M',' '), "tum"}, */
-/*     {HZ_LANGUAGE_TUVIN, HZ_TAG('T','U','V',' '), "tyv"}, */
-/*     {HZ_LANGUAGE_TUVALU, HZ_TAG('T','V','L',' '), "tvl"}, */
-/*     {HZ_LANGUAGE_TWI, HZ_TAG('T','W','I',' '), "twi"}, */
-/*     {HZ_LANGUAGE_TAY, HZ_TAG('T','Y','Z',' '), "tyz"}, */
-/*     {HZ_LANGUAGE_TAMAZIGHT, HZ_TAG('T','Z','M',' '), "tzm"}, */
-/*     {HZ_LANGUAGE_TZOTZIL, HZ_TAG('T','Z','O',' '), "tzo"}, */
-/*     {HZ_LANGUAGE_UDMURT, HZ_TAG('U','D','M',' '), "udm"}, */
-/*     {HZ_LANGUAGE_UKRAINIAN, HZ_TAG('U','K','R',' '), "ukr"}, */
-/*     {HZ_LANGUAGE_UMBUNDU, HZ_TAG('U','M','B',' '), "umb"}, */
-/*     {HZ_LANGUAGE_URDU, HZ_TAG('U','R','D',' '), "urd"}, */
-/*     {HZ_LANGUAGE_UPPER_SORBIAN, HZ_TAG('U','S','B',' '), "hsb"}, */
-/*     {HZ_LANGUAGE_UYGHUR, HZ_TAG('U','Y','G',' '), "uig"}, */
-/*     {HZ_LANGUAGE_UZBEK, HZ_TAG('U','Z','B',' '), "uzb"}, */
-/*     {HZ_LANGUAGE_VENETIAN, HZ_TAG('V','E','C',' '), "vec"}, */
-/*     {HZ_LANGUAGE_VENDA, HZ_TAG('V','E','N',' '), "ven"}, */
-/*     {HZ_LANGUAGE_VIETNAMESE, HZ_TAG('V','I','T',' '), "vie"}, */
-/*     {HZ_LANGUAGE_VOLAPUK, HZ_TAG('V','O','L',' '), "vol"}, */
-/*     {HZ_LANGUAGE_VORO, HZ_TAG('V','R','O',' '), "vro"}, */
-/*     {HZ_LANGUAGE_WA, HZ_TAG('W','A',' ',' '), "wbm"}, */
-/*     {HZ_LANGUAGE_WAGDI, HZ_TAG('W','A','G',' '), "wbr"}, */
-/*     {HZ_LANGUAGE_WARAY_WARAY, HZ_TAG('W','A','R',' '), "war"}, /\* Waray-Waray *\/ */
-/*     {HZ_LANGUAGE_WEST_CREE, HZ_TAG('W','C','R',' '), "crk"}, /\* West-Cree *\/ */
-/*     {HZ_LANGUAGE_WELSH, HZ_TAG('W','E','L',' '), "cym"}, */
-/*     {HZ_LANGUAGE_WOLOF, HZ_TAG('W','L','F',' '), "wol"}, */
-/*     {HZ_LANGUAGE_WALLOON, HZ_TAG('W','L','N',' '), "wln"}, */
-/*     {HZ_LANGUAGE_MEWATI, HZ_TAG('W','T','M',' '), "wtm"}, */
-/*     {HZ_LANGUAGE_LU, HZ_TAG('X','B','D',' '), "khb"}, */
-/*     {HZ_LANGUAGE_XHOSA, HZ_TAG('X','H','S',' '), "xho"}, */
-/*     {HZ_LANGUAGE_MINJANGBAL, HZ_TAG('X','J','B',' '), "xjb"}, */
-/*     {HZ_LANGUAGE_KHENGKHA, HZ_TAG('X','K','F',' '), "xkf"}, */
-/*     {HZ_LANGUAGE_SOGA, HZ_TAG('X','O','G',' '), "xog"}, */
-/*     {HZ_LANGUAGE_KPELLE, HZ_TAG('X','P','E',' '), "xpe"}, /\* Kpelle (Liberia) *\/ */
-/*     {HZ_LANGUAGE_SAKHA, HZ_TAG('Y','A','K',' '), "sah"}, */
-/*     {HZ_LANGUAGE_YAO, HZ_TAG('Y','A','O',' '), "yao"}, */
-/*     {HZ_LANGUAGE_YAPESE, HZ_TAG('Y','A','P',' '), "yap"}, */
-/*     {HZ_LANGUAGE_YORUBA, HZ_TAG('Y','B','A',' '), "yor"}, */
-/*     {HZ_LANGUAGE_Y_CREE, HZ_TAG('Y','C','R',' '), "crj, crk, crl"}, /\* Y-Cree *\/ */
-/*     {HZ_LANGUAGE_YI_CLASSIC, HZ_TAG('Y','I','C',' '), NULL}, */
-/*     {HZ_LANGUAGE_YI_MODERN, HZ_TAG('Y','I','M',' '), "iii"}, */
-/*     {HZ_LANGUAGE_ZEALANDIC, HZ_TAG('Z','E','A',' '), "zea"}, */
-/*     {HZ_LANGUAGE_STANDARD_MOROCCAN_TAMAZIGHT, HZ_TAG('Z','G','H',' '), "zgh"}, */
-/*     {HZ_LANGUAGE_ZHUANG, HZ_TAG('Z','H','A',' '), "zha"}, */
-/*     {HZ_LANGUAGE_CHINESE_TRADITIONAL_HONG_KONG_SAR, HZ_TAG('Z','H','H',' '), "zho"}, /\* Chinese, Traditional, Hong Kong SAR *\/ */
-/*     {HZ_LANGUAGE_CHINESE_PHONETIC, HZ_TAG('Z','H','P',' '), "zho"}, /\* Chinese, Phonetic *\/ */
-/*     {HZ_LANGUAGE_CHINESE_SIMPLIFIED, HZ_TAG('Z','H','S',' '), "zho"}, /\* Chinese, Simplified *\/ */
-/*     {HZ_LANGUAGE_CHINESE_TRADITIONAL, HZ_TAG('Z','H','T',' '), "zho"}, /\* Chinese, Traditional *\/ */
-/*     {HZ_LANGUAGE_CHINESE_TRADITIONAL_MACAO_SAR, HZ_TAG('Z','H','T','M'), "zho"}, /\* Chinese, Traditional, Macao SAR *\/ */
-/*     {HZ_LANGUAGE_ZANDE, HZ_TAG('Z','N','D',' '), "zne"}, */
-/*     {HZ_LANGUAGE_ZULU, HZ_TAG('Z','U','L',' '), "zul"}, */
-/*     {HZ_LANGUAGE_ZAZAKI, HZ_TAG('Z','Z','A',' '), "zza"} */
-/* }; */
+const hz_language_map_t *
+hz_get_language_map(hz_language_t lang) {
+    size_t i;
+    for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
+        if (language_map_list[i].language == lang) {
+            return &language_map_list[i];
+        }
+    }
+    return NULL;
+}
 
 hz_language_t
 hz_lang(const char *tag) {
-    hz_language_map_t *langmap;
+    hz_language_map_t *currlang, *foundlang;
     size_t i;
 
-    langmap = NULL;
+    foundlang = NULL;
 
 #if HZ_LANG_USE_ISO_639_1_CODES
     /* use old ISO 639-1 tags (same as HarfBuzz) */
 #else
     /* use ISO 639-2 and ISO 639-3 codes, same as in https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags */
     for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
-        langmap = language_map_list+i;
-        if (langmap->iso_639_codes != NULL) {
-            hz_bool any_match = 0;
+        char buf[1024];
+        char *code;
+        currlang = &language_map_list[i];
+        if (currlang->codes == NULL) continue;
+
+        strcpy(buf, currlang->codes);
+
+        code = strtok(buf, ":");
+        while (code != NULL) {
+            if (!strcmp(tag, code)) {
+                foundlang = currlang;
+                goto found_language;
+            }
+
+            code = strtok(NULL, ":");
         }
     }
 
-    return langmap->language;
+    found_language:
+    if (foundlang == NULL)
+        return HZ_LANGUAGE_DFLT;
+
+    return foundlang->language;
 #endif
 }
 

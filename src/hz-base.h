@@ -89,6 +89,8 @@ bswap64(unsigned long val) {
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_ALLOC(T) (T *) HZ_MALLOC(sizeof(T))
 
+#define HZ_TAG_NONE ((hz_tag_t)0)
+
 /* V is the variable name, while T is the type/structure */
 #define HZ_HEAPVAR(V, T) T *V = HZ_ALLOC(T)
 
@@ -103,18 +105,13 @@ typedef struct hz_stream_t {
 
 static hz_stream_t
 hz_stream_create(const unsigned char *data, int flags) {
-    hz_stream_t stream;//= (hz_stream_t *)malloc(sizeof(hz_stream_t));
+    hz_stream_t stream;
     stream.idx = 0;
     stream.data = data;
     stream.length = 0;
     stream.flags = flags;
     return stream;
 }
-
-//static void
-//hz_stream_destroy(hz_stream_t *stream) {
-//    free(stream);
-//}
 
 typedef struct hz_metrics_t {
     int32_t x_advance;
@@ -137,12 +134,7 @@ static unsigned char
 unpackb(hz_stream_t *buf) {
     return buf->data[buf->idx++];
 }
-/*
-static char
-unpacksb(buf_t *buf) {
-    return *(char *)&buf->data[buf->idx++];
-}
-*/
+
 static unsigned short
 unpackh(hz_stream_t *buf) {
     unsigned short val = 0;
@@ -284,26 +276,12 @@ unpackv(hz_stream_t *buf, const char *f, ...)
     va_end(v);
 }
 
-/*
- * unpackf(buf, "bbh", &a, &b, &c);
- *
- * unpackf(
- * */
-
-
-/* Enum: hz_glyph_class_t
- * HZ_GLYPH_CLASS_ZERO - No class.
- * HZ_GLYPH_CLASS_BASE - Base glyph class.
- * HZ_GLYPH_CLASS_LIGATURE - Ligature glyph class (composed of smaller subglyphs).
- * HZ_GLYPH_CLASS_MARK - Mark glyph class, as in Arabic tashkeel or accents.
- * HZ_GLYPH_CLASS_COMPONENT - Component glyph class.
- */
 typedef enum hz_glyph_class_t {
     HZ_GLYPH_CLASS_ZERO      = 0x00,
     HZ_GLYPH_CLASS_BASE      = 0x01,
     HZ_GLYPH_CLASS_LIGATURE  = 0x02,
     HZ_GLYPH_CLASS_MARK      = 0x04,
-    HZ_GLYPH_CLASS_COMPONENT = 0x08,
+    HZ_GLYPH_CLASS_COMPONENT = 0x08
 } hz_glyph_class_t;
 
 #define HZ_GLYPH_CLASS_BIT_FIELD 4
@@ -319,6 +297,5 @@ typedef enum hz_error_t {
     HZ_ERROR_INVALID_FORMAT,
     HZ_ERROR_TABLE_DOES_NOT_EXIST
 } hz_error_t;
-
 
 #endif /* HZ_BASE_H */

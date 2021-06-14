@@ -358,7 +358,6 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
     const hz_byte *found_addr;
 
     script_count = unpackh(&subtable);
-    HZ_LOG("script count: %d\n", script_count);
     script_records = hz_bump_allocator_alloc(&allocator, sizeof(hz_rec16_t) * script_count);
 
     while (index < script_count) {
@@ -366,8 +365,6 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
         uint16_t curr_offset;
 
         unpackv(&subtable, "ih", &curr_tag, &curr_offset);
-
-        HZ_LOG("[%u] = \"%c%c%c%c\" (%u)\n", index, HZ_UNTAG(curr_tag), curr_offset);
 
         script_records[index].offset = curr_offset;
         script_records[index].tag = curr_tag;
@@ -388,17 +385,11 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
     unpackv(&script_stream, "hh", &default_lang_sys_offset, &lang_sys_count);
     found_addr = script_stream.data + default_lang_sys_offset;
 
-    HZ_LOG("default lang sys: %u\n", default_lang_sys_offset);
-    HZ_LOG("lang sys count: %u\n", lang_sys_count);
-
-
     uint16_t langSysIndex = 0;
     while (langSysIndex < lang_sys_count) {
         hz_rec16_t lang_sys_rec;
         unpackv(&script_stream, "ih", &lang_sys_rec.tag,
                 &lang_sys_rec.offset);
-
-        HZ_LOG("[%u] = \"%c%c%c%c\" %u\n", langSysIndex, HZ_UNTAG(lang_sys_rec.tag), lang_sys_rec.offset);
 
         if (lang_sys_rec.tag == language) {
             /* Found language system */
@@ -985,11 +976,8 @@ hz_ot_layout_apply_features(hz_face_t *face,
 
     if (lsaddr == NULL) {
         /* Language system was not found */
-        HZ_ERROR("Language system was not found!\n");
         return HZ_FALSE;
     }
-
-    HZ_LOG("Found language system!\n");
 
     hz_array_t *lang_feature_indices = hz_array_create();
     hz_stream_t lsbuf = hz_stream_create(lsaddr, HZ_BSWAP);
@@ -1000,19 +988,14 @@ hz_ot_layout_apply_features(hz_face_t *face,
                      &langSys.feature_index_count);
 
     /* lookupOrder should be (nil) */
-    HZ_LOG("lookupOrder: %p\n", (void *) langSys.lookup_order);
-    HZ_LOG("requiredFeatureIndex: %u\n", langSys.required_feature_index);
-    HZ_LOG("featureIndexCount: %u\n", langSys.feature_index_count);
-
     if (langSys.required_feature_index == 0xFFFF) {
-        HZ_LOG("No required features!\n");
+        fprintf(stderr, "No required features!\n");
     }
 
     uint16_t loopIndex = 0;
     while (loopIndex < langSys.feature_index_count) {
         uint16_t featureIndex;
         featureIndex = unpackh(&lsbuf);
-        HZ_LOG("[%u] = %u\n", loopIndex, featureIndex);
         hz_array_push_back(lang_feature_indices, featureIndex);
         ++loopIndex;
     }
@@ -1039,8 +1022,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
         /* Parsing the FeatureList and applying selected Features */
         uint16_t feature_index = 0;
         uint16_t feature_count = unpackh(&feature_list);
-        HZ_LOG("feature_count: %u\n", feature_count);
-
+        
         hz_map_t *feature_map = hz_map_create();
 
         /* fill map from feature type to offset */
@@ -2788,8 +2770,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
         }
 
         default:
-            HZ_LOG("Invalid GSUB lookup type!\n");
-            break;
+            return HZ_ERROR_INVALID_LOOKUP_TYPE;
     }
 
     return HZ_OK;

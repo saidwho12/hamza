@@ -10,7 +10,7 @@ typedef enum hz_arabic_joining_type_t {
     JOINING_TYPE_D = 0x0400, /* Dual-Joining */
     JOINING_TYPE_C = 0x0800, /* Join-Causing */
     JOINING_TYPE_U = 0x1000, /* Non-Joining */
-    JOINING_TYPE_T = 0x2000, /* Transparent */
+    JOINING_TYPE_T = 0x2000 /* Transparent */
 } hz_arabic_joining_type_t;
 
 typedef enum hz_arabic_joining_group_t {
@@ -124,7 +124,7 @@ typedef enum hz_arabic_joining_group_t {
 
     /* Rohingya */
     JOINING_GROUP_HANIFI_ROHINGYA_PA,
-    JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA,
+    JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA
 
 } hz_arabic_joining_group_t;
 

@@ -6,7 +6,7 @@ It was written primarily for Arabic but supports any [Unicode](https://unicode-t
 - Joining script support and Right-To-Left writing
 - OpenType Kerning
 - Ligatures
-- Support for OpenType language tag [specification](https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags) ([ISO 639-3](https://iso639-3.sil.org/) and [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php) codes)
+- Support for new [OpenType language tags](https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags) (mixture of [ISO 639-3](https://iso639-3.sil.org/) and [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php) codes)
 - Support for old Two-Letter [ISO 639-1](https://id.loc.gov/vocabulary/iso639-1.html) language tags (same as HarfBuzz)
 - Vertical layout (i.e. for Chinese)
 

@@ -13,6 +13,8 @@ It was written primarily for Arabic but supports any [Unicode](https://unicode-t
 - [ ] OpenMP / TinyCThread Multi-Threading
 - [ ] Justification
 
+![image](https://user-images.githubusercontent.com/70410392/121972354-ddf39680-cd48-11eb-947e-b1c6d51ff768.png)
+
 # Why?
 _Hamza_ was written primarily for the development of a text rendering library, _Hamza_'s goal was to be a pure C OpenType library. I wrote this because I wanted a simpler API for shaping and dealing with caches, atlases, and glyph attributes. I needed the knowledge on OpenType to write an efficient and powerful renderer. This is even more exacerbated especially for a language like Arabic or Chinese with often thousands of glyphs and complex interactions.
 

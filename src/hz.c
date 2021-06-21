@@ -502,7 +502,7 @@ hz_lang(const char *tag) {
     const hz_language_map_t *currlang, *foundlang;
     size_t i, n;
     const char *p;
-    char code[16];
+    char code[5];
     foundlang = NULL;
 
 #if HZ_LANG_USE_ISO_639_1_CODES
@@ -516,7 +516,7 @@ hz_lang(const char *tag) {
         if (p == NULL) continue;
 
         while (*p != '\0') {
-            for (n = 0; *p != '\0' && * p!= ':'; ++n, ++p)
+            for (n = 0; *p != '\0' && * p != ':'; ++n, ++p)
                 code[n] = *p;
 
             code[n] = '\0';

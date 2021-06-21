@@ -11,6 +11,7 @@ It was written primarily for Arabic but supports any [Unicode](https://unicode-t
 - [ ] Vertical layout (i.e. for Chinese)
 - [ ] Emojis
 - [ ] OpenMP / TinyCThread Multi-Threading
+- [ ] SIMD optimization
 - [ ] Justification
 
 ![image](https://user-images.githubusercontent.com/70410392/121972354-ddf39680-cd48-11eb-947e-b1c6d51ff768.png)

@@ -61,7 +61,7 @@ def latin1_to_ascii(unicrap):
 def lang_to_enum(lang):
     result = 'HZ_LANGUAGE'
 
-    words = re.split(ur"['\s\,\(\)\-\/]", lang)
+    words = re.split(r"['\s\,\(\)\-\/]", lang)
     
     # remove words which are empty (maybe there's a better way
     # to accomplish this with regex)

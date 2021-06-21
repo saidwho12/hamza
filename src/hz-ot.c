@@ -988,9 +988,9 @@ hz_ot_layout_apply_features(hz_face_t *face,
                      &langSys.feature_index_count);
 
     /* lookupOrder should be (nil) */
-    if (langSys.required_feature_index == 0xFFFF) {
-        fprintf(stderr, "No required features!\n");
-    }
+//    if (langSys.required_feature_index == 0xFFFF) {
+//        fprintf(stderr, "No required features!\n");
+//    }
 
     uint16_t loopIndex = 0;
     while (loopIndex < langSys.feature_index_count) {
@@ -3060,7 +3060,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                                             if (hz_ot_apply_repos_value(q, table.value_format2, &cr->value_record2))
                                                 g = q;
 
-                                            printf("MATCH\n");
+                                            /* printf("MATCH\n"); */
                                         }
                                     }
                                 }
@@ -3604,22 +3604,6 @@ hz_ot_script_to_tag(hz_script_t script)
     return 0;
 }
 
-hz_tag_t
-hz_ot_language_to_tag(hz_language_t language)
-{
-    switch (language) {
-        case HZ_LANGUAGE_ARABIC: return HZ_TAG('A','R','A',' ');
-        case HZ_LANGUAGE_ENGLISH: return HZ_TAG('E','N','G',' ');
-        case HZ_LANGUAGE_FRENCH: return HZ_TAG('F','R','A',' ');
-        case HZ_LANGUAGE_SPANISH: return HZ_TAG('E', 'S', 'P', ' ');
-        case HZ_LANGUAGE_GERMAN: return HZ_TAG('D','E','U',' ');
-        case HZ_LANGUAGE_JAPANESE: return HZ_TAG('J','A','N',' ');
-        case HZ_LANGUAGE_URDU: return HZ_TAG('U','R','D',' ');
-    }
-
-    return 0;
-}
-
 static const hz_script_t complex_script_list[] = {
     HZ_SCRIPT_ARABIC,
     HZ_SCRIPT_BUGINESE,
@@ -3730,6 +3714,17 @@ static const hz_script_feature_order_t complex_script_feature_orders[] = {
     { HZ_SCRIPT_HEBREW, HZ_UNARR(std_feature_ops_hebrew) }
 };
 
+/* https://docs.microsoft.com/en-us/typography/script-development/standard */
+static const hz_feature_layout_op_t simple_script_feature_orders[] = {
+    { HZ_FEATURE_CCMP, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_LIGA, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_CLIG, HZ_OT_TAG_GSUB, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_DIST, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_KERN, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
+    { HZ_FEATURE_MARK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_NONE },
+    { HZ_FEATURE_MKMK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
+};
+
 hz_bool
 hz_ot_is_complex_script(hz_script_t script)
 {
@@ -3783,4 +3778,21 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
     } else {
         /* standard scripts (Latin, Cyrillic, Greek, etc) */ 
     }
+}
+
+hz_tag_t
+hz_ot_language_to_tag(hz_language_t language)
+{
+    const hz_language_map_t *langmap;
+    size_t i;
+
+    for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
+        langmap = &language_map_list[i];
+
+        if (langmap->language == language) {
+            return langmap->tag;
+        }
+    }
+
+    return 0;
 }

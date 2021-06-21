@@ -1,1 +1,0 @@
-﻿NDSearch.OnPrefixIndexLoaded(["hz_"]);

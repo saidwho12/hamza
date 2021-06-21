@@ -499,35 +499,36 @@ hz_get_language_map(hz_language_t lang) {
 
 hz_language_t
 hz_lang(const char *tag) {
-    hz_language_map_t *currlang, *foundlang;
-    size_t i;
-
+    const hz_language_map_t *currlang, *foundlang;
+    size_t i, n;
+    const char *p;
+    char code[16];
     foundlang = NULL;
 
 #if HZ_LANG_USE_ISO_639_1_CODES
-    /* use old ISO 639-1 tags (same as HarfBuzz) */
+    /* use old ISO 639-1 codes (same as HarfBuzz) */
 #else
     /* use ISO 639-2 and ISO 639-3 codes, same as in https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags */
     for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
-        char buf[1024];
-        char *code;
         currlang = &language_map_list[i];
-        if (currlang->codes == NULL) continue;
+        p = currlang->codes;
 
-        strcpy(buf, currlang->codes);
+        if (p == NULL) continue;
 
-        code = strtok(buf, ":");
-        while (code != NULL) {
-            if (!strcmp(tag, code)) {
+        while (*p != '\0') {
+            for (n = 0; *p != '\0' && * p!= ':'; ++n, ++p)
+                code[n] = *p;
+
+            code[n] = '\0';
+
+            if (!strncmp(code, tag, n)) {
                 foundlang = currlang;
-                goto found_language;
+                goto found_lang;
             }
-
-            code = strtok(NULL, ":");
         }
     }
 
-    found_language:
+    found_lang:
     if (foundlang == NULL)
         return HZ_LANGUAGE_DFLT;
 
@@ -575,7 +576,7 @@ hz_shape(hz_font_t *font, hz_sequence_t *sequence, hz_feature_t *features, unsig
                                     num_features,
                                     sequence);
     }
-    
+
     /* position glyphs */
     hz_apply_tt1_metrics(face, sequence);
     if (tables->GPOS_table != NULL) {
@@ -587,7 +588,7 @@ hz_shape(hz_font_t *font, hz_sequence_t *sequence, hz_feature_t *features, unsig
                                     num_features,
                                     sequence);
     }
-    
+
     if (sequence->direction == HZ_DIRECTION_RTL)
         hz_apply_rtl_switch(sequence);
 

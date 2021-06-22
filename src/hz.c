@@ -501,9 +501,11 @@ hz_language_t
 hz_lang(const char *tag) {
     const hz_language_map_t *currlang, *foundlang;
     size_t i, n;
+    size_t len;
     const char *p;
     char code[5];
     foundlang = NULL;
+    len = strlen(tag);
 
 #if HZ_LANG_USE_ISO_639_1_CODES
     /* use old ISO 639-1 codes (same as HarfBuzz) */
@@ -515,20 +517,22 @@ hz_lang(const char *tag) {
 
         if (p == NULL) continue;
 
-        while (*p != '\0') {
-            for (n = 0; *p != '\0' && * p != ':'; ++n, ++p)
-                code[n] = *p;
+        while (1) {
+            n = 0;
+            while (*p != ':' && *p != '\0')
+                code[n++] = *p++;
 
-            code[n] = '\0';
-
-            if (!strncmp(code, tag, n)) {
+            if (len == n && !strncmp(code, tag, n)) {
                 foundlang = currlang;
-                goto found_lang;
+                goto done_searching;
             }
+
+            if (*p == '\0') break;
+            ++p;
         }
     }
 
-    found_lang:
+    done_searching:
     if (foundlang == NULL)
         return HZ_LANGUAGE_DFLT;
 

@@ -10,7 +10,7 @@ typedef enum hz_arabic_joining_type_t {
     JOINING_TYPE_D = 0x0400, /* Dual-Joining */
     JOINING_TYPE_C = 0x0800, /* Join-Causing */
     JOINING_TYPE_U = 0x1000, /* Non-Joining */
-    JOINING_TYPE_T = 0x2000 /* Transparent */
+    JOINING_TYPE_T = 0x2000  /* Transparent */
 } hz_arabic_joining_type_t;
 
 typedef enum hz_arabic_joining_group_t {
@@ -136,19 +136,16 @@ typedef struct hz_arabic_joining_entry_t {
 
 #include "hz-ot-shape-complex-arabic-joining-list.h"
 
-hz_bool
-hz_ot_shape_complex_arabic_join(hz_feature_t feature, const hz_sequence_node_t *node);
-
-hz_bool
+hz_bool_t
 hz_ot_shape_complex_arabic_isol(const hz_sequence_node_t *g);
 
-hz_bool
+hz_bool_t
 hz_ot_shape_complex_arabic_init(const hz_sequence_node_t *g);
 
-hz_bool
+hz_bool_t
 hz_ot_shape_complex_arabic_medi(const hz_sequence_node_t *g);
 
-hz_bool
+hz_bool_t
 hz_ot_shape_complex_arabic_fina(const hz_sequence_node_t *g);
 
 #endif /* HZ_OT_SHAPE_COMPLEX_ARABIC_H */

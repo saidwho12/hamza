@@ -69,7 +69,7 @@ hz_byte *hz_blob_get_data(hz_blob_t *blob);
  *  Returns:
  *      True if empty.
  * */
-hz_bool hz_blob_is_empty(hz_blob_t *blob);
+hz_bool_t hz_blob_is_empty(hz_blob_t *blob);
 
 /*  Function: hz_blob_to_stream
  *      Get stream from blob.

@@ -85,6 +85,16 @@ hz_face_get_ot_tables(hz_face_t *face);
 void
 hz_face_alloc_metrics(hz_face_t *face);
 
+static hz_position
+em_mult(int16_t v, int64_t mult) {
+    return (hz_position) ((v * mult) >> 16);
+}
+
+static float
+em_fscale(hz_face_t *face, int16_t v, int32_t scale) {
+    return (float) v * scale / (float) hz_face_get_upem(face);
+}
+
 #ifdef __cplusplus
 }
 #endif

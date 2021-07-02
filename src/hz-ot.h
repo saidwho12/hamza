@@ -573,7 +573,7 @@ struct hz_sequence_node_t {
     int16_t y_offset;
     int16_t x_advance;
     int16_t y_advance;
-    unsigned gc: HZ_GLYPH_CLASS_BIT_FIELD;
+    unsigned int gc: HZ_GLYPH_CLASS_BIT_FIELD;
     uint8_t attach_class;
     hz_sequence_node_t *prev, *next;
 };
@@ -696,7 +696,7 @@ hz_sequence_last_node(hz_sequence_node_t *node) {
     return node;
 }
 
-static hz_bool
+static hz_bool_t
 hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 {
     hz_sequence_node_t *next, *curr = g->next;
@@ -720,7 +720,7 @@ hz_sequence_rem_next_n_nodes(hz_sequence_node_t *g, size_t n)
 /* removes n nodes starting from start
  * including start
  * */
-static hz_bool
+static hz_bool_t
 hz_sequence_rem_node_range(hz_sequence_node_t *n1, hz_sequence_node_t *n2) {
     hz_sequence_node_t *next, *n = n1->next;
 
@@ -1185,21 +1185,21 @@ typedef struct HZ_PACKED hz_delta_table_t {
     hz_ot_feature_from_tag(hz_tag_t tag);
 
 
-    hz_bool
+    hz_bool_t
     hz_ot_layout_gather_glyphs(hz_face_t *face,
                                hz_tag_t script,
                                hz_tag_t language,
                                const hz_array_t *wanted_features,
                                hz_set_t *glyphs);
 
-    hz_bool
+    hz_bool_t
     hz_ot_layout_apply_gsub_features(hz_face_t *face,
                                      hz_tag_t script,
                                      hz_tag_t language,
                                      const hz_array_t *wanted_features,
                                      hz_sequence_t *sequence);
 
-    hz_bool
+    hz_bool_t
     hz_ot_layout_apply_gpos_features(hz_face_t *face,
                                      hz_tag_t script,
                                      hz_tag_t language,
@@ -1212,12 +1212,12 @@ typedef struct HZ_PACKED hz_delta_table_t {
                                             hz_set_t *glyphs);
 
 
-    hz_bool
+    hz_bool_t
     hz_ot_layout_lookup_would_substitute(hz_face_t *face,
                                          unsigned int lookup_index,
                                          const hz_index_t *glyphs,
                                          unsigned int glyph_count,
-                                         hz_bool zero_context);
+                                         hz_bool_t zero_context);
 
 
 
@@ -1248,7 +1248,7 @@ typedef struct HZ_PACKED hz_delta_table_t {
                                     hz_feature_t feature,
                                     hz_sequence_t *sequence);
 
-    hz_bool
+    hz_bool_t
     hz_ot_layout_apply_features(hz_face_t *face,
                                 hz_tag_t table_tag,
                                 hz_tag_t script,
@@ -1270,7 +1270,7 @@ typedef struct HZ_PACKED hz_delta_table_t {
     hz_tag_t
     hz_ot_language_to_tag(hz_language_t language);
 
-    hz_bool
+    hz_bool_t
     hz_ot_is_complex_script(hz_script_t script);
 
     void

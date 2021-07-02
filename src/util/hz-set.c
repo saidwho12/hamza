@@ -24,10 +24,10 @@ hz_set_add(hz_set_t *set, uint32_t val)
     set->count = new_count;
 }
 
-hz_bool
+hz_bool_t
 hz_set_add_no_duplicate(hz_set_t *set, uint32_t val)
 {
-    hz_bool has_copy = 0;
+    hz_bool_t has_copy = 0;
     int i = 0;
     while (i < set->count) {
         if (set->values[i] == val) {
@@ -101,7 +101,7 @@ hz_set_destroy(hz_set_t *set)
 
 }
 
-hz_bool
+hz_bool_t
 hz_set_has(const hz_set_t *set, uint32_t val)
 {
     size_t i = 0;
@@ -116,7 +116,7 @@ hz_set_has(const hz_set_t *set, uint32_t val)
     return HZ_FALSE;
 }
 
-hz_bool
+hz_bool_t
 hz_set_is_empty(const hz_set_t *set)
 {
     return !set->count || set->values == NULL;

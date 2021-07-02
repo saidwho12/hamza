@@ -101,7 +101,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
     return 0; /* map to .notdef */
 }
 
-hz_bool
+hz_bool_t
 hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
                        hz_cmap_encoding_t enc)
 {
@@ -145,54 +145,6 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_sequence_t *sequence,
     return HZ_TRUE;
 }
 
-//hz_bool
-//hz_cmap_apply_encoding_to_set(buf_t *table,
-//                              hz_set_t *codepoints,
-//                              hz_set_t *glyphs,
-//                              hz_cmap_encoding_t enc)
-//{
-//    buf_t subtable = createbuf(table->data + enc.subtable_offset, BUF_BSWAP);
-//    uint16_t format = unpackh(&subtable);
-//
-//    switch (format) {
-//        case HZ_CMAP_SUBTABLE_FORMAT_BYTE_ENCODING_TABLE: break;
-//        case 2: break;
-//        case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
-//            hz_cmap_subtable_format4_t st;
-//            unpackv(&subtable, "hhhhhh",
-//                    &st.length,
-//                    &st.language,
-//                    &st.seg_count_x2,
-//                    &st.search_range,
-//                    &st.entry_selector,
-//                    &st.range_shift);
-//
-//            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
-//
-//            const uint8_t *curr_addr = subtable.data + subtable.idx;
-//            st.end_code = (uint16_t *)curr_addr;
-//            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
-//            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
-//            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
-//
-//            /* map unicode characters to glyph indices in sequenceion */
-//            size_t index = 0;
-//            size_t num_codes = codepoints->count;
-//
-//            while (index < num_codes) {
-//                hz_set_add_no_duplicate(glyphs, hz_cmap_unicode_to_id(&st, codepoints->values[index]));
-//                ++index;
-//            }
-//
-//            break;
-//        }
-//        default:
-//            return HZ_FALSE;
-//    }
-//
-//    return HZ_TRUE;
-//}
-
 void
 hz_map_to_nominal_forms(hz_face_t *face,
                         hz_sequence_t *sequence)
@@ -208,7 +160,6 @@ hz_map_to_nominal_forms(hz_face_t *face,
     uint16_t num_encodings, enc_idx;
     num_encodings = unpackh(&table);
 
-//    for (enc_idx = 0; enc_idx < num_encodings; ++enc_idx)
     {
         hz_cmap_encoding_t enc = {};
         unpackv(&table, "hhi",
@@ -217,74 +168,6 @@ hz_map_to_nominal_forms(hz_face_t *face,
                 &enc.subtable_offset);
 
         hz_cmap_apply_encoding(&table, sequence, enc);
-//        if (enc.platform_id == HZ_CMAP_PLATFORM_WINDOWS) {
-//            hz_cmap_apply_encoding(table, sequence, enc);
-//            break;
-//        }
-
-
-//        switch (enc.platform_id) {
-//            case HZ_CMAP_PLATFORM_UNICODE: {
-//                uint16_t subtable_format = 0;
-//                hz_stream_t *subtable_stream = hz_stream_create(cmap_table->data + enc.subtable_offset,
-//                                                                0, 0);
-//                hz_stream_read16(subtable_stream, &subtable_format);
-//
-//                if (subtable_format == 4) {
-//
-//                }
-//                break;
-//            }
-//            case HZ_CMAP_PLATFORM_MACINTOSH: {
-//                break;
-//            }
-//            case HZ_CMAP_PLATFORM_ISO: {
-//                break;
-//            }
-//            case HZ_CMAP_PLATFORM_WINDOWS: {
-//                /* https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#windows-platform-platform-id--3 */
-//                switch (enc.encoding_id) {
-//                    case 0: { /* Symbol */
-//                        break;
-//                    }
-//                    case 1: { /* Unicode BMP */
-//                        break;
-//                    }
-//                    case 2: { /* ShiftJIS */
-//                        break;
-//                    }
-//                    case 3: { /* PRC */
-//                        break;
-//                    }
-//                    case 4: { /* Big5 */
-//                        break;
-//                    }
-//                    case 5: { /* Wansung */
-//                        break;
-//                    }
-//                    case 6: { /* Johab */
-//                        hz_cmap_windows_johab(cmap_table->data + enc.subtable_offset);
-//                        break;
-//                    }
-//
-////                    case 7 ... 9: { /* Reserved */
-////                        break;
-////                    }
-//
-//                    case 10: { /* Unicode full repertoire */
-//                        hz_cmap_windows_unicode_full(cmap_table->data + enc.subtable_offset);
-//                        break;
-//                    }
-//
-//                    default:
-//                        break;
-//                }
-//                break;
-//            }
-//
-//            default: /* error */
-//                break;
-//        }
     }
 }
 
@@ -503,7 +386,7 @@ hz_lang(const char *tag) {
     size_t i, n;
     size_t len;
     const char *p;
-    char code[5];
+    char code[3]; /* expects only 3 or 2 char codes */
     foundlang = NULL;
     len = strlen(tag);
 

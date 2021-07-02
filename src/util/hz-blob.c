@@ -43,7 +43,7 @@ hz_byte *hz_blob_get_data(hz_blob_t *blob)
 }
 
 
-hz_bool hz_blob_is_empty(hz_blob_t *blob) {
+hz_bool_t hz_blob_is_empty(hz_blob_t *blob) {
     return blob->data == NULL || blob->size == 0;
 }
 

@@ -260,7 +260,7 @@ hz_sequence_node_cache_t *hz_sequence_node_cache_create(void) {
     return cache;
 }
 
-hz_bool
+hz_bool_t
 hz_sequence_node_cache_is_empty(hz_sequence_node_cache_t *cache) {
     return cache->node_count == 0 || cache->nodes == NULL;
 }
@@ -923,7 +923,7 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
 //    return HZ_TRUE;
 //}
 
-hz_bool
+hz_bool_t
 hz_ot_layout_apply_features(hz_face_t *face,
                             hz_tag_t table_tag,
                             hz_tag_t script,
@@ -1088,7 +1088,7 @@ hz_ot_layout_lookup_would_substitute(hz_face_t *face,
 }
 */
 
-hz_bool
+hz_bool_t
 hz_ot_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
 {
     uint16_t coverage_format;
@@ -1306,7 +1306,7 @@ hz_next_node_not_of_class(hz_sequence_node_t *g,
     return g;
 }
 
-hz_bool
+hz_bool_t
 hz_should_skip_node(hz_sequence_node_t *g, uint16_t flags) {
     uint8_t attach_type = (flags & HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK) >> 8;
     uint16_t ignored_classes = hz_ignored_classes_from_lookup_flags(flags);
@@ -1461,7 +1461,7 @@ hz_ot_layout_apply_fit_ligature(hz_face_t *face,
     for (i=0; i<ligature_count; ++i) {
         hz_sequence_node_t *step_node = start_node;
         hz_ligature_t *ligature = ligatures[i];
-        hz_bool did_match = HZ_TRUE;
+        hz_bool_t did_match = HZ_TRUE;
         hz_sequence_node_cache_t *node_cache = hz_sequence_node_cache_create();
 
         /* go over sequence and compare with current ligature */
@@ -1908,16 +1908,16 @@ hz_free_reverse_chain_single_subst_format1(hz_reverse_chain_single_subst_format1
     HZ_FREE(subst->glyphs);
 }
 
-hz_bool
+hz_bool_t
 hz_ot_layout_pattern_match(hz_sequence_node_t *node,
                            hz_map_t **maps,
                            uint16_t map_count,
                            uint16_t lookup_flags,
                            hz_sequence_node_cache_t *cache,
-                           hz_bool reverse)
+                           hz_bool_t reverse)
 {
     size_t i;
-    hz_bool does_match = HZ_TRUE;
+    hz_bool_t does_match = HZ_TRUE;
 
     for (i = 0; i < map_count; ++i) {
 
@@ -1944,7 +1944,7 @@ hz_ot_layout_pattern_match(hz_sequence_node_t *node,
     return does_match;
 }
 
-hz_bool
+hz_bool_t
 hz_ot_layout_should_apply_subst(hz_map_t *coverage,
                                 hz_feature_t feature,
                                 const hz_sequence_node_t *g)
@@ -2266,7 +2266,7 @@ hz_ot_layout_apply_gpos_nested_subtable(hz_face_t *face,
 
 #define HZ_BOOLSTR(x) ((x)?"true":"false")
 
-hz_bool
+hz_bool_t
 hz_ot_apply_repos_value(hz_sequence_node_t *g, uint16_t value_format, const hz_value_record_t *record) {
     if (!value_format) return HZ_FALSE;
 
@@ -2645,7 +2645,7 @@ hz_ot_layout_apply_gsub_subtable(hz_face_t *face,
                                                        HZ_FALSE)) {
 
                             hz_sequence_node_t *n1, *n2;
-                            hz_bool prefix_match, suffix_match;
+                            hz_bool_t prefix_match, suffix_match;
                             n1 = hz_prev_valid_node(sequence_context->nodes[0], lookup_flags);
                             n2 = hz_next_valid_node(sequence_context->nodes[sequence_context->node_count - 1], lookup_flags);
 
@@ -2806,7 +2806,7 @@ typedef struct hz_anchor_t {
 } hz_anchor_t;
 
 typedef struct hz_anchor_pair_t {
-    hz_bool has_entry, has_exit;
+    hz_bool_t has_entry, has_exit;
     hz_anchor_t entry, exit;
 } hz_anchor_pair_t;
 
@@ -2999,6 +2999,19 @@ hz_ot_read_pair_pos_format2_table(hz_stream_t *stream, hz_ot_pair_pos_format2_ta
     }
 }
 
+static void
+hz_ot_clear_pair_pos_format2_table(hz_ot_pair_pos_format2_table_t *table) {
+    uint16_t i;
+    for (i = 0; i < table->class1_count; ++i) {
+        hz_ot_class1_record_t *c1 = &table->class1_records[i];
+        free(c1->class2_records);
+    }
+    free(table->class1_records);
+    hz_map_destroy(table->coverage);
+    hz_map_destroy(table->class_def1);
+    hz_map_destroy(table->class_def2);
+}
+
 hz_error_t
 hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                                  hz_stream_t *subtable,
@@ -3060,7 +3073,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                                             if (hz_ot_apply_repos_value(q, table.value_format2, &cr->value_record2))
                                                 g = q;
 
-                                            /* printf("MATCH\n"); */
+                                            continue;
                                         }
                                     }
                                 }
@@ -3068,7 +3081,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                         }
                     }
 
-
+                    hz_ot_clear_pair_pos_format2_table(&table);
                     break;
                 }
 
@@ -3108,22 +3121,40 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                 for (g = sequence->root; g != NULL; g = g->next) {
                     if (!hz_should_skip_node(g, lookup_flags)) {
                         if (hz_map_value_exists(coverage_map, g->id)) {
+                            hz_sequence_node_t *q = hz_next_valid_node(g, lookup_flags);
+
                             uint16_t curr_idx = hz_map_get_value(coverage_map, g->id);
                             const hz_entry_exit_record_t *curr_rec = records + curr_idx;
                             hz_anchor_pair_t curr_pair = hz_ot_layout_read_anchor_pair(subtable->data, curr_rec);
 
-                            if (curr_pair.has_exit && g->next != NULL) {
-                                uint16_t next_idx = hz_map_get_value(coverage_map, g->next->id);
+                            if (curr_pair.has_exit && q != NULL) {
+                                uint16_t next_idx = hz_map_get_value(coverage_map, q->id);
                                 const hz_entry_exit_record_t *next_rec = records + next_idx;
                                 hz_anchor_pair_t next_pair = hz_ot_layout_read_anchor_pair(subtable->data, next_rec);
 
-                                int16_t y_delta = next_pair.entry.y_coord - curr_pair.exit.y_coord;
-                                int16_t x_delta = next_pair.entry.x_coord - curr_pair.exit.x_coord;
+                                int16_t ay = curr_pair.exit.y_coord;// / (int16_t) hz_face_get_upem(face);
+                                int16_t by = next_pair.entry.y_coord;// / (int16_t) hz_face_get_upem(face);
+                                int16_t ax = curr_pair.exit.x_coord;// / (int16_t) hz_face_get_upem(face);
+                                int16_t bx = next_pair.entry.x_coord;// / (int16_t) hz_face_get_upem(face);
 
-                                /* TODO: implement */
-                                g->x_offset += x_delta;
+                                /* if (lookup_flags & HZ_LOOKUP_FLAG_RIGHT_TO_LEFT) { */
+                                /*     int16_t x_delta = bx-ax; */
+                                /*     int16_t y_delta = (g->y_offset + ay) - (q->y_offset + by); */
+
+                                /*     q->y_offset += y_delta; */
+                                /* } else { */
+                                /*     int16_t y_delta = (q->y_offset + by) - (g->y_offset + ay); */
+                                /*     g->y_offset += y_delta; */
+                                /* } */
+
+                                int16_t x_delta = (q->x_offset + bx) - (g->x_offset + ax);
+                                int16_t y_delta = (q->y_offset + by) - (g->y_offset + ay);
                                 g->y_offset += y_delta;
+                                /* g->x_offset += x_delta; */
                             }
+
+                            g = q;
+                            continue;
                         }
                     }
                 }
@@ -3499,7 +3530,7 @@ hz_ot_layout_apply_gpos_subtable(hz_face_t *face,
                                                            HZ_FALSE)) {
 
                                 hz_sequence_node_t *n1, *n2;
-                                hz_bool prefix_match, suffix_match;
+                                hz_bool_t prefix_match, suffix_match;
                                 n1 = hz_prev_valid_node(sequence_context->nodes[0], lookup_flags);
                                 n2 = hz_next_valid_node(sequence_context->nodes[sequence_context->node_count - 1], lookup_flags);
 
@@ -3725,7 +3756,7 @@ static const hz_feature_layout_op_t simple_script_feature_orders[] = {
     { HZ_FEATURE_MKMK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
 };
 
-hz_bool
+hz_bool_t
 hz_ot_is_complex_script(hz_script_t script)
 {
     int i;

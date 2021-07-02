@@ -32,7 +32,7 @@ typedef uint16_t UFWORD;
 /* unsigned 16-bit */
 typedef uint16_t F2DOT14;
 
-typedef unsigned char hz_byte, hz_bool, hz_char;
+typedef unsigned char hz_byte, hz_bool_t, hz_char;
 typedef uint16_t hz_offset16_t;
 typedef uint32_t hz_tag_t;
 typedef uint32_t hz_offset32_t;
@@ -138,52 +138,42 @@ unpackb(hz_stream_t *buf) {
 static unsigned short
 unpackh(hz_stream_t *buf) {
     unsigned short val = 0;
-    val |= (unsigned short) unpackb(buf);
     val |= (unsigned short) unpackb(buf) << 8;
-
-    if (buf->flags & HZ_BSWAP) val = bswap16(val);
-
+    val |= (unsigned short) unpackb(buf);
     return val;
 }
 
 static short
-unpackhs(hz_stream_t *stream) {
+unpackhs (hz_stream_t *stream)
+{
     unsigned short val = 0;
-    val |= (unsigned short) unpackb(stream);
     val |= (unsigned short) unpackb(stream) << 8;
-
-    if (stream->flags & HZ_BSWAP) val = bswap16(val);
-
+    val |= (unsigned short) unpackb(stream);
     return *(short *) &val;
 }
 
 static unsigned int
-unpacki(hz_stream_t *buf) {
+unpacki (hz_stream_t *buf)
+{
     unsigned int val = 0;
-    val |= (unsigned int) unpackb(buf);
-    val |= (unsigned int) unpackb(buf) << 8;
-    val |= (unsigned int) unpackb(buf) << 16;
     val |= (unsigned int) unpackb(buf) << 24;
-
-    if (buf->flags & HZ_BSWAP) val = bswap32(val);
-
+    val |= (unsigned int) unpackb(buf) << 16;
+    val |= (unsigned int) unpackb(buf) << 8;
+    val |= (unsigned int) unpackb(buf);
     return val;
 }
 
 static unsigned long
 unpackl(hz_stream_t *buf) {
     unsigned long val = 0;
-    val |= (unsigned long) unpackb(buf);
-    val |= (unsigned long) unpackb(buf) << 8;
-    val |= (unsigned long) unpackb(buf) << 16;
-    val |= (unsigned long) unpackb(buf) << 24;
-    val |= (unsigned long) unpackb(buf) << 32;
-    val |= (unsigned long) unpackb(buf) << 40;
-    val |= (unsigned long) unpackb(buf) << 48;
     val |= (unsigned long) unpackb(buf) << 56;
-
-    if (buf->flags & HZ_BSWAP) val = bswap64(val);
-
+    val |= (unsigned long) unpackb(buf) << 48;
+    val |= (unsigned long) unpackb(buf) << 40;
+    val |= (unsigned long) unpackb(buf) << 32;
+    val |= (unsigned long) unpackb(buf) << 24;
+    val |= (unsigned long) unpackb(buf) << 16;
+    val |= (unsigned long) unpackb(buf) << 8;
+    val |= (unsigned long) unpackb(buf);
     return val;
 }
 
@@ -277,11 +267,11 @@ unpackv(hz_stream_t *buf, const char *f, ...)
 }
 
 typedef enum hz_glyph_class_t {
-    HZ_GLYPH_CLASS_ZERO      = 0x00,
-    HZ_GLYPH_CLASS_BASE      = 0x01,
-    HZ_GLYPH_CLASS_LIGATURE  = 0x02,
-    HZ_GLYPH_CLASS_MARK      = 0x04,
-    HZ_GLYPH_CLASS_COMPONENT = 0x08
+    HZ_GLYPH_CLASS_ZERO      = 0x00u,
+    HZ_GLYPH_CLASS_BASE      = 0x01u,
+    HZ_GLYPH_CLASS_LIGATURE  = 0x02u,
+    HZ_GLYPH_CLASS_MARK      = 0x04u,
+    HZ_GLYPH_CLASS_COMPONENT = 0x08u
 } hz_glyph_class_t;
 
 #define HZ_GLYPH_CLASS_BIT_FIELD 4

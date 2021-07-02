@@ -13,16 +13,6 @@ struct hz_font_t {
     float ptem;
 };
 
-static hz_position
-em_mult(int16_t v, int64_t mult) {
-    return (hz_position) ((v * mult) >> 16);
-}
-
-static float
-em_fscale(hz_face_t *face, int16_t v, int32_t scale) {
-    return (float) v * scale / (float) hz_face_get_upem(face);
-}
-
 hz_font_t *
 hz_font_create()
 {

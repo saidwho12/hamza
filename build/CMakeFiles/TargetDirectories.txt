@@ -1,4 +1,0 @@
-/home/saidm/CLionProjects/kitab/deps/hamza/build/CMakeFiles/rebuild_cache.dir
-/home/saidm/CLionProjects/kitab/deps/hamza/build/CMakeFiles/hamza.dir
-/home/saidm/CLionProjects/kitab/deps/hamza/build/CMakeFiles/edit_cache.dir
-/home/saidm/CLionProjects/kitab/deps/hamza/build/CMakeFiles/hamza-example.dir

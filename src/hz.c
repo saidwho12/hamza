@@ -425,7 +425,7 @@ hz_lang(const char *tag) {
 
 
 void
-hz_shape(hz_font_t *font, hz_sequence_t *sequence, hz_feature_t *features, unsigned int num_features)
+hz_shape(hz_font_t *font, hz_sequence_t *sequence, const hz_feature_t *features, unsigned int num_features)
 {
     hz_face_t *face;
     hz_tag_t script_tag, language_tag;
@@ -442,7 +442,7 @@ hz_shape(hz_font_t *font, hz_sequence_t *sequence, hz_feature_t *features, unsig
     tables = hz_face_get_ot_tables(face);
     script_tag = hz_ot_script_to_tag(sequence->script);
     language_tag = hz_ot_language_to_tag(sequence->language);
-    
+
     /* map unicode characters to nominal glyph indices */
     hz_map_to_nominal_forms(face, sequence);
 

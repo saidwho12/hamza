@@ -15,9 +15,9 @@ extern "C" {
 
     hz_language_t
     hz_lang(const char *tag);
-    
+
     void
-    hz_shape(hz_font_t *font, hz_sequence_t *sequence, hz_feature_t *features, unsigned int num_features);
+    hz_shape(hz_font_t *font, hz_sequence_t *sequence, const hz_feature_t *features, unsigned int num_features);
 
 #ifdef __cplusplus
 }

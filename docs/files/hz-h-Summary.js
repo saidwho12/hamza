@@ -1,0 +1,1 @@
+﻿NDFramePage.OnPageTitleLoaded("File:hz.h","hz.h");NDSummary.OnSummaryLoaded("File:hz.h",[["C/C++","C"]],[["Functions","Function"],["Groups","Group"],["Information","Information"]],[[18,0,1,"Information","Information"],[19,0,2,"License","License"],[20,0,1,"Functions","Functions"],[21,0,0,"hz_lang","hz_lang"],[22,0,0,"hz_script","hz_script"],[23,0,0,"hz_shape","hz_shape"]]);

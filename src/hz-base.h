@@ -267,11 +267,11 @@ unpackv(hz_stream_t *buf, const char *f, ...)
 }
 
 typedef enum hz_glyph_class_t {
-    HZ_GLYPH_CLASS_ZERO      = 0x00u,
-    HZ_GLYPH_CLASS_BASE      = 0x01u,
-    HZ_GLYPH_CLASS_LIGATURE  = 0x02u,
-    HZ_GLYPH_CLASS_MARK      = 0x04u,
-    HZ_GLYPH_CLASS_COMPONENT = 0x08u
+    HZ_GLYPH_CLASS_ZERO      = 0x00,
+    HZ_GLYPH_CLASS_BASE      = 0x01,
+    HZ_GLYPH_CLASS_LIGATURE  = 0x02,
+    HZ_GLYPH_CLASS_MARK      = 0x04,
+    HZ_GLYPH_CLASS_COMPONENT = 0x08
 } hz_glyph_class_t;
 
 #define HZ_GLYPH_CLASS_BIT_FIELD 4

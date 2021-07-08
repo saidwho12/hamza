@@ -1,1 +1,1 @@
-﻿NDSearch.OnPrefixIndexLoaded(["hz_","lic"]);
+﻿NDSearch.OnPrefixIndexLoaded(["hz_","lic","usa"]);

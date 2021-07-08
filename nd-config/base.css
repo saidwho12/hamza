@@ -12,6 +12,48 @@ body.NDHomePage {
     background-image: linear-gradient(top,#A01010,#E0E0E0);
 }
 
+/*.CTopic {
+    font: 10pt "Times New Roman";
+}
+*/
+
+#NDFooter {
+    font: 8pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
+}
+
+.CDLEntry {
+    font: bold 10pt "Noto Sans";
+}
+
+.CHeading {
+    font: bold 11pt "Noto Sans";
+    margin: 1.2em 0 .5em 0;
+}
+
+.CTitle {
+    font: bold 14pt "Noto Sans";
+    color: #484848;
+}
+
+
+/*.CStyle {
+    font:  10pt Monospace,"Noto Mono";
+}*/
+
+.NDPrototype {
+    font: 10pt Monospace;
+}
+
+/* Code block */
+.CTopic pre {
+    font: 10pt Monospace;
+}
+
+.CDLParameterType {
+    font: 8pt Monospace,"Noto Mono";
+    white-space: nowrap;
+}
+
 /*.SHKeyword {*/
 /*   color: #0000AF;*/
 /*   font-style: italic;*/

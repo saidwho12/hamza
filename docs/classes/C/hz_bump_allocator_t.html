@@ -18,10 +18,21 @@
  <div class="CTitle">Functions</div>
 </div>
 
-<a name="hz_bump_allocator_alloc"></a><a name="Topic26"></a><div class="CTopic TFunction LC last">
+<a name="hz_bump_allocator_alloc"></a><a name="Topic26"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_bump_allocator_alloc</div>
  <div id="NDPrototype26" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <span class="SHKeyword">void</span> * hz_bump_allocator_alloc(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,14);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">a,</td></tr><tr><td class="PType first">size_t&nbsp;</td><td></td><td class="PName last">size</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
  <div class="CBody"><p>Allocates new block of memory, and pushes pointer forward.&nbsp; Blocks are allocated on the multiple of the size rounded up to the next power of two.</p><div class="CHeading">Arguments</div><table class="CDefinitionList"><tr><td class="CDLEntry">a<div class="CDLParameterType"><a href="../../index.html#CClass:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,14);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>*</div></td><td class="CDLDefinition"><p>Pointer to the allocator.</p></td></tr><tr><td class="CDLEntry">size<div class="CDLParameterType">size_t</div></td><td class="CDLDefinition"><p>Size of the block to allocate.</p></td></tr></table><div class="CHeading">Returns</div><p>Raw pointer to the newly allocated block.</p></div>
+</div>
+
+<a name="hz_bump_allocator_free"></a><a name="Topic17"></a><div class="CTopic TFunction LC">
+ <div class="CTitle">hz_bump_allocator_free</div>
+ <div id="NDPrototype17" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <span class="SHKeyword">void</span> hz_bump_allocator_free(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,14);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">a,</td></tr><tr><td class="PType first"><span class="SHKeyword">void</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">p</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Frees a previously allocated block. (currently a no-op)</p><div class="CHeading">Arguments</div><table class="CDefinitionList"><tr><td class="CDLEntry">a<div class="CDLParameterType"><a href="../../index.html#CClass:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,14);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>*</div></td><td class="CDLDefinition"><p>Pointer to the allocator.</p></td></tr><tr><td class="CDLEntry">p<div class="CDLParameterType"><span class="SHKeyword">void</span>*</div></td><td class="CDLDefinition"><p>Pointer to a previously allocated block.</p></td></tr></table><div class="CHeading">Returns</div><p>Nothing.</p></div>
+</div>
+
+<a name="hz_bump_allocator_release"></a><a name="Topic28"></a><div class="CTopic TFunction LC last">
+ <div class="CTitle">hz_bump_allocator_release</div>
+ <div class="CBody"><p>Releases all resources held by the allocator. (currently a no-op)</p><div class="CHeading">Arguments</div><table class="CDefinitionList"><tr><td class="CDLEntry">a</td><td class="CDLDefinition"><p>A pointer to the allocator.</p></td></tr></table><div class="CHeading">Returns</div><p>Nothing.</p></div>
 </div>
 
 </body></html>

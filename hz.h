@@ -1,6 +1,24 @@
-/* About: License
- * This file is licensed under MIT.
- */
+/* 
+    About: License
+        This file is licensed under MIT.
+
+    Topic: Usage
+    
+    Shaping with font created from an FT_Face (requires Hamza to be built with Freetype)
+    
+    --- C
+    #define HZ_USE_FREETYPE
+    #include <hz.h>
+
+    int main(int argc, char *argv[])
+    {
+        const char *text = "Hello, World!";
+        FT_Library ft_lib;
+
+    }
+
+    ---
+*/
 
 #ifndef HZ_H
 #define HZ_H
@@ -193,9 +211,27 @@ hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 /* font functions, and loading font using FreeType */
 typedef struct hz_font_t hz_font_t;
 
-HZ_API hz_font_t *
-hz_font_create();
+/*
+    Function: hz_font_create 
+        
+        Creates a font.
+*/
 
+HZ_API hz_font_t *
+hz_font_create(void);
+
+/*
+    Function: hz_font_destroy 
+        
+        Destroys a font.
+
+    Arguments:
+
+        font - The font.
+    
+    See Also:
+        <hz_font_create>
+*/
 HZ_API void
 hz_font_destroy(hz_font_t *font);
 
@@ -205,18 +241,45 @@ hz_font_get_face(hz_font_t *font);
 HZ_API void
 hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
+/*
+    Function: hz_ft_font_create 
+        
+        Creates a font from a Freetype face handle.
+
+    Arguments:
+
+        ft_face - The handle to the Freetype typeface.
+
+    Returns:
+        A pointer to the font.
+    
+    See Also:
+        <hz_font_destroy>
+*/
 HZ_API hz_font_t *
 hz_ft_font_create(FT_Face ft_face);
 
-/*  Function: hz_shape
- *      shapes a sequence of unicode to positioned glyphs.
- */
+/*
+HZ_API hz_font_t *
+hz_stbtt_font_create(stbtt_fontinfo *font);
+*/
+
+/*
+    Function: hz_shape
+        Shapes a text sequence to positioned glyphs. If features is *NULL*,
+        then default features are loaded for the sequence's script.
+
+    Arguments:
+        font - Pointer to the font.
+        sequence - Pointer to sequence with loaded text.
+        features - Array of features to apply.
+        num_features - Number of features.
+*/
 HZ_API void
 hz_shape(hz_font_t *font,
          hz_sequence_t *sequence,
          const hz_feature_t *features,
          unsigned int num_features);
-
 
 
 #endif /* HZ_H */

@@ -131,7 +131,7 @@ hz_bump_allocator_init(hz_bump_allocator_t *a,
         size - Size of the block to allocate.
 
     Returns:
-        Raw pointer to the newly allocated block. 
+        Pointer to the newly allocated block. 
 */
 HZ_INLINE void *
 hz_bump_allocator_alloc(hz_bump_allocator_t *a,
@@ -166,9 +166,6 @@ hz_bump_allocator_alloc(hz_bump_allocator_t *a,
     Arguments:
         a - Pointer to the allocator.
         p - Pointer to a previously allocated block.
-
-    Returns:
-        Nothing.
 */
 HZ_INLINE void
 hz_bump_allocator_free(hz_bump_allocator_t *a,
@@ -183,9 +180,6 @@ hz_bump_allocator_free(hz_bump_allocator_t *a,
 
     Arguments:
         a - A pointer to the allocator.
-
-    Returns:
-        Nothing.
 */
 HZ_INLINE void
 hz_bump_allocator_release(hz_bump_allocator_t *a)
@@ -213,7 +207,7 @@ typedef struct hz_byte_stream_t {
 /*
     Function: hz_byte_stream_create
 
-        Creates a <hz_byte_stream_t> structure, holds data and
+        Creates a byte stream, holds data and
         a bump pointer allowing seeking, unpacking various primitives from memory.
 
     Parameters:
@@ -221,7 +215,7 @@ typedef struct hz_byte_stream_t {
         size - The size of the block (If this is 0, then there's no bound check).
 
     Returns:
-        a pointer 
+        A <hz_byte_stream_t> instance.
 */
 HZ_INLINE hz_byte_stream_t
 hz_byte_stream_create(u8 *data, size_t size)
@@ -247,7 +241,7 @@ unpack8(hz_byte_stream_t *bs)
 HZ_INLINE u16
 unpack16(hz_byte_stream_t *bs)
 {
-    u16 val;
+    u16 val = 0;
 
     val |= (u16) bs->data[bs->ptr+0] << 8;
     val |= (u16) bs->data[bs->ptr+1];
@@ -259,7 +253,7 @@ unpack16(hz_byte_stream_t *bs)
 HZ_INLINE u32
 unpack32(hz_byte_stream_t *bs)
 {
-    u32 val;
+    u32 val = 0;
 
     val |= (u32) bs->data[bs->ptr+0] << 24;
     val |= (u32) bs->data[bs->ptr+1] << 16;
@@ -273,7 +267,7 @@ unpack32(hz_byte_stream_t *bs)
 HZ_INLINE u64
 unpack64(hz_byte_stream_t *bs)
 {
-    u64 val;
+    u64 val = 0;
 
     val |= (u64) bs->data[bs->ptr+0] << 56;
     val |= (u64) bs->data[bs->ptr+1] << 48;
@@ -376,6 +370,191 @@ unpackf(hz_byte_stream_t *bs,
     va_end(ap);
 }
 
+#define FNV_OFFSET_BASIS_32 0x811c9dc5
+#define FNV_PRIME_32 0x01000193
+
+HZ_INLINE u32
+hash_fnv1a(u32 val)
+{
+    u32 hash;
+    u32 m;
+    hash = FNV_OFFSET_BASIS_32;
+
+    for (m = val; m; m>>=8) {
+        hash ^= m & 0xff;
+        hash *= FNV_PRIME_32;
+    }
+
+    return hash;
+}
+
+typedef struct hz_map_bucket_node_t {
+    struct hz_map_bucket_node_t *prev, *next;
+    u32 key;
+    u32 value;
+} hz_map_bucket_node_t;
+
+typedef struct hz_map_bucket_t {
+    struct hz_map_bucket_node_t *root;
+} hz_map_bucket_t;
+
+HZ_INLINE void
+hz_map_bucket_init(hz_map_bucket_t *b)
+{
+    b->root = NULL;
+}
+
+typedef struct hz_map_t {
+    hz_map_bucket_t *buckets;
+    size_t bucket_count;
+} hz_map_t;
+
+HZ_INLINE hz_map_t *
+hz_map_create(void)
+{
+    size_t i;
+    hz_map_t *map;
+
+    map = hz_malloc(sizeof(hz_map_t));
+    map->bucket_count = 64;
+    map->buckets = hz_malloc(sizeof(hz_map_bucket_t) * map->bucket_count);
+
+    for (i = 0; i < map->bucket_count; ++i)
+        hz_map_bucket_init(&map->buckets[i]);
+
+    return map;
+}
+
+HZ_INLINE void
+hz_map_destroy(hz_map_t *map)
+{
+    size_t i;
+
+    for (i = 0; i < map->bucket_count; ++i) {
+        hz_map_bucket_t *bucket = &map->buckets[i];
+        if (bucket != NULL) {
+            hz_map_bucket_node_t *node = bucket->root;
+
+            while (node != NULL) {
+                hz_map_bucket_node_t *tmp = node;
+                node = node->next;
+                hz_free(tmp);
+            }
+
+            bucket->root = NULL;
+        }
+    }
+
+    hz_free(map->buckets);
+    hz_free(map);
+}
+
+HZ_INLINE hz_bool_t
+hz_map_set_value(hz_map_t *map, u32 key, u32 value)
+{
+    u32 hash;
+    hz_map_bucket_t *bucket;
+
+    hash = hash_fnv1a(key);
+    bucket = &map->buckets[hash % map->bucket_count];
+
+    if (bucket->root == NULL) {
+        hz_map_bucket_node_t *new_node = hz_malloc(sizeof(hz_map_bucket_node_t));
+        new_node->prev = NULL;
+        new_node->next = NULL;
+        new_node->value = value;
+        new_node->key = key;
+        bucket->root = new_node;
+    } else {
+        /* loop over nodes, if one with equal key is found set value, otherwise insert node */
+        hz_map_bucket_node_t *curr_node, *new_node;
+
+        for (curr_node = bucket->root; curr_node->next != NULL; curr_node = curr_node->next) {
+            if (curr_node->key == key) {
+                curr_node->value = value;
+                return HZ_TRUE;
+            }
+        }
+
+        new_node = hz_malloc(sizeof(hz_map_bucket_node_t));
+        new_node->prev = curr_node;
+        new_node->value = value;
+        new_node->key = key;
+        new_node->next = NULL;
+        curr_node->next = new_node;
+    }
+
+    return HZ_FALSE;
+}
+
+HZ_INLINE u32
+hz_map_get_value(hz_map_t *map, u32 key)
+{
+    u32 hash = hash_fnv1a(key);
+    size_t index = hash % map->bucket_count;
+    hz_map_bucket_t *bucket = &map->buckets[index];
+
+    if (bucket->root != NULL) {
+        hz_map_bucket_node_t *curr_node = bucket->root;
+
+        /* if only single node is the root of bucket, no need to compare keys  */
+        while (curr_node != NULL) {
+            if (curr_node->key == key) {
+                return curr_node->value;
+            }
+
+            curr_node = curr_node->next;
+        }
+    }
+
+    return 0;
+}
+
+HZ_INLINE void
+hz_map_remove(hz_map_t *map, u32 key)
+{
+
+}
+
+HZ_INLINE hz_bool_t
+hz_map_value_exists(hz_map_t *map, u32 key)
+{
+    u32 hash = hash_fnv1a(key);
+    size_t index = hash % map->bucket_count;
+    hz_map_bucket_t *bucket = &map->buckets[index];
+
+    if (bucket->root != NULL) {
+        hz_map_bucket_node_t *curr_node = bucket->root;
+
+        do {
+            if (curr_node->key == key) {
+                return HZ_TRUE;
+            }
+
+            curr_node = curr_node->next;
+        } while (curr_node != NULL);
+    }
+
+    return HZ_FALSE;
+}
+
+
+HZ_INLINE hz_bool_t
+hz_map_set_value_for_keys(hz_map_t *map, u32 k0, u32 k1, u32 value)
+{
+    hz_bool_t any_set = HZ_FALSE;
+    u32 k = k0;
+
+    while (k <= k1) {
+        if (hz_map_set_value(map, k, value))
+            any_set = HZ_TRUE;
+
+        ++k;
+    }
+
+    return any_set;
+}
+
 /* Blob */
 typedef struct hz_blob_t {
     u8 *data;
@@ -441,9 +620,17 @@ struct hz_face_table_node_t {
     hz_face_table_node_t *prev, *next;
 };
 
-struct hz_face_tables_t {
-    struct hz_face_table_node_t *root;
-};
+typedef struct hz_face_tables_t {
+    hz_face_table_node_t *root;
+} hz_face_tables_t;
+
+typedef struct hz_face_ot_tables_t {
+    u8 *BASE_table;
+    u8 *GDEF_table;
+    u8 *GSUB_table;
+    u8 *GPOS_table;
+    u8 *JSTF_table;
+} hz_face_ot_tables_t;
 
 struct hz_face_t {
     hz_face_tables_t tables;
@@ -467,7 +654,7 @@ struct hz_face_t {
 hz_face_t *
 hz_face_create()
 {
-    hz_face_t *face = malloc(sizeof(hz_face_t));
+    hz_face_t *face = hz_malloc(sizeof(hz_face_t));
     face->num_glyphs = 0;
     face->num_of_h_metrics = 0;
     face->num_of_v_metrics = 0;
@@ -495,8 +682,7 @@ hz_face_get_upem(hz_face_t *face)
 }
 
 void
-hz_face_set_upem(hz_face_t *face,
-                 u16 upem)
+hz_face_set_upem(hz_face_t *face, u16 upem)
 {
     face->upem = upem;
 }
@@ -561,7 +747,7 @@ hz_face_get_num_of_h_metrics(hz_face_t *face)
     return face->num_of_h_metrics;
 }
 
-uint16_t
+u16
 hz_face_get_num_of_v_metrics(hz_face_t *face)
 {
     return face->num_of_v_metrics;
@@ -626,7 +812,7 @@ hz_face_load_class_maps(hz_face_t *face)
         Offset16 mark_attach_class_def_offset;
         Offset16 mark_glyph_sets_def_offset;
 
-        version = unpacki(&table);
+        version = unpack32(&bs);
 
         switch (version) {
             case 0x00010000: /* 1.0 */
@@ -652,7 +838,7 @@ hz_face_load_class_maps(hz_face_t *face)
 
         if (glyph_class_def_offset) {
             /* glyph class def isn't nil */
-            hz_byte_stream_t subtable = hz_byte_stream_create(table.data + glyph_class_def_offset, 0);
+            hz_byte_stream_t subtable = hz_byte_stream_create(bs.data + glyph_class_def_offset, 0);
             u16 class_format;
             class_format = unpack16(&subtable);
             switch (class_format) {
@@ -668,9 +854,9 @@ hz_face_load_class_maps(hz_face_t *face)
                                 &start_glyph_id,
                                 &end_glyph_id,
                                 &glyph_class);
+
                         HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
                         hz_map_set_value_for_keys(face->class_map, start_glyph_id, end_glyph_id, 1<<(glyph_class-1));
-
                         ++range_index;
                     }
                     break;
@@ -681,7 +867,7 @@ hz_face_load_class_maps(hz_face_t *face)
         }
 
         if (mark_attach_class_def_offset) {
-            hz_byte_stream_t subtable = hz_byte_stream_create(table.data + mark_attach_class_def_offset, 0);
+            hz_byte_stream_t subtable = hz_byte_stream_create(bs.data + mark_attach_class_def_offset, 0);
             u16 class_format;
             class_format = unpack16(&subtable);
             switch (class_format) {
@@ -697,9 +883,9 @@ hz_face_load_class_maps(hz_face_t *face)
                                 &start_glyph_id,
                                 &end_glyph_id,
                                 &glyph_class);
+
                         HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
                         hz_map_set_value_for_keys(face->attach_class_map, start_glyph_id, end_glyph_id, 1<<(glyph_class-1));
-
                         ++range_index;
                     }
                     break;
@@ -721,7 +907,7 @@ typedef struct hz_kern_coverage_field_t {
 } hz_kern_coverage_field_t;
 
 typedef union hz_kern_coverage_t {
-    uint16_t data;
+    u16 data;
     hz_kern_coverage_field_t field;
 } hz_kern_coverage_t;
 
@@ -903,9 +1089,9 @@ hz_ft_font_create(FT_Face ft_face)
     hz_face_load_num_glyphs(face);
     face->metrics = hz_malloc(sizeof(hz_metrics_t) * face->num_glyphs);
 
-    for (glyph_index = 0; glyph_index < face->num_glyphs; ++glyph_index) {
+    for (i = 0; i < face->num_glyphs; ++i) {
         FT_GlyphSlot slot = ft_face->glyph;
-        if (FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
+        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
             hz_metrics_t *mo;
             FT_Glyph_Metrics *mi;
             FT_BBox bbox;
@@ -917,7 +1103,7 @@ hz_ft_font_create(FT_Face ft_face)
             FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
             FT_Done_Glyph(glyph);
 
-            mo = hz_face_get_glyph_metrics(face, glyph_index);
+            mo = hz_face_get_glyph_metrics(face, i);
             
             mo->xa = mi->horiAdvance;
             mo->ya = mi->vertAdvance;

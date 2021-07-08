@@ -22,17 +22,16 @@ body.NDHomePage {
 }
 
 .CDLEntry {
-    font: bold 10pt "Noto Sans";
+    font: bold 10pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
 }
 
 .CHeading {
-    font: bold 11pt "Noto Sans";
+    font: bold 11pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
     margin: 1.2em 0 .5em 0;
 }
 
 .CTitle {
-    font: bold 14pt "Noto Sans";
-    color: #484848;
+    font: bold 14pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
 }
 
 

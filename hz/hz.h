@@ -7,14 +7,40 @@
     Shaping with font created from an FT_Face (requires Hamza to be built with Freetype)
     
     --- C
-    #define HZ_USE_FREETYPE
     #include <hz.h>
 
     int main(int argc, char *argv[])
     {
-        const char *text = "Hello, World!";
-        FT_Library ft_lib;
+        FT_Error err;
+        FT_Library lib;
+        
+        err = FT_Init_FreeType(&lib);
+    
+        if (err != FT_Err_Ok) { ... }
 
+        FT_Face face;
+        error = FT_New_Face(library, "Monospace.ttf", 0, &face);
+
+        if (err != FT_Err_Ok) { ... }
+        
+        hz_font_t *font = hz_ft_font_create(face);
+        hz_sequence_t *sequence = hz_sequence_create();
+
+        const char *text = "The brown fox jumps over the lazy dog.";
+
+        hz_sequence_load_utf8(sequence, text);
+        hz_sequence_set_direction(sequence, HZ_DIRECTION_LTR);
+        hz_sequence_set_script(sequence, HZ_SCRIPT_LATIN);
+        hz_sequence_set_language(sequence, hz_lang("eng"));
+
+        hz_shape(font, sequence, NULL, 0);
+
+        hz_sequence_destroy(sequence);
+        hz_font_destroy(font);
+        
+        FT_Done_Face(face);
+        FT_Done_Freetype(lib);
+        return 0;
     }
 
     ---

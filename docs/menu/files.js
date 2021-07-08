@@ -1,0 +1,1 @@
+﻿NDMenu.OnSectionLoaded("files.js",[[1,"hz.c"],[1,"hz.h"]]);

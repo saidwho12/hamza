@@ -9,7 +9,7 @@ project(Hamza LANGUAGES C)
 set(CMAKE_C_STANDARD 90)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -O3 -Ofast -pedantic -Wall")
 
-set(HAMZA_SOURCES hz.h hz.c)
+set(HAMZA_SOURCES hz/hz.h hz/hz.c)
 
 add_library(hamza ${HAMZA_SOURCES})
 target_include_directories(hamza PUBLIC ./)

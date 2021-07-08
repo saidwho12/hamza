@@ -9,7 +9,7 @@
 # ------------------------------------------------------------------------
 
 Title: Hamza
-Subtitle: OpenType Shaping library in C
+Subtitle: Fast C OpenType Library
 
 Copyright: Saïd Metiche
 
@@ -34,7 +34,7 @@ Style: base
 # Source Code
 # ------------------------------------------------------------------------
 
-Source Folder: ..
+Source Folder: ../hz
 
 
 # This is where you specify what files and folders Natural Docs should be

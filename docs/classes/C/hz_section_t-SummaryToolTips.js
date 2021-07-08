@@ -1,1 +1,0 @@
-﻿NDSummary.OnToolTipsLoaded("CClass:hz_section_t",{2:"<div class=\"NDToolTip TStruct LC\"><div class=\"TTSummary\">Section of text for shaping.</div></div>"});

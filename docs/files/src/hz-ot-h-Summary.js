@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("File:src/hz-ot.h","hz-ot.h");NDSummary.OnSummaryLoaded("File:src/hz-ot.h",[["C/C++","C"]],[["Structs","Struct"]],[[1,0,0,"hz_section_node_t","hz_section_node_t"],[2,0,0,"hz_section_t","hz_section_t"]]);

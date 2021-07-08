@@ -1,1 +1,0 @@
-﻿NDSummary.OnToolTipsLoaded("CClass:hz_section_node_t",{1:"<div class=\"NDToolTip TStruct LC\"><div class=\"TTSummary\">Glyph structure holding data for shaping.</div></div>"});

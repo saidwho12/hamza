@@ -41,12 +41,12 @@ body.NDHomePage {
 }*/
 
 .NDPrototype {
-    font: 10pt Monospace;
+    font: 10pt "Monospace","Consolas","Menlo-Regular";
 }
 
 /* Code block */
 .CTopic pre {
-    font: 10pt Monospace;
+    font: 10pt "Monospace","Consolas","Menlo-Regular";
 }
 
 .CDLParameterType {

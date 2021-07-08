@@ -1,1 +1,1 @@
-﻿NDMenu.OnSectionLoaded("classes.js",[[1,"hz_blob_t"],[1,"hz_bump_allocator_t"],[1,"hz_byte_stream_t"],[1,"hz_section_node_t"],[1,"hz_section_t"],[1,"hz_shape_call_cache_t"]]);
+﻿NDMenu.OnSectionLoaded("classes.js",[[1,"hz_bump_allocator_t"],[1,"hz_byte_stream_t"],[1,"hz_shape_call_cache_t"]]);

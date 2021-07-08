@@ -14,6 +14,9 @@ typedef int32_t i32;
 typedef int64_t i64;
 typedef unsigned int uint;
 
+typedef u16 Offset16;
+typedef u32 Offset32;
+
 #include <assert.h>
 
 #ifdef HZ_USE_TINYCTHREAD
@@ -156,8 +159,42 @@ hz_bump_allocator_alloc(hz_bump_allocator_t *a,
     return a->data + startptr;
 }
 
+/*
+    Function: hz_bump_allocator_free
+        Frees a previously allocated block. (currently a no-op)
+
+    Arguments:
+        a - Pointer to the allocator.
+        p - Pointer to a previously allocated block.
+
+    Returns:
+        Nothing.
+*/
+HZ_INLINE void
+hz_bump_allocator_free(hz_bump_allocator_t *a,
+                       void *p)
+{
+    /* No-Op */
+}
+
+/*
+    Function: hz_bump_allocator_release
+        Releases all resources held by the allocator. (currently a no-op)
+
+    Arguments:
+        a - A pointer to the allocator.
+
+    Returns:
+        Nothing.
+*/
+HZ_INLINE void
+hz_bump_allocator_release(hz_bump_allocator_t *a)
+{
+    /* No-Op */
+}
+
 /* no bound for buffer */
-#define BS_CHECKBND 0x00000001
+#define BS_BNDCHECK 0x00000001
 
 /*
     Struct: hz_byte_stream_t
@@ -196,7 +233,7 @@ hz_byte_stream_create(u8 *data, size_t size)
     bs.flags = 0;
 
     if (data != NULL && size > 0)
-        bs.flags |= BS_CHECKBND;
+        bs.flags |= BS_BNDCHECK;
 
     return bs;
 }
@@ -341,7 +378,7 @@ unpackf(hz_byte_stream_t *bs,
 
 /* Blob */
 typedef struct hz_blob_t {
-    uint8_t *data;
+    u8 *data;
     size_t size;
 } hz_blob_t;
 
@@ -385,7 +422,7 @@ hz_blob_get_size(hz_blob_t *blob)
     return blob->size;
 }
 
-hz_byte_t *
+u8 *
 hz_blob_get_data(hz_blob_t *blob)
 {
     return blob->data;
@@ -451,7 +488,7 @@ hz_face_destroy(hz_face_t *face)
 
 }
 
-uint16_t
+u16
 hz_face_get_upem(hz_face_t *face)
 {
     return face->upem;
@@ -507,18 +544,18 @@ hz_face_reference_table(hz_face_t *face, hz_tag_t tag)
 }
 
 void
-hz_face_set_num_glyphs(hz_face_t *face, uint16_t num_glyphs)
+hz_face_set_num_glyphs(hz_face_t *face, u16 num_glyphs)
 {
     face->num_glyphs = num_glyphs;
 }
 
-uint16_t
+u16
 hz_face_get_num_glyphs(hz_face_t *face)
 {
     return face->num_glyphs;
 }
 
-uint16_t
+u16
 hz_face_get_num_of_h_metrics(hz_face_t *face)
 {
     return face->num_of_h_metrics;
@@ -541,7 +578,7 @@ hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id)
 }
 
 void
-hz_face_set_num_of_h_metrics(hz_face_t *face, uint16_t num_of_h_metrics)
+hz_face_set_num_of_h_metrics(hz_face_t *face, u16 num_of_h_metrics)
 {
     face->num_of_h_metrics = num_of_h_metrics;
 }
@@ -550,10 +587,10 @@ void
 hz_face_load_num_glyphs(hz_face_t *face)
 {
     hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('m','a','x','p'));
-    hz_byte_stream_t bs = hz_stream_create(blob->data, blob->size);
+    hz_byte_stream_t bs = hz_byte_stream_create(blob->data, blob->size);
 
-    uint32_t version;
-    uint16_t num_glyphs;
+    u32 version;
+    u16 num_glyphs;
 
     version = unpack32(&bs);
 
@@ -580,14 +617,14 @@ void
 hz_face_load_class_maps(hz_face_t *face)
 {
     if (face->ot_tables.GDEF_table != NULL) {
-        hz_byte_stream_t bs = hz_byte_stream_create(face->ot_tables.GDEF_table, HZ_UNSIZED);
+        hz_byte_stream_t bs = hz_byte_stream_create(face->ot_tables.GDEF_table, 0);
         u32 version;
 
-        hz_offset16_t glyph_class_def_offset;
-        hz_offset16_t attach_list_offset;
-        hz_offset16_t lig_caret_list_offset;
-        hz_offset16_t mark_attach_class_def_offset;
-        hz_offset16_t mark_glyph_sets_def_offset;
+        Offset16 glyph_class_def_offset;
+        Offset16 attach_list_offset;
+        Offset16 lig_caret_list_offset;
+        Offset16 mark_attach_class_def_offset;
+        Offset16 mark_glyph_sets_def_offset;
 
         version = unpacki(&table);
 

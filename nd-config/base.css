@@ -17,6 +17,10 @@ body.NDHomePage {
 }
 */
 
+#NDSearchField {
+    border-radius: 0;
+}
+
 #NDFooter {
     font: 8pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
 }

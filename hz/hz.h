@@ -26,7 +26,7 @@
         hz_font_t *font = hz_ft_font_create(face);
         hz_sequence_t *sequence = hz_sequence_create();
 
-        const char *text = "The brown fox jumps over the lazy dog.";
+        const char *text = "The quick brown fox jumps over the lazy dog.";
 
         hz_sequence_load_utf8(sequence, text);
         hz_sequence_set_direction(sequence, HZ_DIRECTION_LTR);
@@ -63,6 +63,8 @@
 
 #define HZ_ENABLE 1
 #define HZ_DISABLE 0
+
+#define HZ_STATIC static
 
 #if defined(HZ_FORCE_INLINE_FUNCS)
     #if defined(_MSC_VER)
@@ -101,19 +103,23 @@
     #define HZ_COMPILER HZ_COMPILER_CLANG
 #endif
 
-#define HZ_API HZ_CALLCONV HZ_EXPORT 
+#if defined(__cplusplus)
+    #define HZ_LINKAGE extern "C"
+#else
+    #define HZ_LINKAGE
+#endif
+
+#define HZ_API HZ_LINKAGE HZ_EXPORT HZ_CALLCONV 
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
 #define HZ_ASSERT(cond) assert(cond)
 #define HZ_TAG(a, b, c, d) ((hz_tag_t)d | ((hz_tag_t)c << 8) | ((hz_tag_t)b << 16) | ((hz_tag_t)a << 24U))
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
-
+#define HZ_TAG_NONE ((hz_tag_t)0)
 
 #define HZ_ENABLE_OVERFLOW_CHECKS
 
-typedef uint16_t hz_offset16_t;
-typedef uint32_t hz_offset32_t;
 typedef unsigned char hz_byte_t;
 typedef int32_t hz_coord_t;
 typedef uint32_t hz_unicode_t;
@@ -148,12 +154,10 @@ typedef struct hz_bbox_t {
 } hz_bbox_t;
 
 typedef struct hz_metrics_t {
-    hz_bbox_t bbox; /* x advance, y advance, x bearing, y bearing */
-    hz_position_t xa, ya, xb, yb;
-    hz_position_t w, h; /* width and height of glyph */
+    hz_bbox_t bbox;
+    hz_position_t x_advance, y_advance, x_bearing, y_bearing;
+    hz_position_t w, h;
 } hz_metrics_t;
-
-typedef struct hz_sequence_t hz_sequence_t;
 
 typedef enum hz_direction_t {
     HZ_DIRECTION_INVALID = 0,
@@ -188,15 +192,210 @@ typedef enum hz_glyph_class_t {
 /* include tables, types, and functions and other generated code */
 #include "hz_defs.h"
 
-typedef void *(*HZMALLOCFUNC)(size_t);
-typedef void (*HZFREEFUNC)(void *);
+typedef void *(*HZMALLOCFN)(size_t);
+typedef void (*HZFREEFN)(void *);
 
-typedef struct hz_global_allocator_t {
-    HZMALLOCFUNC malloc_func;
-    HZFREEFUNC free_func;
-} hz_global_allocator_t;
+/*
+    Struct: hz_allocator_t
+        Global heap allocator, an instance of this structure is stored internally and
+        is used by the main memory pool. By default <hz_allocator_t.mallocfn> and
+        <hz_allocator_t.freefn> are set to stdlib's malloc() and free().
 
-/* common functions */
+
+        If you want to set a custom internal allocator, use <hz_set_custom_allocator> as follows:
+        --- C ---
+        hz_allocator_t a;
+        a.mallocfn = (HZMALLOCFN)mymalloc;
+        a.freefn = (HZFREEFN)myfree;
+
+        hz_set_custom_allocator(a);
+        ---------
+*/
+typedef struct hz_allocator_t {
+    /*
+        Variable: mallocfn
+            Memory allocation function.
+    */
+    HZMALLOCFN mallocfn;
+
+    /*
+        Variable: freefn
+            Free allocated memory function.
+    */
+    HZFREEFN freefn;
+} hz_allocator_t;
+
+/*
+    Function: hz_set_custom_allocator
+        Sets the internal allocator to a custom user-provided allocator.
+
+    Arguments:
+        a - Custom allocator.
+*/
+HZ_API void
+hz_set_custom_allocator(hz_allocator_t a);
+
+/*
+    Struct: hz_sequence_t
+        A sequence of text, can be loaded with utf8 or unicode data.
+        Holds direction, script, language,
+        as well as other data relevant for the shaping process.
+*/
+typedef struct hz_sequence_t hz_sequence_t;
+
+
+/*
+    Function: hz_sequence_create
+        Creates a new sequence.
+*/
+HZ_API hz_sequence_t *
+hz_sequence_create(void);
+
+/*
+    Function: hz_sequence_destroy
+        Destroys a sequence.
+
+    Arguments:
+        sequence - The sequence.
+*/
+HZ_API void
+hz_sequence_destroy(hz_sequence_t *sequence);
+
+HZ_API void
+hz_sequence_set_script(hz_sequence_t *sequence, hz_script_t script);
+
+HZ_API void
+hz_sequence_set_language(hz_sequence_t *sequence, hz_language_t language);
+
+HZ_API void
+hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction);
+
+/*
+    Function: hz_sequence_load_utf8
+        Loads sequence with UTF-8 encoded string.
+
+    Arguments:
+        sequence - The sequence.
+        str - UTF-8 encoded string.
+*/
+HZ_API void
+hz_sequence_load_utf8(hz_sequence_t *sequence, const char *str);
+
+/*
+    Function: hz_sequence_load_unicode
+        Loads sequence with a Unicode string.
+
+    Arguments:
+        sequence - The sequence.
+        str - Unicode string.
+        len - Length of the string.
+*/
+HZ_API void
+hz_sequence_load_unicode(hz_sequence_t *sequence, const hz_unicode_t *str, size_t len);
+
+/*
+    Struct: hz_shaped_glyph_t
+        Shaped glyph structure with all necessary information for layout & drawing.
+        
+*/
+typedef struct hz_shaped_glyph_t {
+    hz_unicode_t codepoint;
+    hz_index_t gid;
+    
+    hz_position_t x_offset;
+    hz_position_t y_offset;
+    hz_position_t x_advance;
+    hz_position_t y_advance;
+
+    uint16_t glyph_class;
+} hz_shaped_glyph_t;
+
+HZ_API void
+hz_sequence_get_shaped_glyphs(hz_sequence_t *sequence,
+                              hz_shaped_glyph_t *glyphs,
+                              size_t *num_glyphs);
+
+#define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')
+#define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')
+
+typedef enum hz_lookup_flag_t {
+    /*
+      This bit relates only to
+      the correct processing of the cursive attachment lookup type (GPOS lookup type 3).
+      When this bit is set, the last glyph in a given sequence to
+      which the cursive attachment lookup is applied, will be positioned on the baseline.
+    */
+    HZ_LOOKUP_FLAG_RIGHT_TO_LEFT = 0x0001,
+
+    /* If set, skips over base glyphs */
+    HZ_LOOKUP_FLAG_IGNORE_BASE_GLYPHS = 0x0002,
+
+    /* If set, skips over ligatures */
+    HZ_LOOKUP_FLAG_IGNORE_LIGATURES = 0x0004,
+
+    /* If set, skips over all combining marks */
+    HZ_LOOKUP_FLAG_IGNORE_MARKS = 0x0008,
+
+    /*
+      If set, indicates that the lookup table structure is followed by a MarkFilteringSet field.
+      The layout engine skips over all mark glyphs not in the mark filtering set indicated.
+    */
+    HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET = 0x0010,
+
+    /* 0x00E0 - For future use (Set to zero) */
+
+    /* If not zero, skips over all marks of attachment type different from specified. */
+    HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK = 0xFF00
+} hz_lookup_flag_t;
+
+typedef enum hz_value_format_flag_t {
+    /* Includes horizontal adjustment for placement */
+    HZ_VALUE_FORMAT_X_PLACEMENT = 0x0001,
+
+    /* Includes vertical adjustment for placement */
+    HZ_VALUE_FORMAT_Y_PLACEMENT = 0x0002,
+
+    /* Includes horizontal adjustment for advance */
+    HZ_VALUE_FORMAT_X_ADVANCE = 0x0004,
+
+    /* Includes vertical adjustment for advance */
+    HZ_VALUE_FORMAT_Y_ADVANCE = 0x0008,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal placement */
+    HZ_VALUE_FORMAT_X_PLACEMENT_DEVICE = 0x0010,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical placement */
+    HZ_VALUE_FORMAT_Y_PLACEMENT_DEVICE = 0x0020,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal advance */
+    HZ_VALUE_FORMAT_X_ADVANCE_DEVICE = 0x0040,
+
+    /* Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical advance */
+    HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE = 0x0080
+} hz_value_format_flag_t;
+
+typedef enum hz_gsub_lookup_type_t {
+    HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION = 1,
+    HZ_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION = 2,
+    HZ_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION = 3,
+    HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION = 4,
+    HZ_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION = 5,
+    HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION = 6,
+    HZ_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION = 7,
+    HZ_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION = 8
+} hz_gsub_lookup_type_t;
+
+typedef enum hz_gpos_lookup_type_t {
+    HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT = 1,
+    HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT = 2,
+    HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT = 3,
+    HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT = 4,
+    HZ_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT = 5,
+    HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT = 6,
+    HZ_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING = 7,
+    HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING = 8,
+    HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
+} hz_gpos_lookup_type_t;
 
 /*  Function: hz_lang
  *      returns language from an ISO-639 tag.
@@ -234,12 +433,15 @@ hz_face_get_num_of_v_metrics(hz_face_t *face);
 HZ_API hz_metrics_t *
 hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 
+
+HZ_API uint16_t
+hz_face_get_num_glyphs(hz_face_t *face);
+
 /* font functions, and loading font using FreeType */
 typedef struct hz_font_t hz_font_t;
 
 /*
     Function: hz_font_create 
-        
         Creates a font.
 */
 
@@ -248,11 +450,9 @@ hz_font_create(void);
 
 /*
     Function: hz_font_destroy 
-        
         Destroys a font.
 
     Arguments:
-
         font - The font.
     
     See Also:
@@ -269,11 +469,9 @@ hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
 /*
     Function: hz_ft_font_create 
-        
         Creates a font from a Freetype face handle.
 
     Arguments:
-
         ft_face - The handle to the Freetype typeface.
 
     Returns:

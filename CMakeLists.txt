@@ -1,15 +1,16 @@
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
-project(Hamza LANGUAGES C)
+project(Hamza VERSION 0.0.1 LANGUAGES C)
 
 
 #ifdef HAMZA_BUILD_SHARED
 #option()
 
 set(CMAKE_C_STANDARD 90)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -O3 -Ofast -pedantic -Wall")
+# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -O3 -Ofast -pedantic -Wall")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89 -O3 -Ofast -pedantic")
 
-set(HAMZA_SOURCES hz/hz.h hz/hz.c)
+set(HAMZA_SOURCES hz/hz.h hz/hz.c hz/hz_defs.h)
 
 add_library(hamza ${HAMZA_SOURCES})
 target_include_directories(hamza PUBLIC ./)

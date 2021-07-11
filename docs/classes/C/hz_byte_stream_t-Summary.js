@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("CClass:hz_byte_stream_t","hz_byte_stream_t");NDSummary.OnSummaryLoaded("CClass:hz_byte_stream_t",[["C/C++","C"]],[["Functions","Function"],["Groups","Group"],["Structs","Struct"]],[[18,0,2,"hz_byte_stream_t"],[19,0,1,"Functions","Functions"],[20,0,0,"hz_byte_stream_create","hz_byte_stream_create"]]);

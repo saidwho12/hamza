@@ -1,0 +1,1 @@
+﻿NDSearch.OnPrefixDataLoaded("fre",["Variable"],[["freefn",,[["hz_allocator_t",,,,0,"File:hz.h:hz_allocator_t.freefn","CClass:hz_allocator_t:freefn"]]]]);

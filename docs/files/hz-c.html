@@ -27,6 +27,12 @@
  <div class="CTitle">Functions</div>
 </div>
 
+<a name="hz_bump_allocator_t.hz_bump_allocator_init"></a><a name="Topic1"></a><div class="CTopic TFunction LC">
+ <div class="CTitle">hz_bump_allocator_init</div>
+ <div id="NDPrototype1" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <span class="SHKeyword">void</span> hz_bump_allocator_init(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../index.html#File:hz.c:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,13);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">a,</td></tr><tr><td class="PType first"><span class="SHKeyword">void</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">data,</td></tr><tr><td class="PType first">size_t&nbsp;</td><td></td><td class="PName last">size</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Initializes a bump allocator on a block of memory.</p><div class="CHeading">Arguments</div><table class="CDefinitionList"><tr><td class="CDLEntry">a<div class="CDLParameterType"><a href="../index.html#File:hz.c:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,13);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>*</div></td><td class="CDLDefinition"><p>Pointer to the allocator.</p></td></tr><tr><td class="CDLEntry">data<div class="CDLParameterType"><span class="SHKeyword">void</span>*</div></td><td class="CDLDefinition"><p>Pointer to the segment of memory.</p></td></tr><tr><td class="CDLEntry">size<div class="CDLParameterType">size_t</div></td><td class="CDLDefinition"><p>Size of the block to allocate.</p></td></tr></table></div>
+</div>
+
 <a name="hz_bump_allocator_t.hz_bump_allocator_alloc"></a><a name="Topic15"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_bump_allocator_alloc</div>
  <div id="NDPrototype15" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <span class="SHKeyword">void</span> * hz_bump_allocator_alloc(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../index.html#File:hz.c:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,13);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">a,</td></tr><tr><td class="PType first">size_t&nbsp;</td><td></td><td class="PName last">size</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
@@ -45,26 +51,51 @@
  <div class="CBody"><p>Releases all resources held by the allocator. (currently a no-op)</p><div class="CHeading">Arguments</div><table class="CDefinitionList"><tr><td class="CDLEntry">a<div class="CDLParameterType"><a href="../index.html#File:hz.c:hz_bump_allocator_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,13);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_bump_allocator_t</a>*</div></td><td class="CDLDefinition"><p>A pointer to the allocator.</p></td></tr></table></div>
 </div>
 
-<a name="hz_byte_stream_t"></a><a name="Topic18"></a><div class="CTopic TStruct LC">
- <div class="CTitle">hz_byte_stream_t</div>
- <div class="NDClassPrototype" id="NDClassPrototype18"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_byte_stream_t</div></div></div>
+<a name="hz_stream_t"></a><a name="Topic6"></a><div class="CTopic TStruct LC">
+ <div class="CTitle">hz_stream_t</div>
+ <div class="NDClassPrototype" id="NDClassPrototype6"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_stream_t</div></div></div>
  <div class="CBody"><p>A struct to store a buffer.&nbsp; This is also used to handle reading bytes sequentially.&nbsp; Unpacks in network-order (big endian).</p></div>
 </div>
 
-<a name="hz_byte_stream_t.Functions"></a><a name="Topic19"></a><div class="CTopic TGroup LC">
+<a name="hz_stream_t.hz_stream_create"></a><a name="Topic25"></a><div class="CTopic TFunction LC">
+ <div class="CTitle">hz_stream_create</div>
+ <div id="NDPrototype25" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <a href="../index.html#File:hz.c:hz_stream_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,6);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_stream_t</a> hz_stream_create(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first">uint8_t&nbsp;</td><td class="PSymbols">*</td><td class="PName last">data,</td></tr><tr><td class="PType first">size_t&nbsp;</td><td></td><td class="PName last">size</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Creates a byte stream, holds data and a bump pointer allowing seeking, unpacking various primitives from memory.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">data<div class="CDLParameterType">uint8_t*</div></td><td class="CDLDefinition"><p>The pointer to the memory.</p></td></tr><tr><td class="CDLEntry">size<div class="CDLParameterType">size_t</div></td><td class="CDLDefinition"><p>The size of the block (If this is 0, then there's no bound check).</p></td></tr></table><div class="CHeading">Returns</div><p>A <a href="../index.html#File:hz.c:hz_stream_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,6);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_stream_t</a> instance.</p></div>
+</div>
+
+<a name="hz_stream_t.Arabic_joining"></a><a name="Topic37"></a><div class="CTopic TGroup LC">
+ <div class="CTitle">Arabic joining</div>
+</div>
+
+<a name="hz_sequence_node_cache_t"></a><a name="Topic5"></a><div class="CTopic TStruct LC">
+ <div class="CTitle">hz_sequence_node_cache_t</div>
+ <div class="NDClassPrototype" id="NDClassPrototype5"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_sequence_node_cache_t</div></div></div>
+ <div class="CBody"><p>Sequence of pointers to nodes which may have a gap between useful for when checking sub-sequences with glyph class skip flags when applying lookups as a form of cache. i.e. it's used in contextual substitutions when comparing a subsection of a sequence and caching those nodes, so that later can easily move to specific subsections of the sequence.</p></div>
+</div>
+
+<a name="hz_shape_call_cache_t"></a><a name="Topic21"></a><div class="CTopic TStruct LC">
+ <div class="CTitle">hz_shape_call_cache_t</div>
+ <div class="NDClassPrototype" id="NDClassPrototype21"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_shape_call_cache_t</div></div></div>
+ <div class="CBody"><p>Holds the cache of all OpenType lookups required in a call to &lt;hz_shape&gt;.</p></div>
+</div>
+
+<a name="hz_shape_call_cache_t.Types"></a><a name="Topic38"></a><div class="CTopic TGroup LC">
+ <div class="CTitle">Types</div>
+</div>
+
+<a name="hz_shape_call_cache_t.hz_cmap_platform_t"></a><a name="Topic39"></a><div class="CTopic TEnumeration LC">
+ <div class="CTitle">hz_cmap_platform_t</div>
+ <div class="CBody"><p><a href="https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids" target="_top">https://&#8203;docs&#8203;.microsoft&#8203;.com&#8203;/en-us&#8203;/typography&#8203;/opentype&#8203;/spec&#8203;/cmap&#8203;#platform-ids</a></p></div>
+</div>
+
+<a name="hz_shape_call_cache_t.Functions"></a><a name="Topic40"></a><div class="CTopic TGroup LC">
  <div class="CTitle">Functions</div>
 </div>
 
-<a name="hz_byte_stream_t.hz_byte_stream_create"></a><a name="Topic20"></a><div class="CTopic TFunction LC">
- <div class="CTitle">hz_byte_stream_create</div>
- <div id="NDPrototype20" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_INLINE <a href="../index.html#File:hz.c:hz_byte_stream_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,18);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_byte_stream_t</a> hz_byte_stream_create(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first">u8&nbsp;</td><td class="PSymbols">*</td><td class="PName last">data,</td></tr><tr><td class="PType first">size_t&nbsp;</td><td></td><td class="PName last">size</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
- <div class="CBody"><p>Creates a byte stream, holds data and a bump pointer allowing seeking, unpacking various primitives from memory.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">data<div class="CDLParameterType">u8*</div></td><td class="CDLDefinition"><p>The pointer to the memory.</p></td></tr><tr><td class="CDLEntry">size<div class="CDLParameterType">size_t</div></td><td class="CDLDefinition"><p>The size of the block (If this is 0, then there's no bound check).</p></td></tr></table><div class="CHeading">Returns</div><p>A <a href="../index.html#File:hz.c:hz_byte_stream_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,18);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_byte_stream_t</a> instance.</p></div>
-</div>
-
-<a name="hz_shape_call_cache_t"></a><a name="Topic21"></a><div class="CTopic TStruct LC last">
- <div class="CTitle">hz_shape_call_cache_t</div>
- <div class="NDClassPrototype" id="NDClassPrototype21"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_shape_call_cache_t</div></div></div>
- <div class="CBody"><p>Holds the cache of all OpenType lookups required in a call to <a href="../index.html#File:hz.h:hz_shape" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,10);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_shape</a>.</p></div>
+<a name="hz_shape_call_cache_t.hz_shape_impl_naive"></a><a name="Topic41"></a><div class="CTopic TFunction LC last">
+ <div class="CTitle">hz_shape_impl_naive</div>
+ <div id="NDPrototype41" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZ_STATIC <span class="SHKeyword">void</span> hz_shape_impl_naive(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="first"></td><td class="PType">hz_font_t&nbsp;</td><td class="PSymbols">*</td><td class="PName last">font,</td></tr><tr><td class="first"></td><td class="PType"><a href="../index.html#File:hz.h:hz_sequence_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,9);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_sequence_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">sequence,</td></tr><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType">hz_feature_t&nbsp;</td><td class="PSymbols">*</td><td class="PName last">features,</td></tr><tr><td class="PModifierQualifier first"><span class="SHKeyword">unsigned</span>&nbsp;</td><td class="PType"><span class="SHKeyword">int</span>&nbsp;</td><td></td><td class="PName last">num_features</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Naive simple (slow) implementation of &lt;hz_shape&gt;.&nbsp; This parses the OpenType lookups progressively from memory.</p></div>
 </div>
 
 </body></html>

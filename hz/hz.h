@@ -24,18 +24,18 @@
         if (err != FT_Err_Ok) { ... }
         
         hz_font_t *font = hz_ft_font_create(face);
-        hz_sequence_t *sequence = hz_sequence_create();
+        hz_segment_t *seg = hz_segment_create();
 
         const char *text = "The quick brown fox jumps over the lazy dog.";
 
-        hz_sequence_load_utf8(sequence, text);
-        hz_sequence_set_direction(sequence, HZ_DIRECTION_LTR);
-        hz_sequence_set_script(sequence, HZ_SCRIPT_LATIN);
-        hz_sequence_set_language(sequence, hz_lang("eng"));
+        hz_segment_load_utf8(seg, text);
+        hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
+        hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
+        hz_segment_set_language(seg, hz_lang("eng"));
 
-        hz_shape(font, sequence, NULL, 0);
+        hz_shape(font, seg, NULL, 0);
 
-        hz_sequence_destroy(sequence);
+        hz_segment_destroy(seg);
         hz_font_destroy(font);
         
         FT_Done_Face(face);
@@ -66,29 +66,6 @@
 
 #define HZ_STATIC static
 
-#if defined(HZ_FORCE_INLINE_FUNCS)
-    #if defined(_MSC_VER)
-        #define HZ_INLINE __forceinline
-    #elif defined(__GNUC__)
-        #define HZ_INLINE __attribute__((always_inline))
-    #else
-        #define HZ_INLINE inline
-    #endif
-#else
-    #define HZ_INLINE inline
-#endif
-
-#if defined(_MSC_VER)
-    #define HZ_CALLCONV __fastcall
-    #define HZ_EXPORT __declspec(dllexport)
-#elif defined(__GNUC__) && (defined(_WIN32) || defined(__MINGW32__) || defined(__CYGWIN__))
-    #define HZ_CALLCONV __attribute__((fastcall))
-    #define HZ_EXPORT __attribute__((dllexport))
-#else
-    #define HZ_CALLCONV
-    #define HZ_EXPORT
-#endif
-
 #define HZ_COMPILER_GCC 0x00000001l
 #define HZ_COMPILER_CLANG 0x00000002l
 #define HZ_COMPILER_TURBOC 0x00000004l
@@ -103,13 +80,33 @@
     #define HZ_COMPILER HZ_COMPILER_CLANG
 #endif
 
-#if defined(__cplusplus)
+#ifdef __cplusplus
     #define HZ_LINKAGE extern "C"
 #else
     #define HZ_LINKAGE
 #endif
 
-#define HZ_API HZ_LINKAGE HZ_EXPORT HZ_CALLCONV 
+#if HZ_COMPILER & HZ_COMPILER_VC
+    #define HZ_FORCEINLINE __forceinline
+    #define HZ_FASTCALL __fastcall
+    #define HZ_EXPORT __declspec(dllexport)
+#elif HZ_COMPILER & HZ_COMPILER_GCC
+    #define HZ_FORCEINLINE __attribute__((always_inline))
+    #define HZ_FASTCALL __attribute__((fastcall))
+    #define HZ_EXPORT __attribute__((dllexport))
+#else
+    #define HZ_FORCEINLINE inline
+    #define HZ_FASTCALL
+    #define HZ_EXPORT
+#endif
+
+#define HZ_INLINE inline
+
+#ifdef HZ_BUILD_SHARED
+    #define HZ_API HZ_LINKAGE HZ_EXPORT
+#else
+#define HZ_API HZ_LINKAGE
+#endif
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
@@ -125,7 +122,7 @@ typedef int32_t hz_coord_t;
 typedef uint32_t hz_unicode_t;
 typedef uint32_t hz_tag_t;
 
-#if defined(__cplusplus)
+#ifdef __cplusplus
     /* C++ */
     typedef bool hz_bool_t;
     #define HZ_TRUE true
@@ -236,62 +233,62 @@ HZ_API void
 hz_set_custom_allocator(hz_allocator_t a);
 
 /*
-    Struct: hz_sequence_t
-        A sequence of text, can be loaded with utf8 or unicode data.
+    Struct: hz_segment_t
+        A segment of text, can be loaded with utf8 or unicode data.
         Holds direction, script, language,
         as well as other data relevant for the shaping process.
 */
-typedef struct hz_sequence_t hz_sequence_t;
+typedef struct hz_segment_t hz_segment_t;
 
 
 /*
-    Function: hz_sequence_create
-        Creates a new sequence.
+    Function: hz_segment_create
+        Creates a new segment.
 */
-HZ_API hz_sequence_t *
-hz_sequence_create(void);
+HZ_API hz_segment_t *
+hz_segment_create(void);
 
 /*
-    Function: hz_sequence_destroy
-        Destroys a sequence.
+    Function: hz_segment_destroy
+        Destroys a segment.
 
     Arguments:
-        sequence - The sequence.
+        seg - The segment.
 */
 HZ_API void
-hz_sequence_destroy(hz_sequence_t *sequence);
+hz_segment_destroy(hz_segment_t *seg);
 
 HZ_API void
-hz_sequence_set_script(hz_sequence_t *sequence, hz_script_t script);
+hz_segment_set_script(hz_segment_t *seg, hz_script_t script);
 
 HZ_API void
-hz_sequence_set_language(hz_sequence_t *sequence, hz_language_t language);
+hz_segment_set_language(hz_segment_t *seg, hz_language_t language);
 
 HZ_API void
-hz_sequence_set_direction(hz_sequence_t *sequence, hz_direction_t direction);
+hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction);
 
 /*
-    Function: hz_sequence_load_utf8
-        Loads sequence with UTF-8 encoded string.
+    Function: hz_segment_load_utf8
+        Loads segment with UTF-8 encoded string.
 
     Arguments:
-        sequence - The sequence.
+        seg - The segment.
         str - UTF-8 encoded string.
 */
 HZ_API void
-hz_sequence_load_utf8(hz_sequence_t *sequence, const char *str);
+hz_segment_load_utf8(hz_segment_t *seg, const char *str);
 
 /*
-    Function: hz_sequence_load_unicode
-        Loads sequence with a Unicode string.
+    Function: hz_segment_load_unicode
+        Loads a segment with a Unicode string.
 
     Arguments:
-        sequence - The sequence.
+        seg - The segment.
         str - Unicode string.
         len - Length of the string.
 */
 HZ_API void
-hz_sequence_load_unicode(hz_sequence_t *sequence, const hz_unicode_t *str, size_t len);
+hz_segment_load_unicode(hz_segment_t *seg, const hz_unicode_t *str, size_t len);
 
 /*
     Struct: hz_shaped_glyph_t
@@ -311,9 +308,9 @@ typedef struct hz_shaped_glyph_t {
 } hz_shaped_glyph_t;
 
 HZ_API void
-hz_sequence_get_shaped_glyphs(hz_sequence_t *sequence,
-                              hz_shaped_glyph_t *glyphs,
-                              size_t *num_glyphs);
+hz_segment_get_shaped_glyphs(hz_segment_t *seg,
+                             hz_shaped_glyph_t *glyphs,
+                             size_t *num_glyphs);
 
 #define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')
 #define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')
@@ -490,18 +487,18 @@ hz_stbtt_font_create(stbtt_fontinfo *font);
 
 /*
     Function: hz_shape
-        Shapes a text sequence to positioned glyphs. If features is *NULL*,
-        then default features are loaded for the sequence's script.
+        Shapes a text seg to positioned glyphs. If features is *NULL*,
+        then default features are loaded for the seg's script.
 
     Arguments:
         font - Pointer to the font.
-        sequence - Pointer to sequence with loaded text.
+        seg - Pointer to seg with loaded text.
         features - Array of features to apply.
         num_features - Number of features.
 */
 HZ_API void
 hz_shape(hz_font_t *font,
-         hz_sequence_t *sequence,
+         hz_segment_t *seg,
          const hz_feature_t *features,
          unsigned int num_features);
 

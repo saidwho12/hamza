@@ -33,3 +33,8 @@ find_package(Freetype 2.6 REQUIRED)
 
 target_link_libraries(hamza PUBLIC ${FREETYPE_LIBRARIES} m)
 target_include_directories(hamza PUBLIC ${FREETYPE_INCLUDE_DIRS})
+
+add_executable(utf_decoder_test ./tests/utf_decoder_test.c)
+#target_compile_options(utf_decoder_test PRIVATE "-msse4.1" "-O0" "-g" "-Og")
+target_compile_options(utf_decoder_test PRIVATE "-msse4.1" "-march=native" "-ftree-slp-vectorize" "-fprofile-arcs" "-O3" "-Ofast")
+target_link_libraries(utf_decoder_test PRIVATE gcov m)

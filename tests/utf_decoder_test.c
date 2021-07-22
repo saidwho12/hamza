@@ -248,7 +248,7 @@ static inline int BIGENDIAN(void)
     return (int) (((char *)&x)[0]);
 }
 
-static const int8_t prefix_to_length_table[32] = {
+static const int8_t utf8_prefix_to_length_table[32] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3
 };
 
@@ -306,7 +306,7 @@ loadi8_v128(int8_t x)
 }
 
 /* 256 * 16 = 4096 */
-static const vector128 ibm_pattern_lut_128[256] = {
+static const int8_t utf8_pattern1_table_m128[256][16] = {
 {0,-1,-1,-1,1,-1,-1,-1,2,-1,-1,-1,3,-1,-1,-1},
 {1,0,-1,-1,2,-1,-1,-1,3,-1,-1,-1,4,-1,-1,-1},
 {2,1,0,-1,3,-1,-1,-1,4,-1,-1,-1,5,-1,-1,-1},
@@ -569,12 +569,41 @@ static const vector128 ibm_mask_lut_128[256] = {
 
 };
 
-#define UTF_CHUNKSIZE 8 * KIB
-#define SUPPORT_SIX_BYTE_UTF8 0
+#include <math.h>
+
+#define UTF_EOS (-1)
+#define UTF_OK 1
+#if defined(__GNUC__)
+#define MIN(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x < __y ? __x : __y; })
+#define MAX(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x > __y ? __x : __y; })
+#else
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+#define UTF_CACHE_LINE_SIZE 896
+#define UTF_TINY_CHUNK_SIZE (1 * KIB)
+#define UTF_SMALL_CHUNK_SIZE (4 * KIB)
+#define UTF_MEDIUM_CHUNK_SIZE (16 * KIB)
+#define UTF_LARGE_CHUNK_SIZE (64 * KIB)
 
 typedef enum utf_decoder_flags_t {
-    UTF_BOUNDS_CHECK = 0x00000001
+    UTF_BOUNDS_CHECK = 0x00000001,
+    UTF_ALIGN_CHUNK_BLOCKS = 0x00000002,
+    UTF_END_AT_NULL = 0x00000004
 } utf_decoder_flags_t;
+
+typedef struct utf8_range_t {
+    char8_t *start;
+    size_t size;
+} utf8_range_t;
 
 /*
 
@@ -590,191 +619,113 @@ typedef struct utf_chunk_decoder_t {
     uintptr_t ptr;
     size_t size;
     
-    /* loaded slices into the chunk */
-    size_t groups_in;
+    /* loaded blocks into the chunk */
+    size_t nwritten;
 
     /* see utf_decoder_flags_t */
     unsigned int flags;
 
-    /* keys for indexing into lookup tables (bit-packed lengths) */
-    uint8_t lutids[UTF_CHUNKSIZE<<2];
-    uintptr_t chunkptrs[UTF_CHUNKSIZE<<2]; /* pointers to start of groups cached for speed */
-
-    uint8_t chunkin[UTF_CHUNKSIZE];
-    uint8_t chunkout[UTF_CHUNKSIZE];
+    /* stored in groups of 4-characters which are 16-byte aligned */
+    size_t chunksize;
+    uint8_t *chunk;
 
 } utf_chunk_decoder_t;
 
 utf_chunk_decoder_t *
-utf_chunk_decoder_create(void)
+utf_chunk_decoder_create(size_t chunksize)
 {
     utf_chunk_decoder_t *state = malloc(sizeof(*state));
     state->data = NULL;
     state->ptr = 0;
     state->size = 0;
-    state->groups_in = 0;
+    state->nwritten = 0;
     state->flags = UTF_BOUNDS_CHECK;
-    memset(state->chunkin, 0, UTF_CHUNKSIZE);
-    memset(state->chunkout, 0, UTF_CHUNKSIZE);
+    state->chunksize = chunksize;
+    state->chunk = _mm_malloc(chunksize, 16);
+    memset(state->chunk, 0, chunksize);
     return state;
 }
-
-// void
-// utf_chunk_decoder_set_chars_per_slice(utf_chunk_decoder_t *state, unsigned int n)
-// {
-//     state->chars_per_group = n;
-// }
 
 void
 utf_chunk_decoder_destroy(utf_chunk_decoder_t *state)
 {
+    _mm_free(state->chunk);
     free(state);
 }
 
-static int
-utf_chunk_decoder_load_next_chunk(utf_chunk_decoder_t *state)
+/* Decodes UTF-8 (ISO/CEI 10646) data in blocks of 4 characters using lookup tables */
+__attribute__((target("sse4.1"))) int
+decode_utf8_to_utf32_aligned_sse4(utf_chunk_decoder_t *state)
 {
     uintptr_t chunkptr;
 
     /* early quit if decoder has no text or ptr is at the end of the data */
-    if (state->data == NULL && state->size == 0 || state->ptr >= state->size)
-        return 0;
+    if (unlikely(state->ptr >= state->size))
+        return UTF_EOS;
 
-#if 1
-    state->groups_in = 0;
-#else
-    /* memset previous chunk to zero, in the case where there remains
-     * data from a previous iteration
-     */
-    if (state->groups_in > 0) {
-        memset(state->chunkin, 0, UTF_CHUNKSIZE);
-        state->groups_in = 0;
-    }
-#endif
+    state->nwritten = 0;
 
-    chunkptr = 0;
-    while (chunkptr + 16 < UTF_CHUNKSIZE) {
-        size_t groupsize;
-        int8_t i;
-        uint8_t lutid = 0;
-        uintptr_t currpos = state->ptr;
+    #pragma clang loop vectorize(enable) unroll(enable)
+    #pragma GCC ivdep
+    for (chunkptr = 0; chunkptr < state->chunksize; chunkptr += 16) {
+        unsigned int charidx;
+        uint8_t tablekey, len; /* accumulated lengths */
+        size_t bytecount;
 
-        for (i = 0; i < 4; ++i) {
-            int8_t len;
+        tablekey = 0;
+        bytecount = 0;
+
+        #pragma GCC unroll 4
+        for (charidx = 0; charidx < 4; ++charidx) {
             char8_t byte;
 
-            if ((state->flags & UTF_BOUNDS_CHECK) && (state->ptr + currpos) >= state->size)
-                return 0; /* can't continue reading or copying */
+            /* would overflow if we continue reading, break */
+            if (state->flags & UTF_BOUNDS_CHECK
+            && unlikely(state->ptr + bytecount >= state->size))
+                break;
 
-            byte = state->data[currpos];
+            byte = state->data[state->ptr + bytecount];
+            bytecount ++;
 
-            len = prefix_to_length_table[byte >> 3];
-            currpos += len + 1;
-            lutid = (lutid << 2) | len;
+            /* starting byte is null, break */
+            if (state->flags & UTF_END_AT_NULL && unlikely(!byte))
+                break;
+
+            len = utf8_prefix_to_length_table[byte >> 3];
+            bytecount += len;
+            tablekey = (tablekey << 2) | len;
         }
 
-        /* store (cache) accumulated lengths for decoding step */
-        state->lutids[state->groups_in] = lutid;
-        state->chunkptrs[state->groups_in] = chunkptr;
+        /* bitshift what's left into the packed lengths */
+        tablekey <<= ((~charidx + 1) & 0x3) << 1;
 
-        /* memcpy another group */
-        groupsize = (size_t)((intptr_t)currpos - (intptr_t)state->ptr);
+        if (likely(charidx == 4 && bytecount > 0)) {
+            uint8_t vtmp[16];
+            __m128i v, p1, p2, m1, m2;
+            memcpy(vtmp, state->data + state->ptr, MIN(bytecount, 16));
 
-        memcpy(state->chunkin + chunkptr, state->data + state->ptr, groupsize);
-        chunkptr += groupsize;
-        state->ptr = currpos;
+            v = _mm_loadu_si128((__m128i *) vtmp);
+            p1 = _mm_loadu_si128((__m128i *) (utf8_pattern1_table_m128 + tablekey));
 
-        state->groups_in ++;
+            v = _mm_shuffle_epi8(v, p1);
+
+            _mm_storeu_si128((__m128i *) (state->chunk + (state->nwritten << 2)), v);
+            state->ptr += bytecount;
+            state->nwritten += charidx;
+        } else {
+            return UTF_EOS;
+        }
     }
 
-    return 1;
+    return UTF_OK;
 }
 
-/* decodes 4 characters */
-static __m128i
-decode_utf8_to_utf32_ssse3(const vector128 data,
-    const vector128 patternptr)
-{
-    register __m128i v, mask, pattern;
-    v = _mm_load_si128((__m128i const *)&data);
-    pattern = _mm_load_si128((__m128i const *)&patternptr);
-    v = _mm_shuffle_epi8(v, pattern);
-    return v;
-}
 
-static int
-decode_utf8_chunk_to_utf32(utf_chunk_decoder_t *state)
-{
-    unsigned int i, j;
-    for (i = 0; i < state->groups_in; ++i) {
-        uint8_t lutid = state->lutids[i];
-        uintptr_t chunkptr = state->chunkptrs[i];
-        decode_utf8_to_utf32_ssse3(*(vector128 *)(state->chunkin + chunkptr),
-        ibm_pattern_lut_128[lutid]);
-
-        // for (j = 0; j < 4; ++j) {
-        //     printf("U+%0X, ", v._u32[j]);
-        // }
-        // printf("\n");
-    }
-}
 
 void
-decode_utf8_to_ucs2()
+decode_utf8_to_ucs2_aligned_sse4()
 {}
 
-/*
- * Reads in groups of 4 codepoints, or 16 bytes of original UTF-8 data (which can overflow)
- */
-void
-decode_4_chars_utf8_to_utf32(utf_chunk_decoder_t *decoder)
-{
-
-}
-
-
-/*
-    ((((((((0*3+3)*3+3)*3+3)*3+3)*3+3)*3+3)*3+3)*3+3)
-    9840
-    ((((0*3+3)*3+3)*3+3)*3+3)
-    120
-*/
-
-/* Accept only 4-byte UTF-8 (21-bits),
- * decodes in chunks of 4 unicode codepoints (in a vector128).
- * https://researcher.watson.ibm.com/researcher/files/jp-INOUEHRS/IPSJPRO2008_SIMDdecoding.pdf
- */
-static vector128
-decode_utf8_ibm_emulate_sse1(utf_chunk_decoder_t *state)
-{
-    /*
-        mask is the data mask for the loaded lengths,
-        pattern is the permutation pattern 
-    */
-    register vector128 vin,vout;
-    register vector128 mask,pattern;
-    
-    unsigned int i;
-    uintptr_t pos; /* currpos from last offset */
-    uint16_t lenreg; /* gathered prefix, accumulated lengths (interleaved) */
-    uint8_t prefix, len;
-
-    for (lenreg = 0, pos = 0, i = 0; i < 4; ++i) {
-        prefix = state->data[state->ptr + pos] >> 3;
-        len = prefix_to_length_table[prefix];
-        lenreg = (lenreg<<2) | len;
-        pos += len+1;
-    }
-
-    pattern = ibm_pattern_lut_128[lenreg];
-    mask = ibm_mask_lut_128[lenreg];
-    
-    vin = load_v128(state->data + state->ptr);
-    vin = shuffle_v128(vin, pattern);
-    vout = and_v128(vin, mask);
-
-    return vout;
-}
 
 static void
 generate_ibm_pattern_lut_128(void)
@@ -824,7 +775,7 @@ generate_ibm_pattern_lut_128(void)
 }
 
 static void
-generate_ibm_mask_lut_128(void)
+generate_sse4_total_length_table(void)
 {
 
 }
@@ -858,12 +809,11 @@ generate_length_table(void)
 
 int main(int argc, char *argv[])
 {
-
     char8_t *data;
     size_t len;
     FILE *infile;
-    // infile = fopen("./UTF-8_sequence_separated/utf8_sequence_0-0x10ffff_assigned_printable.txt", "rb");
-    infile = fopen("./utf-8-test-files/islam-wikipedia-arabic.html", "rb");
+     infile = fopen("./UTF-8_sequence_separated/utf8_sequence_0-0x10ffff_assigned_printable.txt", "rb");
+//    infile = fopen("./utf-8-test-files/arabic-wiki.html", "rb");
 
     if (infile == NULL) {
         fprintf(stderr, "Failed to load input file.\n");
@@ -878,34 +828,51 @@ int main(int argc, char *argv[])
     fread(data, 1, len, infile);
     data[len] = '\0';
 
-    bench_decode_chris_venter_scalar(data, len+1, 20);
+//    bench_decode_chris_venter_scalar(data, len+1, 20);
 
-    utf_chunk_decoder_t *state = utf_chunk_decoder_create();
+    utf_chunk_decoder_t *state = utf_chunk_decoder_create(UTF_SMALL_CHUNK_SIZE);
     state->data = data;
     state->size = len+1;
 
-    for (int i = 0; i < 20; ++i)
     {
-        double t1, t2, delta;
-        state->ptr = 0;
+        int i,j,k;
+//        int i;
+        for (i = 0; i < 50; ++i)
+        {
+            double t1, t2, delta;
+            int readchunks;
 
-        t1 = get_time();
-        int readchunks = 0;
-        
-        while (utf_chunk_decoder_load_next_chunk(state)) {
-            decode_utf8_chunk_to_utf32(state);
-            // printf("CHUNK: \n\n%s\n\n", state->chunkin);
-            readchunks++;
+//            size_t ncp;
+//            unicode_t *cpret;
+
+            state->ptr = 0;
+            t1 = get_time();
+
+//            ncp = 0;
+//            cpret = NULL;
+
+            readchunks = 0;
+            while (decode_utf8_to_utf32_aligned_sse4(state) != UTF_EOS) {
+//                uintptr_t currpos = (uintptr_t)ncp;
+//                ncp += state->groupcount * 4;
+//                cpret = realloc(cpret, ncp * sizeof(unicode_t));
+//                memcpy(cpret + currpos, state->chunk, (state->groupcount * 4) * sizeof(unicode_t));
+                readchunks++;
+            }
+
+            t2 = get_time();
+            delta = t2-t1;
+
+            double decoderate = (double)(len+1) / delta;
+
+            printf("sample %d: decoded %.2f %s (%d chunks of %lu bytes) of UTF-8 in %.2f %s (%.2f %s / s)\n",
+                   i+1, PRINTMEM(len+1), readchunks, state->chunksize, PRINTTIME(delta), PRINTMEM(decoderate));
         }
-
-        t2 = get_time();
-        delta = t2-t1;
-        printf("sample %d: decoded %.2f %s (%d chunks of %d bytes) of UTF-8 in %.2f %s \n",
-        i, PRINTMEM(len+1), readchunks, UTF_CHUNKSIZE, PRINTTIME(delta));
     }
+
     free(data);
 
-    // generate_ibm_pattern_lut_128();
+//     generate_ibm_pattern_lut_128();
 
 
     return 0;

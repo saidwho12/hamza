@@ -7,6 +7,28 @@
 
 #define HZ_BOOLSTR(x) ((x)?"true":"false")
 #define HZ_BIT(x) (1<<(x))
+#define UTF_EOS (-1)
+#define UTF_OK 1
+#if defined(__GNUC__)
+#define MIN(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x < __y ? __x : __y; })
+#define MAX(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x > __y ? __x : __y; })
+#else
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+#define UTF_CACHE_LINE_SIZE 896
+#define UTF_TINY_CHUNK_SIZE (1 * KIB)
+#define UTF_SMALL_CHUNK_SIZE (4 * KIB)
+#define UTF_MEDIUM_CHUNK_SIZE (16 * KIB)
+#define UTF_LARGE_CHUNK_SIZE (64 * KIB)
 
 #ifdef HZ_USE_TINYCTHREAD
 #include "tinycthread.c"

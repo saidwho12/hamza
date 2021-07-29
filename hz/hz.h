@@ -288,7 +288,7 @@ hz_segment_load_utf8(hz_segment_t *seg, const char *str);
         len - Length of the string.
 */
 HZ_API void
-hz_segment_load_unicode(hz_segment_t *seg, const hz_unicode_t *str, size_t len);
+hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
 
 /*
     Struct: hz_shaped_glyph_t

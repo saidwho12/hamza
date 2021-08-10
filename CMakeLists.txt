@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
 
 project(Hamza VERSION 0.0.1 LANGUAGES C)
 
@@ -9,11 +9,10 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
-set(CMAKE_C_STANDARD 90)
-
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c89 -m64 -msse4.1 -O0 -g -g3 -ggdb -pedantic")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=c89 -m64 -msse4.1 -ftree-slp-vectorize -fprofile-arcs -O3 -Ofast")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=gnu17 -m64 -march=native -O0 -g -g3 -ggdb -pedantic")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=gnu17 -m64 -march=native -ftree-slp-vectorize -fprofile-arcs -O3 -Ofast")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu17 -m64 -msse4.1 -O0 -g -g3 -ggdb -pedantic")
 endif ()
 
 set(HAMZA_SOURCES hz/hz.h hz/hz.c hz/hz_defs.h)
@@ -26,8 +25,8 @@ else ()
 endif ()
 target_include_directories(hamza PUBLIC ./)
 
-set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING} SOVERSION ${HAMZA_VERSION_MAJOR})
-
+set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
+        SOVERSION ${HAMZA_VERSION_MAJOR})
 
 find_package(Freetype 2.6 REQUIRED)
 

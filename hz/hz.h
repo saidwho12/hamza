@@ -80,12 +80,6 @@
     #define HZ_COMPILER HZ_COMPILER_CLANG
 #endif
 
-#ifdef __cplusplus
-    #define HZ_LINKAGE extern "C"
-#else
-    #define HZ_LINKAGE
-#endif
-
 #if HZ_COMPILER & HZ_COMPILER_VC
     #define HZ_FORCEINLINE __forceinline
     #define HZ_FASTCALL __fastcall
@@ -103,9 +97,9 @@
 #define HZ_INLINE inline
 
 #ifdef HZ_BUILD_SHARED
-    #define HZ_API HZ_LINKAGE HZ_EXPORT
+#define HZ_API HZ_EXPORT
 #else
-#define HZ_API HZ_LINKAGE
+#define HZ_API
 #endif
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
@@ -143,6 +137,11 @@ typedef uint32_t hz_tag_t;
     #endif
 #endif
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef uint16_t hz_index_t;
 typedef int32_t hz_fixed32_t, hz_position_t, hz_fixed26dot6_t;
 
@@ -175,7 +174,8 @@ typedef enum hz_error_t {
     HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT = 0x00000008,
     HZ_ERROR_INVALID_PARAM = 0x00000010,
     HZ_ERROR_INVALID_FORMAT = 0x00000020,
-    HZ_ERROR_TABLE_DOES_NOT_EXIST = 0x00000040
+    HZ_ERROR_TABLE_DOES_NOT_EXIST = 0x00000040,
+    HZ_ERROR_UNEXPECTED_VALUE = 0x00000080
 } hz_error_t;
 
 typedef enum hz_glyph_class_t {
@@ -298,7 +298,7 @@ hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
 typedef struct hz_shaped_glyph_t {
     hz_unicode_t codepoint;
     hz_index_t gid;
-    
+
     hz_position_t x_offset;
     hz_position_t y_offset;
     hz_position_t x_advance;
@@ -502,5 +502,8 @@ hz_shape(hz_font_t *font,
          const hz_feature_t *features,
          unsigned int num_features);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* HZ_H */

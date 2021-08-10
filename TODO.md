@@ -11,3 +11,7 @@
 - Write SSE4, AVX-2 and AVX-512 optimizations for UTF-8 decoding
 and codepoint mapping.
 - Optimize hash table (hz_map_t).
+- Write reliable fast endianness check function, possibly look into compile time endianness checks.
+- Write fast unpack array functions which take into account byte swapping if necessary (SIMD).
+- Look at moving to newer C standard at the expense of compatiblity (C11, C2x) for features such as designated initializers,
+line comments, threads, etc...

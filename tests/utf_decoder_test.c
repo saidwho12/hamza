@@ -1243,19 +1243,20 @@ decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
             block = _mm_shuffle_epi8(block, pattern1);
 
             /* mask off control bits by anding with the mask */
-            // block = _mm_and_si128(block, mask1);
+            block = _mm_and_si128(block, mask1);
 
-            // block_left = _mm_slli_si128(block, 1);
-            // block_low = _mm_blendv_epi8(block,
-            //             _mm_or_si128(block, _mm_and_si128(
-            //                 _mm_slli_epi32(block_left, 6), _mm_set1_epi8(0xc0)) /* 0xc0 = 0b11000000 */
-            //             ),
-            //             _mm_cmpeq_epi8(counts, _mm_set1_epi8(1)) );
+            block_left = _mm_slli_si128(block, 1);
+            
+            block_low = _mm_blendv_epi8(block,
+                        _mm_or_si128(block, _mm_and_si128(
+                            _mm_slli_epi32(block_left, 6), _mm_set1_epi8(0xc0)) /* 0xc0 = 0b11000000 */
+                        ),
+                        _mm_cmpeq_epi8(counts, _mm_set1_epi8(1)) );
 
-            // block_high = _mm_and_si128(block ,
-            //                            _mm_cmpeq_epi8(counts, _mm_set1_epi8(2)));
+            block_high = _mm_and_si128(block ,
+                                       _mm_cmpeq_epi8(counts, _mm_set1_epi8(2)));
 
-            // block_high = _mm_srli_epi32(block_high, 2);
+            block_high = _mm_srli_epi32(block_high, 2);
 
             // block = block_left;
             _mm_storeu_si128((__m128i *)(state->chunk + chunkptr), block);

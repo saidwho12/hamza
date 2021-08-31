@@ -1,0 +1,5 @@
+"C:\Program Files\JetBrains\CLion 2021.2\bin\cmake\win\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_BUILD_TYPE=Debug -DHAMZA_BUILD_SHARED=ON -DCMAKE_DEPENDS_USE_COMPILER=FALSE -G "CodeBlocks - NMake Makefiles" C:\Users\Said\CLionProjects\hamza
+-- Linking with Win32 FreeType
+-- Configuring done
+-- Generating done
+-- Build files have been written to: C:/Users/Said/CLionProjects/hamza/cmake-build-debug

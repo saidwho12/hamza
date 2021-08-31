@@ -9,31 +9,49 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=gnu17 -m64 -march=native -O0 -g -g3 -ggdb -pedantic")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=gnu17 -m64 -march=native -ftree-slp-vectorize -fprofile-arcs -O3 -Ofast")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu17 -m64 -msse4.1 -O0 -g -g3 -ggdb -pedantic")
-endif ()
+elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /arch:AVX2")
+endif()
 
 set(HAMZA_SOURCES hz/hz.h hz/hz.c hz/hz_defs.h)
 
-if (HAMZA_BUILD_SHARED)
+if(HAMZA_BUILD_SHARED)
     add_compile_definitions("HZ_BUILD_SHARED")
     add_library(hamza SHARED ${HAMZA_SOURCES})
-else ()
+else()
     add_library(hamza STATIC ${HAMZA_SOURCES})
-endif ()
-target_include_directories(hamza PUBLIC ./)
+endif()
 
 set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
         SOVERSION ${HAMZA_VERSION_MAJOR})
 
-find_package(Freetype 2.6 REQUIRED)
+# If on windows, use prebuilt VS Express 2017 binaries for FreeType,
+# taken from https://github.com/ubawurinna/freetype-windows-binaries.
+if(MSVC AND (MSVC_VERSION GREATER_EQUAL 1900))
+    target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR}
+            "${CMAKE_CURRENT_LIST_DIR}/FreeType 2.11.0/include")
 
-target_link_libraries(hamza PUBLIC ${FREETYPE_LIBRARIES} m)
-target_include_directories(hamza PUBLIC ${FREETYPE_INCLUDE_DIRS})
+    if(("${CMAKE_GENERATOR_PLATFORM}" STREQUAL "Win64") OR ("${CMAKE_SIZEOF_VOID_P}" STREQUAL "8"))
+        message(STATUS "Linking with Win64 FreeType")
+        target_link_libraries(hamza PUBLIC "${CMAKE_CURRENT_LIST_DIR}/FreeType 2.11.0/release static/vs2015-2019/win64/freetype.lib" msvcrt ucrt)
+    else()
+        message(STATUS "Linking with Win32 FreeType")
+        target_link_libraries(hamza PUBLIC "${CMAKE_CURRENT_LIST_DIR}/FreeType 2.11.0/release static/vs2015-2019/win32/freetype.lib" msvcrt ucrt)
+    endif()
+endif()
 
-add_executable(utf_decoder_test ./tests/utf_decoder_test.c)
-target_compile_options(utf_decoder_test PRIVATE "-msse4.1" "-O0" "-g")
-#target_compile_options(utf_decoder_test PRIVATE "-msse4.1" "-march=native" "-ftree-slp-vectorize" "-fprofile-arcs" "-O3" "-Ofast")
-target_link_libraries(utf_decoder_test PRIVATE gcov m)
+if(UNIX)
+    target_include_directories(hamza PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+    find_package(Freetype 2.6 REQUIRED)
+    if(FREETYPE_FOUND)
+        set(HAMZA_INCLUDE_DIRS "${HAMZA_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS}")
+        target_link_libraries(hamza PUBLIC ${FREETYPE_LIBRARIES} m)
+    endif()
+endif()
+
+set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
+        SOVERSION ${HAMZA_VERSION_MAJOR})

@@ -49,7 +49,31 @@
 #ifndef HZ_H
 #define HZ_H
 
+#define HZ_ENABLE 1
+#define HZ_DISABLE 0
+
+#define HZ_STATIC static
+
+#define HZ_COMPILER_GCC 0x00000001ul
+#define HZ_COMPILER_CLANG 0x00000002ul
+#define HZ_COMPILER_TURBOC 0x00000004ul
+#define HZ_COMPILER_VC 0x00000008ul
+#define HZ_COMPILER_INTEL 0x00000010ul
+
+#if defined(_MSC_VER)
+#   define HZ_COMPILER HZ_COMPILER_VC
+#elif defined(__GNUC__) || defined(__GCC__)
+#   define HZ_COMPILER HZ_COMPILER_GCC
+#elif defined(__clang__)
+#   define HZ_COMPILER HZ_COMPILER_CLANG
+#endif
+
+#if HZ_COMPILER & HZ_COMPILER_VC
+#pragma warning(disable:4068) // Disable #pragma related warnings
+#define _CRT_SECURE_NO_WARNINGS
+#endif
 #include <stdio.h>
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
@@ -60,44 +84,82 @@
 #include FT_GLYPH_H
 #include FT_TRUETYPE_TABLES_H
 
+// NOTE: SSE4A is AMD-only
+#define HZ_ARCH_X86_BIT     0x00010000ul
+#define HZ_ARCH_ARM_BIT     0x00020000ul
+#define HZ_ARCH_POWERPC_BIT 0x00040000ul
+#define HZ_ARCH_MIPS_BIT    0x00080000ul
+#define HZ_ARCH_RISCV_BIT   0x00100000ul
+#define HZ_ARCH_SSE_BIT     0x00000001ul
+#define HZ_ARCH_SSE2_BIT    0x00000002ul
+#define HZ_ARCH_SSE3_BIT    0x00000004ul
+#define HZ_ARCH_SSSE3_BIT   0x00000008ul
+#define HZ_ARCH_SSE41_BIT   0x00000010ul
+#define HZ_ARCH_SSE42_BIT   0x00000020ul
+#define HZ_ARCH_SSE4A_BIT   0x00000040ul
+#define HZ_ARCH_AVX_BIT     0x00000080ul
+#define HZ_ARCH_AVX2_BIT    0x00000100ul
+#define HZ_ARCH_AES_BIT     0x00000200ul
 
-#define HZ_ENABLE 1
-#define HZ_DISABLE 0
+#define HZ_ARCH_UNKNOWN 0
+#define HZ_ARCH_X86     (HZ_ARCH_X86_BIT)
+#define HZ_ARCH_SSE     (HZ_ARCH_X86 | HZ_ARCH_SSE_BIT)
+#define HZ_ARCH_SSE2    (HZ_ARCH_SSE | HZ_ARCH_SSE2_BIT)
+#define HZ_ARCH_SSE3    (HZ_ARCH_SSE2 | HZ_ARCH_SSE3_BIT)
+#define HZ_ARCH_SSSE3   (HZ_ARCH_SSE3 | HZ_ARCH_SSSE3_BIT)
+#define HZ_ARCH_SSE41   (HZ_ARCH_SSSE3 | HZ_ARCH_SSE41_BIT)
+#define HZ_ARCH_SSE42   (HZ_ARCH_SSE41 | HZ_ARCH_SSE42_BIT)
+#define HZ_ARCH_SSE4A   (HZ_ARCH_SSE42 | HZ_ARCH_SSE4A_BIT)
+#define HZ_ARCH_AVX     (HZ_ARCH_SSE42 | HZ_ARCH_AVX_BIT)
+#define HZ_ARCH_AVX2    (HZ_ARCH_SSE42 | HZ_ARCH_AVX2_BIT)
+#define HZ_ARCH_AES     (HZ_ARCH_AES_BIT)
 
-#define HZ_STATIC static
-
-#define HZ_COMPILER_GCC 0x00000001l
-#define HZ_COMPILER_CLANG 0x00000002l
-#define HZ_COMPILER_TURBOC 0x00000004l
-#define HZ_COMPILER_VC 0x00000008l
-#define HZ_COMPILER_INTEL 0x00000010l
-
-#if defined(_MSC_VER)
-    #define HZ_COMPILER HZ_COMPILER_VC
-#elif defined(__GNUC__) || defined(__GCC__)
-    #define HZ_COMPILER HZ_COMPILER_GCC
-#elif defined(__clang__)
-    #define HZ_COMPILER HZ_COMPILER_CLANG
+#if defined(__AVX2__)
+#   define HZ_ARCH HZ_ARCH_AVX2
+#elif defined(__AVX__)
+#   define HZ_ARCH HZ_ARCH_AVX
+#elif defined(__SSE4_2__)
+#   define HZ_ARCH HZ_ARCH_SSE42
+#elif defined(__SSE4_1__)
+#   define HZ_ARCH HZ_ARCH_SSE41
+#elif defined(__SSSE3__)
+#   define HZ_ARCH HZ_ARCH_SSSE3
+#elif defined(__SSE2__) || defined(__x86_64__) || defined(_M_X64) || defined(_M_IX86_FP)
+#   define HZ_ARCH HZ_ARCH_SSE2
+#elif defined(__i386__)
+#   define HZ_ARCH (HZ_ARCH_X86)
+#elif defined(__ARM_ARCH) && (__ARM_ARCH >= 8)
+#   define HZ_ARCH (HZ_ARCH_ARMV8)
+#elif defined(__ARM_NEON)
+#   define HZ_ARCH (HZ_ARCH_ARM | HZ_ARCH_NEON)
+#elifd defined(__arm__) || defined(_M_ARM)
+#   define HZ_ARCH (HZ_ARCH_ARM)
+#elif defined(__mips__)
+#   define HZ_ARCH (HZ_ARCH_MIPS)
+#elif defined(__powerpc__) || defined(_M_PPC)
+#   define HZ_ARCH (HZ_ARCH_PPC)
+#else
+#   define HZ_ARCH (HZ_ARCH_UNKNOWN)
 #endif
 
 #if HZ_COMPILER & HZ_COMPILER_VC
     #define HZ_FORCEINLINE __forceinline
     #define HZ_FASTCALL __fastcall
-    #define HZ_EXPORT __declspec(dllexport)
+    #define HZ_DLLEXPORT __declspec(dllexport)
 #elif HZ_COMPILER & HZ_COMPILER_GCC
     #define HZ_FORCEINLINE __attribute__((always_inline))
     #define HZ_FASTCALL __attribute__((fastcall))
-    #define HZ_EXPORT __attribute__((dllexport))
+    #define HZ_DLLEXPORT __attribute__((dllexport))
 #else
     #define HZ_FORCEINLINE inline
     #define HZ_FASTCALL
-    #define HZ_EXPORT
+    #define HZ_DLLEXPORT
 #endif
 
 #define HZ_INLINE inline
 
-#ifdef HZ_BUILD_SHARED
-#define HZ_API HZ_EXPORT
+#if defined(HZ_BUILD_SHARED) && defined(_WIN32)
+#define HZ_API HZ_DLLEXPORT
 #else
 #define HZ_API
 #endif
@@ -111,36 +173,19 @@
 
 #define HZ_ENABLE_OVERFLOW_CHECKS
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef unsigned char hz_byte_t;
 typedef int32_t hz_coord_t;
 typedef uint32_t hz_unicode_t;
 typedef uint32_t hz_tag_t;
 
-#ifdef __cplusplus
-    /* C++ */
-    typedef bool hz_bool_t;
-    #define HZ_TRUE true
-    #define HZ_FALSE false
-#elif defined(__STDC__)
-    /* ISO standard C */
-    #if __STDC_VERSION__ < 199901L
-        /* earlier than the 1999 C standard */
-        typedef uint8_t hz_bool_t;
-        #define HZ_TRUE (hz_bool_t)1
-        #define HZ_FALSE (hz_bool_t)0
-    #else
-        /* 1999 C standard and above */
-        #include <stdbool.h>
-        typedef bool hz_bool_t;
-        #define HZ_TRUE true
-        #define HZ_FALSE false
-    #endif
-#endif
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+typedef uint8_t hz_bool_t;
+#define HZ_TRUE (hz_bool_t)1
+#define HZ_FALSE (hz_bool_t)0
 
 typedef uint16_t hz_index_t;
 typedef int32_t hz_fixed32_t, hz_position_t, hz_fixed26dot6_t;

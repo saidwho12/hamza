@@ -15,13 +15,20 @@ It was written primarily for Arabic but supports any [Unicode](https://unicode-t
 - [ ] Justification
 - [x] Freetype interop
 - [ ] stb_truetype.h interop
+- [ ] Run-time SIMD vectorization and architecture adaptation (similar to GCC FMV) using CPUID instruction on Intel.
 
 # Why?
 _Hamza_ was written primarily for the development of a text rendering library, _Hamza_'s goal was to be a pure C OpenType library. I wrote this because I wanted a simpler API for shaping and dealing with caches, atlases, and glyph attributes. I needed the knowledge on OpenType to write an efficient and powerful renderer. This is even more exacerbated especially for a language like Arabic or Chinese with often thousands of glyphs and complex interactions.
 
 # Usage
 
-Make sure to read the [docs](https://emdias1.github.io/hamza/).
+Make sure to read the [docs](https://saidwho13.github.io/hamza/).
+
+# Building
+
+Tested to build and run on the following configurations:
+- Debian 10 Buster 64-bit with GCC 9.2.0
+- Windows 10 Pro 64-bit with VS Community 2019 toolset
 
 # C coding style
 The library is written in a style inspired by Linux Kernel style and the GNU C style.

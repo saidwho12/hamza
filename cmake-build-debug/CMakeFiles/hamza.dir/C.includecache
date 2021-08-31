@@ -1,0 +1,62 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../FreeType 2.11.0/include/freetype/config/ftheader.h
+
+../FreeType 2.11.0/include/ft2build.h
+freetype/config/ftheader.h
+-
+
+C:/Users/Said/CLionProjects/hamza/hz/hz.c
+hz.h
+C:/Users/Said/CLionProjects/hamza/hz/hz.h
+assert.h
+-
+immintrin.h
+-
+immintrin.h
+-
+popcntintrin.h
+-
+nmmintrin.h
+-
+smmintrin.h
+-
+tmmintrin.h
+-
+pmmintrin.h
+-
+emmintrin.h
+-
+wmmintrin.h
+-
+tinycthread.c
+C:/Users/Said/CLionProjects/hamza/hz/tinycthread.c
+tinycthread.h
+C:/Users/Said/CLionProjects/hamza/hz/tinycthread.h
+TracyC.h
+-
+
+C:/Users/Said/CLionProjects/hamza/hz/hz.h
+hz.h
+-
+stdio.h
+-
+stdlib.h
+-
+stdint.h
+-
+math.h
+-
+ft2build.h
+-
+hz_defs.h
+C:/Users/Said/CLionProjects/hamza/hz/hz_defs.h
+
+C:/Users/Said/CLionProjects/hamza/hz/hz_defs.h
+

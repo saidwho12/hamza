@@ -5,6 +5,8 @@
 #include "hz.h"
 #include <assert.h>
 
+#include <x86intrin.h>
+
 #define HZ_BOOLSTR(x) ((x)?"true":"false")
 #define HZ_BIT(x) (1<<(x))
 
@@ -32,39 +34,8 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #endif
 
-#if HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
-#else
-#define likely(x) (x)
-#define unlikely(x) (x)
-#endif
-
-#if HZ_ARCH & HZ_ARCH_AVX2_BIT
-#   include <immintrin.h>
-#elif HZ_ARCH & HZ_ARCH_AVX_BIT
-#   include <immintrin.h>
-#elif HZ_ARCH & HZ_ARCH_SSE42_BIT
-#	if HZ_COMPILER & HZ_COMPILER_CLANG
-#		include <popcntintrin.h>
-#	endif
-#	include <nmmintrin.h>
-#elif HZ_ARCH & HZ_ARCH_SSE41_BIT
-#   include <smmintrin.h>
-#elif HZ_ARCH & HZ_ARCH_SSSE3_BIT
-#   include <tmmintrin.h>
-#elif HZ_ARCH & HZ_ARCH_SSE3_BIT
-#   include <pmmintrin.h>
-#elif HZ_ARCH & HZ_ARCH_SSE2_BIT
-#   include <emmintrin.h>
-#elif HZ_ARCH & HZ_ARCH_NEON_BIT
-// Include ARM NEON intrinsics headers
-#endif
-
-// Fast hashing intrinsics used in hash maps
-#if HZ_ARCH & HZ_ARCH_AES_BIT
-#   include <wmmintrin.h>
-#endif
 
 #define UTF_CACHE_LINE_SIZE 128
 #define UTF_TINY_CHUNK_SIZE (1 * KIB)
@@ -96,6 +67,11 @@ hz_set_custom_allocator(hz_allocator_t a)
 {
     internal_allocator = a;
 }
+
+typedef struct hz_pool_allocator_t {
+
+} hz_pool_allocator_t;
+
 
 HZ_STATIC void *
 hz_malloc(size_t size)
@@ -318,7 +294,7 @@ hz_bump_allocator_release(hz_bump_allocator_t *ma)
     /* No-Op */
 }
 
-void
+HZ_STATIC void
 hz_bump_allocator_reset(hz_bump_allocator_t *ma)
 {
     ma->ptr = 0;
@@ -335,7 +311,7 @@ hz_bump_allocator_reset(hz_bump_allocator_t *ma)
         Unpacks in network-order (big endian).
 */
 typedef struct hz_stream_t {
-    const uint8_t *data;
+    uint8_t *data;
     size_t size;
     uintptr_t ptr;
     uint8_t flags;
@@ -355,7 +331,7 @@ typedef struct hz_stream_t {
         A <hz_stream_t> instance.
 */
 HZ_STATIC hz_stream_t
-hz_stream_create(const uint8_t *data, size_t size)
+hz_stream_create(uint8_t *data, size_t size)
 {
     hz_stream_t bs;
     bs.data = data;
@@ -2656,7 +2632,7 @@ hz_face_line_skip(hz_face_t *face)
     return (float)(face->ascender - face->descender + face->linegap) / 64.0f;
 }
 
-HZ_STATIC hz_blob_t*
+hz_blob_t*
 hz_ft_load_snft_table(FT_Face face, hz_tag_t tag)
 {
     FT_ULong size, ft_tag, length;
@@ -6337,7 +6313,7 @@ void avx256_print_i16(const char *prefix, const __m256i *val)
 
 }
 
-HZ_INLINE __m256i
+HZ_STATIC HZ_INLINE __m256i
 simulate__mm256_i16gather_epi16(short const* base_addr, __m256i vindex, const int scale)
 {
     __m256i vout;
@@ -6355,7 +6331,7 @@ simulate__mm256_i16gather_epi16(short const* base_addr, __m256i vindex, const in
     return vout;
 }
 
-HZ_INLINE HZ_STATIC __m256i
+HZ_STATIC HZ_INLINE __m256i
 _mm256_bswap16(__m256i a)
 {
     return _mm256_or_si256(_mm256_slli_epi16(a, 8), _mm256_srli_epi16(a, 8));
@@ -6373,7 +6349,7 @@ hz_apply_cmap_format4_encoding_unaligned_avx2(const hz_cmap_subtable_format4_t *
                                               const uint32_t indata[],
                                               size_t count)
 {
-    size_t dataptr;
+    uintptr_t dataptr;
     uint16_t segment_count = subtable->seg_count_x2/2;
 
     #if HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS
@@ -6521,8 +6497,12 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_segment_t *seg,
             unpack16a(&subtable, num_segments, st.id_range_offsets);
             st.glyph_id_array = (uint16_t *)(subtable.data + subtable.ptr);
 
-            #if HZ_ARCH & HZ_ARCH_AVX2_BIT
-            hz_apply_cmap_format4_encoding_unaligned_avx2(&st, seg->glyph_indices, seg->codepoints, seg->num_codepoints);
+            #if HZ_USE_SIMD_EXTENSIONS_IF_AVAILABLE
+            if (__builtin_cpu_supports("avx2")) {
+                hz_apply_cmap_format4_encoding_unaligned_avx2(&st, seg->glyph_indices, seg->codepoints, seg->num_codepoints);
+            } else {
+                hz_apply_cmap_format4_encoding(&st, seg);
+            }
             #else
             hz_apply_cmap_format4_encoding(&st, seg);
             #endif
@@ -6788,6 +6768,7 @@ hz_parse_gsub_single_substitution_subtable(hz_stream_t *stream,
 
     return HZ_OK;
 }
+
 
 typedef struct hz_ligature_t {
     uint16_t ligature_glyph;
@@ -7174,7 +7155,7 @@ hz_shape_plan_unload_gsub_table(hz_shape_plan_t *plan)
     }
 }
 
-HZ_STATIC size_t
+HZ_STATIC ssize_t
 hz_segment_next_valid_index(hz_segment_t *seg,
                             size_t index,
                             uint16_t lookup_flag)
@@ -7424,6 +7405,8 @@ hz_next_unignored_rel_indices(hz_segment_t *seg,
     return n;
 }
 
+
+
 HZ_STATIC void
 hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 hz_segment_t *seg,
@@ -7483,7 +7466,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                             hz_segment_node_t *node = &seg->nodes[n];
                             if (!hz_is_node_ignored(node, table->lookup_flag)) {
                                 if (hz_should_apply_replacement(seg, feature, n, table->lookup_flag)
-                                && hz_map_value_exists(subtable->coverage, node->gid)) {
+                                    && hz_map_value_exists(subtable->coverage, node->gid)) {
                                     uint16_t index = hz_map_get_value(subtable->coverage, node->gid);
 
                                     HZ_ASSERT(index < subtable->ligature_set_count);
@@ -7573,6 +7556,14 @@ hz_shape_plan_destroy(hz_shape_plan_t *plan)
     hz_shape_plan_unload_gsub_table(plan);
     hz_free(plan);
 }
+
+/* hz_buffer_t */
+/* hz_sequence_t */
+/* hz_segment_t */
+/* hz_chain_t */
+/* hz_clip_t */
+/* hz_clump_t */
+/* hz_lump_t */
 
 HZ_STATIC void
 hz_segment_clear_shaping_objects(hz_segment_t *seg)
@@ -7927,7 +7918,7 @@ decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
             state->readchars += 16;
             chunkptr += 64;
         } else {
-            //            break;
+//            break;
             unsigned int charidx;
             int8_t length;
             uint8_t bytecount, tablekey;
@@ -7953,7 +7944,7 @@ decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
             block = _mm_and_si128(_mm_shuffle_epi8(block, pattern), data_mask);
 
             // mask for if first byte is zero
-            //            mask1 = _mm_cmpeq_epi8(_mm_and_si128(counts, _mm_set1_epi32(0xff)), _mm_setzero_si128());
+//            mask1 = _mm_cmpeq_epi8(_mm_and_si128(counts, _mm_set1_epi32(0xff)), _mm_setzero_si128());
 
             __m128i b1 = _mm_and_si128(block, _mm_set1_epi32(0xff));
             __m128i b2 = _mm_and_si128(_mm_srli_si128(block, 1), _mm_set1_epi32(0xff));

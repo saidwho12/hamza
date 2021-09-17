@@ -66,6 +66,8 @@
 #   include <wmmintrin.h>
 #endif
 
+#define HZ_IGNORE_ARG(x) (void)(x)
+
 #define UTF_CACHE_LINE_SIZE 128
 #define UTF_TINY_CHUNK_SIZE (1 * KIB)
 #define UTF_SMALL_CHUNK_SIZE (4 * KIB)
@@ -3106,13 +3108,11 @@ typedef struct hz_range_rec_t {
 } hz_range_rec_t;
 
 typedef struct hz_feature_table_t {
-    /* = NULL (reserved for offset to FeatureParams) */
+    // = NULL (reserved for offset to FeatureParams)
     Offset16 feature_params;
-
-    /* Number of LookupList indices for this feature */
+    // Number of LookupList indices for this feature
     uint16_t lookup_index_count;
-
-    /* Array of indices into the LookupList — zero-based (first lookup is LookupListIndex = 0) */
+    // Array of indices into the LookupList — zero-based (first lookup is LookupListIndex = 0)
     uint16_t *lookup_list_indices;
 } hz_feature_table_t;
 
@@ -4224,14 +4224,14 @@ static void
 hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
                                            hz_reverse_chain_single_subst_format1_t *subst)
 {
-    uint8_t             tmpbuf[4096];
+    uint8_t             buffer[4096];
     hz_bump_allocator_t allocator;
-    Offset16       coverage_offset;
-    Offset16       *prefix_coverage_offsets;
-    Offset16       *suffix_coverage_offsets;
+    Offset16            coverage_offset;
+    Offset16            *prefix_coverage_offsets;
+    Offset16            *suffix_coverage_offsets;
     uint16_t            i;
 
-    hz_bump_allocator_init(&allocator, tmpbuf, sizeof tmpbuf);
+    hz_bump_allocator_init(&allocator, buffer, sizeof buffer);
 
     coverage_offset = unpack16(buf);
     subst->coverage = hz_map_create();
@@ -6036,7 +6036,7 @@ typedef enum hz_feature_flag_t {
 
 typedef struct hz_feature_layout_op_t {
     hz_feature_t feature;
-    hz_tag_t layout_op; /* GSUB or GPOS */
+    hz_tag_t layout_op; // 'GSUB' or 'GPOS'
     uint8_t flags;
 } hz_feature_layout_op_t;
 
@@ -6150,7 +6150,7 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
             if (order.script == script) {
                 unsigned int cnt = 0;
 
-                /* count required, on by default and always applied features */
+                // count required, on by default and always applied features
                 for (j=0;j<order.num_ops;++j)
                     if (order.ops[j].flags & inclmask)
                         ++cnt;
@@ -6160,7 +6160,7 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
                     *featuresptr = hz_malloc(cnt * sizeof(hz_feature_t));
                     *countptr = cnt;
 
-                    /* again, go over the list and copy features */
+                    // again, go over the list and copy features
                     for (j=f=0; f<cnt && j<order.num_ops; ++j) {
                         if (order.ops[j].flags & inclmask) {
                             (*featuresptr)[f] = order.ops[j].feature;
@@ -6194,10 +6194,9 @@ hz_language_to_ot_tag(hz_language_t lang)
     return 0;
 }
 
-/*
-    Enum: hz_cmap_platform_t
-        <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids>
-*/
+/*  Enum: hz_cmap_platform_t
+ *      <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids>
+ */
 typedef enum hz_cmap_platform_t  {
     /* Various */
     HZ_CMAP_PLATFORM_UNICODE = 0,
@@ -6212,7 +6211,7 @@ typedef enum hz_cmap_platform_t  {
     /* Platform ID values 240 through 255 are reserved for user-defined platforms.
      * This specification will never assign these values to a registered platform.
      * Platform ID 2 (ISO) was deprecated as of OpenType version v1.3.
-     * */
+     */
 } hz_cmap_platform_t;
 
 typedef enum hz_cmap_subtable_format_t {
@@ -6221,9 +6220,9 @@ typedef enum hz_cmap_subtable_format_t {
 } hz_cmap_subtable_format_t;
 
 typedef struct hz_cmap_encoding_t {
-    uint16_t        platform_id; /* Platform ID. */
-    uint16_t        encoding_id; /* Platform-specific encoding ID. */
-    Offset32        subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
+    uint16_t platform_id; /* Platform ID. */
+    uint16_t encoding_id; /* Platform-specific encoding ID. */
+    Offset32 subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
 } hz_cmap_encoding_t;
 
 static const char *
@@ -6238,18 +6237,17 @@ hz_cmap_platform_to_string(hz_cmap_platform_t platform) {
     }
 }
 
-/*
- * Format 0: Byte encoding table
+/* Format 0: Byte encoding table
  * https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#format-0-byte-encoding-table
- * */
+ */
 typedef struct hz_cmap_subtable_format0_t {
-    uint16_t format; /* Format number is set to 0. */
-    uint16_t length; /* This is the length in bytes of the subtable. */
+    uint16_t format; // Format number is set to 0.
+    uint16_t length; // This is the length in bytes of the subtable.
     /* For requirements on use of the language field,
      * see “Use of the language field in 'cmap' subtables” in this document.
-     * */
+     */
     uint16_t language;
-    /* An array that maps character codes to glyph index values. */
+    // An array that maps character codes to glyph index values.
     uint8_t glyph_id_array[256];
 } hz_cmap_subtable_format0_t;
 
@@ -6298,7 +6296,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
         ++i;
     }
 
-    return 0; /* map to .notdef */
+    return 0; //map to .notdef
 }
 
 void
@@ -6361,8 +6359,46 @@ _mm256_bswap16(__m256i a)
     return _mm256_or_si256(_mm256_slli_epi16(a, 8), _mm256_srli_epi16(a, 8));
 }
 
-//#if HZ_FORCE_SORT_CMAP_SEGMENTS
-//#endif
+
+HZ_STATIC int
+hz_setup_hwinfo_x86 (void)
+{
+#if HZ_COMPILER & (HZ_COMPILER_VC | HZ_COMPILER_BORLAND | HZ_COMPILER_EMBARCADERO)
+    __asm {
+        CPUID
+    }
+#elif HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
+    __asm__ ();
+#else
+#warning Hamza will not support run-time x86 hardware checks.
+    return -1;
+#endif
+    return 0;
+}
+
+HZ_STATIC int
+hz_setup_hwinfo_arm (void)
+{
+
+}
+
+int
+hz_setup (void)
+{
+#if HZ_ARCH & HZ_ARCH_X86_BIT
+    hz_setup_hwinfo_x86();
+#elif HZ_ARCH & HZ_ARCH_ARM_BIT
+    hz_setup_hwinfo_arm();
+#else
+#warning Hamza only supports run-time hardware detection on x86 and ARM.
+#endif
+}
+
+int
+hz_cleanup (void)
+{
+
+}
 
 // AVX2 codepoint to glyph index convert function using TrueType's cmap format 4 subtable
 // Assumes the codepoint arrays are sorted
@@ -6376,18 +6412,18 @@ hz_apply_cmap_format4_encoding_unaligned_avx2(const hz_cmap_subtable_format4_t *
     size_t dataptr;
     uint16_t segment_count = subtable->seg_count_x2/2;
 
-    #if HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS
+#if HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS
     // Rely on binary search data embedded in the OpenType table
-    #else
+#else
     // Manually calculate binary search constants
-    #endif
+#endif
 
     #pragma clang loop unroll(enable)
     #pragma GCC ivdep
     for (dataptr = 0; dataptr + 16 <= count; dataptr += 16) {
         __m256i v1 = _mm256_loadu_si256((const __m256i *)(indata + dataptr)); // read first 8 32-bit values
         __m256i v2 = _mm256_loadu_si256((const __m256i *)(indata + dataptr + 8)); // read following 8 32-bit values
-        __m256i vin = _mm256_packus_epi32(v1, v2);//_mm256_permute4x64_epi64(_mm256_packus_epi32(v1, v2), 0xd8); // 0b11011000 [0,2,1,3] -> 0xd8
+        __m256i vin = _mm256_packus_epi32(v1, v2);//_mm256_permute4x64_epi64(_mm256_packus_epi32(v1,v2), 0xd8); // 0b11011000 [0,2,1,3] -> 0xd8
 
         // Binary search for 16 elements
         __m256i start, end, mid, done_mask, found_indices, found_start;
@@ -6527,7 +6563,7 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_segment_t *seg,
             hz_apply_cmap_format4_encoding(&st, seg);
             #endif
 
-            // TODO: Don't use a node array, or find solution
+            /* TODO: Don't use a node array, or find solution */
             for (i = 0; i < seg->num_codepoints; ++i) {
                 hz_segment_node_t *currnode = &seg->nodes[i];
                 currnode->gid = seg->glyph_indices[i];
@@ -6556,7 +6592,7 @@ hz_map_to_nominal_forms(hz_face_t *face,
 
     uint16_t version = unpack16(&table);
 
-    /* Table version number must be 0 */
+    // Table version number must be 0
     HZ_ASSERT(version == 0);
 
     uint16_t num_encodings, enc_idx;
@@ -6576,9 +6612,6 @@ hz_map_to_nominal_forms(hz_face_t *face,
 HZ_STATIC void
 hz_unicode_mirror_punctuation(hz_segment_t *seg)
 {
-    // TODO: Check for arabic or other RTL script.
-    // Use Arabic punctuation if using Arabic script, otherwise use default mirrored version
-    //
     for (size_t i = 0; i < seg->num_codepoints; ++i) {
         switch (seg->codepoints[i]) {
             case '(': seg->codepoints[i] = ')'; break;
@@ -6598,8 +6631,8 @@ hz_unicode_mirror_punctuation(hz_segment_t *seg)
 }
 
 typedef struct hz_long_hor_metric_t {
-    uint16_t advance_width; /* advance width */
-    int16_t lsb; /* left side bearing */
+    uint16_t advance_width; // Advance width
+    int16_t lsb; // left side bearing
 } hz_long_hor_metric_t;
 
 void
@@ -6621,7 +6654,7 @@ hz_read_lv_metrics();
 void
 hz_apply_tt1_metrics(hz_face_t *face, hz_segment_t *seg)
 {
-    /* apply the metrics to position the glyphs */
+    // apply the metrics to position the glyphs
     hz_segment_node_t *node;
     size_t i;
     for (i = 0; i < seg->num_nodes; ++i) {
@@ -6650,17 +6683,6 @@ hz_segment_rtl_switch(hz_segment_t *seg)
 
     memcpy(seg->nodes, tmp, copysize);
     hz_free(tmp);
-//    hz_segment_node_t * node = hz_segment_last_node(seg->root);
-//    seg->root = node;
-//
-//    while (node != NULL) {
-//        hz_segment_node_t * prev, *next;
-//        prev = node->prev;
-//        next = node->next;
-//        node->next = prev;
-//        node->prev = next;
-//        node = prev;
-//    }
 }
 
 HZ_STATIC hz_tag_t
@@ -6682,8 +6704,8 @@ typedef struct hz_lookup_table_t {
     uint16_t subtable_count;
     hz_lookup_subtable_t **subtables;
     /* Index (base 0) into GDEF mark glyph sets structure.
-    * This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
-    * */
+     * This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
+     */
     uint16_t mark_filtering_set;
 } hz_lookup_table_t;
 
@@ -6710,7 +6732,6 @@ typedef struct hz_shape_plan_t {
     hz_language_t language;
     hz_feature_t *features;
     unsigned int num_features;
-
     hz_ot_gsub_table_t gsub_table;
     hz_ot_gpos_table_t gpos_table;
 } hz_shape_plan_t;
@@ -6886,9 +6907,10 @@ hz_load_gsub_lookup_subtable(hz_stream_t *stream,
         case HZ_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION: break;
         case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: break;
         case HZ_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION: {
-            // This is implemented inline as it's quite trivial and
-            // it's a special lookup type which doesn't allocate a structure.
-            if (format == 1) {
+            /* This is implemented inline as it's quite trivial and
+             * it's a special lookup type which doesn't allocate a structure.
+             */
+             if (format == 1) {
                 lookup->lookup_type = unpack16(stream);
                 Offset32 extension_offset = unpack32(stream);
                 stream_seek(stream, baseptr + extension_offset);
@@ -6994,7 +7016,7 @@ hz_load_gsub_lookup_table(hz_stream_t *stream, hz_lookup_table_t *table)
         unpack16a(stream, table->subtable_count, offsets);
 
         // Set pointers to NULL by default
-        table->subtables = hz_calloc(sizeof(*table->subtables) * table->subtable_count);
+        table->subtables = hz_calloc(sizeof(hz_lookup_subtable_t) * table->subtable_count);
 
         // Load & parse subtables
         for (uint16_t i = 0; i < table->subtable_count; ++i) {
@@ -8000,7 +8022,9 @@ decode_utf8_to_utf32_unaligned_avx512(utf8_chunk_decoder_t *state)
 
 HZ_STATIC void
 decode_utf8_to_ucs2_aligned_sse4()
-{}
+{
+    
+}
 
 HZ_STATIC void
 hz_segment_load_utf8_simd(hz_segment_t *seg, const char8_t *text)

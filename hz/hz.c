@@ -6335,7 +6335,7 @@ void avx256_print_i16(const char *prefix, const __m256i *val)
 
 }
 
-HZ_INLINE __m256i
+HZ_STATIC __m256i
 simulate__mm256_i16gather_epi16(short const* base_addr, __m256i vindex, const int scale)
 {
     __m256i vout;
@@ -6359,45 +6359,38 @@ _mm256_bswap16(__m256i a)
     return _mm256_or_si256(_mm256_slli_epi16(a, 8), _mm256_srli_epi16(a, 8));
 }
 
-
-HZ_STATIC int
-hz_setup_hwinfo_x86 (void)
+HZ_STATIC void
+x86cpuid (long int a[4], long int fid)
 {
-#if HZ_COMPILER & (HZ_COMPILER_VC | HZ_COMPILER_BORLAND | HZ_COMPILER_EMBARCADERO)
-    __asm {
-        CPUID
-    }
-#elif HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
-    __asm__ ();
+#if HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
+
 #else
-#warning Hamza will not support run-time x86 hardware checks.
-    return -1;
+#warning Hamza only supports run-time hardware optimization on GCC/Clang.
 #endif
-    return 0;
 }
 
 HZ_STATIC int
-hz_setup_hwinfo_arm (void)
+setup_x86cpu (void)
 {
-
+    long int result[4];
+    x86cpuid(result, 0);
 }
 
 int
 hz_setup (void)
 {
-#if HZ_ARCH & HZ_ARCH_X86_BIT
-    hz_setup_hwinfo_x86();
-#elif HZ_ARCH & HZ_ARCH_ARM_BIT
-    hz_setup_hwinfo_arm();
+#if HZ_ARCH & HZ_ARCH_X86
+    setup_x86cpu();
 #else
-#warning Hamza only supports run-time hardware detection on x86 and ARM.
+#warning Hamza only supports run-time hardware detection on x86 CPUs.
 #endif
+
+
 }
 
 int
 hz_cleanup (void)
 {
-
 }
 
 // AVX2 codepoint to glyph index convert function using TrueType's cmap format 4 subtable
@@ -6450,7 +6443,7 @@ hz_apply_cmap_format4_encoding_unaligned_avx2(const hz_cmap_subtable_format4_t *
             // !(x == start) && start > x
             __m256i lt_cond = _mm256_andnot_si256(_mm256_cmpeq_epi16(segment_start, vin), _mm256_cmpgt_epi16(segment_start, vin));
             __m256i gt_cond = _mm256_cmpgt_epi16(vin, segment_end);
-            __m256i within_cond = _mm256_xor_si256(_mm256_or_si256(lt_cond, gt_cond), _mm256_set1_epi16(0xffff)); // x >= start && x <= end
+            __m256i within_cond = _mm256_xor_si256(_mm256_or_si256(lt_cond, gt_cond), _mm256_set1_epi16(0xffffu)); // x >= start && x <= end
 
             // Update parameters
             __m256i blend_mask = _mm256_andnot_si256(done_mask, within_cond);

@@ -6362,11 +6362,7 @@ _mm256_bswap16(__m256i a)
 HZ_STATIC void
 x86cpuid (long int a[4], long int fid)
 {
-#if HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
 
-#else
-#warning Hamza only supports run-time hardware optimization on GCC/Clang.
-#endif
 }
 
 HZ_STATIC int
@@ -6381,10 +6377,7 @@ hz_setup (void)
 {
 #if HZ_ARCH & HZ_ARCH_X86
     setup_x86cpu();
-#else
-#warning Hamza only supports run-time hardware detection on x86 CPUs.
 #endif
-
 
 }
 

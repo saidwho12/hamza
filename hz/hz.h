@@ -163,7 +163,7 @@
 #define HZ_INLINE inline
 
 #if defined(HZ_BUILD_SHARED) && defined(_WIN32)
-#define HZ_API HZ_DLLEXPORT
+#define HZAPI HZ_DLLEXPORT
 #else
 #define HZ_API
 #endif
@@ -263,7 +263,7 @@ typedef struct hz_allocator_t {
  *  Arguments:
  *      a - Custom allocator.
  */
-HZ_API void
+HZAPI void
 hz_set_custom_allocator(hz_allocator_t a);
 
 /*
@@ -278,23 +278,23 @@ typedef struct hz_segment_t hz_segment_t;
 /*  Function: hz_segment_create
  *      Creates a new segment.
  */
-HZ_API hz_segment_t* hz_segment_create(void);
+HZAPI hz_segment_t* hz_segment_create(void);
 
 /*  Function: hz_segment_destroy
  *      Destroys a segment.
  *  Arguments:
  *      seg - The segment.
  */
-HZ_API void
+HZAPI void
 hz_segment_destroy(hz_segment_t *seg);
 
-HZ_API void
+HZAPI void
 hz_segment_set_script(hz_segment_t *seg, hz_script_t script);
 
-HZ_API void
+HZAPI void
 hz_segment_set_language(hz_segment_t *seg, hz_language_t language);
 
-HZ_API void
+HZAPI void
 hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction);
 
 
@@ -304,7 +304,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction);
  *      seg - The segment.
  *      str - UTF-8 encoded string.
  */
-HZ_API void
+HZAPI void
 hz_segment_load_utf8(hz_segment_t *seg, const char *str);
 
 /*  Function: hz_segment_load_utf32
@@ -313,7 +313,7 @@ hz_segment_load_utf8(hz_segment_t *seg, const char *str);
  *      seg - The segment.
  *      str - UTF-32 string.
  */
-HZ_API void
+HZAPI void
 hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
 
 /*  Struct: hz_shaped_glyph_t
@@ -331,7 +331,7 @@ typedef struct hz_shaped_glyph_t {
     uint16_t glyph_class;
 } hz_shaped_glyph_t;
 
-HZ_API void
+HZAPI void
 hz_segment_get_shaped_glyphs(hz_segment_t *seg,
                              hz_shaped_glyph_t *glyphs,
                              size_t *num_glyphs);
@@ -426,37 +426,37 @@ hz_cleanup (void);
 /*  Function: hz_lang
  *      Returns language from an ISO-639 tag.
  */
-HZ_API hz_language_t hz_lang(const char *tag);
+HZAPI hz_language_t hz_lang(const char *tag);
 
 /*  Function: hz_script
  *      Returns script from an ISO-15924 tag.
  */
-HZ_API hz_script_t hz_script(const char *tag);
+HZAPI hz_script_t hz_script(const char *tag);
 
 typedef struct hz_face_t hz_face_t;
 
-HZ_API hz_face_t* hz_face_create(void);
+HZAPI hz_face_t* hz_face_create(void);
 
-HZ_API void
+HZAPI void
 hz_face_destroy(hz_face_t *face);
 
-HZ_API uint16_t
+HZAPI uint16_t
 hz_face_get_upem(hz_face_t *face);
 
-HZ_API void
+HZAPI void
 hz_face_set_upem(hz_face_t *face, uint16_t upem);
 
-HZ_API uint16_t
+HZAPI uint16_t
 hz_face_get_num_of_h_metrics(hz_face_t *face);
 
-HZ_API uint16_t
+HZAPI uint16_t
 hz_face_get_num_of_v_metrics(hz_face_t *face);
 
-HZ_API hz_metrics_t *
+HZAPI hz_metrics_t *
 hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 
 
-HZ_API uint16_t
+HZAPI uint16_t
 hz_face_get_num_glyphs(hz_face_t *face);
 
 /* font functions, and loading font using FreeType */
@@ -465,7 +465,7 @@ typedef struct hz_font_t hz_font_t;
 /*  Function: hz_font_create
  *      Creates a font.
  */
-HZ_API hz_font_t* hz_font_create(void);
+HZAPI hz_font_t* hz_font_create(void);
 
 /*  Function: hz_font_destroy
  *     Destroys a font.
@@ -474,13 +474,13 @@ HZ_API hz_font_t* hz_font_create(void);
  *  See Also:
  *     <hz_font_create>
  */
-HZ_API void
+HZAPI void
 hz_font_destroy(hz_font_t *font);
 
-HZ_API hz_face_t *
+HZAPI hz_face_t *
 hz_font_get_face(hz_font_t *font);
 
-HZ_API void
+HZAPI void
 hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
 /*  Function: hz_ft_font_create
@@ -492,7 +492,7 @@ hz_font_set_face(hz_font_t *font, hz_face_t *face);
  *  See Also:
  *      <hz_font_destroy>
  */
-HZ_API hz_font_t *
+HZAPI hz_font_t *
 hz_ft_font_create(FT_Face ft_face);
 
 /*  Function: hz_shape
@@ -504,7 +504,7 @@ hz_ft_font_create(FT_Face ft_face);
  *      features - Array of features to apply.
  *      num_features - Number of features.
  */
-HZ_API void
+HZAPI void
 hz_shape(hz_font_t *font,
          hz_segment_t *seg,
          const hz_feature_t *features,

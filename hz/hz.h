@@ -165,7 +165,7 @@
 #if defined(HZ_BUILD_SHARED) && defined(_WIN32)
 #define HZAPI HZ_DLLEXPORT
 #else
-#define HZ_API
+#define HZAPI
 #endif
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))

@@ -48,8 +48,8 @@
 #ifndef HZ_H
 #define HZ_H
 
-#define HZ_ENABLE 1
 #define HZ_DISABLE 0
+#define HZ_ENABLE 1
 
 #define HZ_STATIC static
 
@@ -73,7 +73,7 @@
 #endif
 
 #if HZ_COMPILER & HZ_COMPILER_VC
-#pragma warning(disable:4068) // Disable #pragma related warnings
+#pragma warning(disable:4068) /* disable #pragma related warnings */
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 #include <stdio.h>
@@ -82,11 +82,9 @@
 #include <stdint.h>
 #include <math.h>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include FT_OPENTYPE_VALIDATE_H
-#include FT_GLYPH_H
-#include FT_TRUETYPE_TABLES_H
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 
 /* NOTE: SSE4A is AMD-only */
 #define HZ_ARCH_X86_BIT     0x00010000ul
@@ -175,8 +173,6 @@
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_TAG_NONE ((hz_tag_t)0)
 
-#define HZ_ENABLE_OVERFLOW_CHECKS
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -186,7 +182,7 @@ typedef int32_t hz_coord_t;
 typedef uint32_t hz_unicode_t;
 typedef uint32_t hz_tag_t;
 
-typedef uint8_t hz_bool_t;
+typedef uint32_t hz_bool;
 #define HZ_TRUE 1
 #define HZ_FALSE 0
 
@@ -417,10 +413,10 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
-int
+HZAPI int
 hz_setup (void);
 
-int
+HZAPI int
 hz_cleanup (void);
 
 /*  Function: hz_lang
@@ -483,17 +479,17 @@ hz_font_get_face(hz_font_t *font);
 HZAPI void
 hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
-/*  Function: hz_ft_font_create
- *      Creates a font from a Freetype face handle.
+/*  Function: hz_stbtt_font_create
+ *      Creates a font from a stb_truetype font info structure.
  *  Arguments:
- *      ft_face - The handle to the Freetype typeface.
+ *      fontinfo - The font info structure.
  *  Returns:
  *      A pointer to the font.
  *  See Also:
  *      <hz_font_destroy>
  */
 HZAPI hz_font_t *
-hz_ft_font_create(FT_Face ft_face);
+hz_stbtt_font_create(stbtt_fontinfo *info);
 
 /*  Function: hz_shape
  *      Shapes a text seg to positioned glyphs. If features is *NULL*,
@@ -511,7 +507,7 @@ hz_shape(hz_font_t *font,
          unsigned int num_features);
 
 #ifdef __cplusplus
-}
+};
 #endif
 
-#endif // HZ_H
+#endif /* HZ_H */

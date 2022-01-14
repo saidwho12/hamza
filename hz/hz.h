@@ -320,7 +320,7 @@ hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
  */
 typedef struct hz_shaped_glyph_t {
     hz_unicode_t codepoint;
-    hz_index_t gid;
+    hz_index_t glyph_index;
 
     hz_position_t x_offset;
     hz_position_t y_offset;

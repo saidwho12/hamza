@@ -95,7 +95,7 @@ hz_set_custom_allocator(hz_allocator_t a)
 HZ_STATIC void *
 hz_malloc(size_t size)
 {
-    return internal_allocator.mallocfn(size);
+    return malloc(size);
 }
 
 HZ_STATIC void *
@@ -115,7 +115,7 @@ hz_realloc(void *ptr, size_t size)
 HZ_STATIC void
 hz_free(void *ptr)
 {
-    internal_allocator.freefn(ptr);
+    free(ptr);
 }
 
 static void
@@ -1058,10 +1058,10 @@ void hz_buffer_add_members(hz_buffer_t *buf, void *elems, size_t n)
 }
 
 typedef struct hz_glyph_metrics_t {
-    int32_t xAdvance;
-    int32_t yAdvance;
-    int32_t xOffset;
-    int32_t yOffset;
+    int32_t x_advance;
+    int32_t y_advance;
+    int32_t x_offset;
+    int32_t y_offset;
 } hz_glyph_metrics_t;
 
 struct hz_segment_t {
@@ -1301,12 +1301,12 @@ hz_segment_get_shaped_glyphs(hz_segment_t *seg,
     } else {
         // Filling shaped glyph structures this time
         for (size_t i = 0; i < seg->glyph_count; ++i) {
-//            glyphs[i].x_offset = node->x_offset;
-//            glyphs[i].y_offset = node->y_offset;
-//            glyphs[i].x_advance = node->x_advance;
-//            glyphs[i].y_advance = node->y_advance;
+            glyphs[i].x_offset = seg->glyph_metrics[i].x_offset;
+            glyphs[i].y_offset = seg->glyph_metrics[i].y_offset;
+            glyphs[i].x_advance = seg->glyph_metrics[i].x_advance;
+            glyphs[i].y_advance = seg->glyph_metrics[i].y_advance;
 //            glyphs[i].codepoint = node->codepoint;
-            glyphs[i].gid = seg->glyph_indices[i];
+            glyphs[i].glyph_index = seg->glyph_indices[i];
             glyphs[i].glyph_class = seg->glyph_classes[i];
         }
     }
@@ -2903,6 +2903,8 @@ hz_stbtt_font_create(stbtt_fontinfo *info)
 
         face->metrics[g].w = c_x2 - c_x1;
         face->metrics[g].h = c_y2 - c_y1;
+        face->metrics[g].x_advance = ax;
+        face->metrics[g].y_advance = 0;
 
         //        FT_GlyphSlot slot = ft_face->glyph;
 //        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
@@ -6887,7 +6889,7 @@ hz_script_to_ot_tag(hz_script_t script)
 }
 
 void
-hz_segment_setup_shaping_objects(hz_face_t *face, hz_segment_t *seg)
+hz_segment_setup_shaping_objects(hz_segment_t *seg, hz_face_t *face)
 {
     seg->glyph_count = seg->num_codepoints;
 
@@ -7746,7 +7748,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                 // GID match found with ligature, push ligature glyph to buffer
                                                 hz_buffer_add_members(&seg->out_buffer, &ligature->ligature_glyph, 1);
                                                 was_matched = 1;
-                                                n += cmpcnt;
+                                                n += cmpcnt - 1;
                                                 break;
                                             }
 
@@ -7831,6 +7833,18 @@ hz_shape_plan_destroy(hz_shape_plan_t *plan)
 }
 
 HZ_STATIC void
+hz_segment_setup_metrics(hz_segment_t *seg, hz_face_t *face)
+{
+    seg->glyph_metrics = hz_malloc(seg->glyph_count * sizeof(hz_glyph_metrics_t));
+    for (size_t i = 0; i < seg->glyph_count; ++i) {
+        seg->glyph_metrics[i].x_advance = face->metrics[i].x_advance;
+        seg->glyph_metrics[i].y_advance = face->metrics[i].y_advance;
+        seg->glyph_metrics[i].x_offset = 0;
+        seg->glyph_metrics[i].y_offset = 0;
+    }
+}
+
+HZ_STATIC void
 hz_shape_plan_execute(hz_shape_plan_t *plan,
                       hz_segment_t *seg)
 {
@@ -7841,13 +7855,12 @@ hz_shape_plan_execute(hz_shape_plan_t *plan,
         hz_ot_script_load_features(seg->script, &plan->features, &plan->num_features);
     }
 
-    hz_segment_setup_shaping_objects(face, seg);
+    hz_segment_setup_shaping_objects(seg, face);
     hz_shape_plan_apply_features(plan, seg);
 
-    /*
-    hz_apply_tt1_metrics(face, seg);
-    if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
-        hz_segment_rtl_switch(seg);*/
+    hz_segment_setup_metrics(seg, face);
+//    if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
+//        hz_segment_rtl_switch(seg);
 }
 
 void

@@ -8,14 +8,76 @@
 #define HZ_BOOLSTR(x) ((x)?"true":"false")
 #define HZ_BIT(x) (1<<(x))
 
-#ifdef HZ_USE_TINYCTHREAD
-#include "tinycthread.c"
-#include "tinycthread.h"
+#define KIB 1024
+#define MIB 1048576
+#define GIB 1073741824
+
+#define UTF_FAILED (-1)
+#define UTF_END_OF_BUFFER (-2)
+#define UTF_OK 1
+
+// Configuration macros
+#define HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS HZ_TRUE
+#define HZ_CONFIG_USE_SIMD HZ_FALSE
+
+#if defined(__GNUC__)
+#define MIN(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x < __y ? __x : __y; })
+#define MAX(x,y) ( \
+    { __auto_type __x = (x); __auto_type __y = (y); \
+      __x > __y ? __x : __y; })
+#else
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 #endif
 
-#ifdef HZ_USE_TRACY
-#include <TracyC.h>
+#if HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+#define likely(x) (x)
+#define unlikely(x) (x)
 #endif
+
+#if HZ_ARCH & HZ_ARCH_AVX2_BIT
+#   include <immintrin.h>
+#include <strsafe.h>
+
+#elif HZ_ARCH & HZ_ARCH_AVX_BIT
+#   include <immintrin.h>
+#elif HZ_ARCH & HZ_ARCH_SSE42_BIT
+#	if HZ_COMPILER & HZ_COMPILER_CLANG
+#		include <popcntintrin.h>
+#	endif
+#	include <nmmintrin.h>
+#elif HZ_ARCH & HZ_ARCH_SSE41_BIT
+#   include <smmintrin.h>
+#elif HZ_ARCH & HZ_ARCH_SSSE3_BIT
+#   include <tmmintrin.h>
+#elif HZ_ARCH & HZ_ARCH_SSE3_BIT
+#   include <pmmintrin.h>
+#elif HZ_ARCH & HZ_ARCH_SSE2_BIT
+#   include <emmintrin.h>
+#elif HZ_ARCH & HZ_ARCH_NEON_BIT
+// Include ARM NEON intrinsics headers
+#endif
+
+// Fast hashing intrinsics used in hash maps
+#if HZ_ARCH & HZ_ARCH_AES_BIT
+#   include <wmmintrin.h>
+#endif
+
+#define HZ_IGNORE_ARG(x) (void)(x)
+
+#define UTF_CACHE_LINE_SIZE 128
+#define UTF_TINY_CHUNK_SIZE (1 * KIB)
+#define UTF_SMALL_CHUNK_SIZE (4 * KIB)
+#define UTF_MEDIUM_CHUNK_SIZE (16 * KIB)
+#define UTF_LARGE_CHUNK_SIZE (64 * KIB)
+
+typedef uint8_t char8_t;
+typedef uint32_t char32_t;
 
 typedef uint16_t Offset16;
 typedef uint32_t Offset32;
@@ -30,27 +92,30 @@ hz_set_custom_allocator(hz_allocator_t a)
     internal_allocator = a;
 }
 
-typedef struct hz_pool_allocator_t {
-
-} hz_pool_allocator_t;
-
-
-HZ_INLINE void *
+HZ_STATIC void *
 hz_malloc(size_t size)
 {
-    return internal_allocator.mallocfn(size);
+    return malloc(size);
 }
 
-HZ_INLINE void *
+HZ_STATIC void *
+hz_calloc(size_t size)
+{
+    void *data = internal_allocator.mallocfn(size);
+    memset(data, 0, size);
+    return data;
+}
+
+HZ_STATIC void *
 hz_realloc(void *ptr, size_t size)
 {
     return realloc(ptr,size);
 }
 
-HZ_INLINE void
+HZ_STATIC void
 hz_free(void *ptr)
 {
-    internal_allocator.freefn(ptr);
+    free(ptr);
 }
 
 static void
@@ -63,11 +128,11 @@ log_impl(const char *filename,
 }
 
 #define DEBUG_MSG(msg) fprintf(stdout,"[DEBUG:%s:%d]: %s\n",__FILE__,__LINE__,msg)
-#define ERROR_MSG(msg) fprintf(stderr,"[ERROR:%s:%d]: %s\n",__FILE__,__LINE__,msg)
+#define ERROR_MSG(msg) fprintf(stderr,"[ERROR: %s:%d]: %s\n",__FILE__,__LINE__,msg)
 #define QUIT_MSG(msg) { ERROR_MSG(msg); exit(-1); }
 #define ASSERT_MSG(cond, msg) assert((cond) && message)
 
-HZ_INLINE uint16_t
+HZ_STATIC uint16_t
 bswap16(uint16_t x)
 {
     uint16_t v = 0;
@@ -76,7 +141,7 @@ bswap16(uint16_t x)
     return v;
 }
 
-HZ_INLINE uint32_t
+HZ_STATIC uint32_t
 bswap32(uint32_t x)
 {
     uint32_t v = 0;
@@ -87,7 +152,7 @@ bswap32(uint32_t x)
     return v;
 }
 
-HZ_INLINE uint64_t
+HZ_STATIC uint64_t
 bswap64(uint64_t x)
 {
     uint64_t v = 0;
@@ -103,7 +168,7 @@ bswap64(uint64_t x)
 }
 
 
-/* 
+/*
     Read this article for better solutions implementing 64-bit log2:
     http://graphics.stanford.edu/~seander/bithacks.html
 */
@@ -152,21 +217,21 @@ typedef struct hz_bump_allocator_t {
         Initializes a bump allocator on a block of memory.
 
     Arguments:
-        a - Pointer to the allocator.
+        ma - Pointer to the allocator.
         data - Pointer to the segment of memory.
         size - Size of the block to allocate.
 */
-HZ_INLINE void
-hz_bump_allocator_init(hz_bump_allocator_t *a,
+HZ_STATIC void
+hz_bump_allocator_init(hz_bump_allocator_t *ma,
                        void *data,
                        size_t size)
 {
-    a->data = data;
-    a->size = size;
-    a->ptr = 0;
+    ma->data = data;
+    ma->size = size;
+    ma->ptr = 0;
 }
 
-#define HZ_BUMP_ALLOC_ALIGN_OPTIMALLY 1
+#define HZ_BUMP_ALLOC_ALIGN_OPTIMALLY 0
 
 /*
     Function: hz_bump_allocator_alloc
@@ -175,41 +240,48 @@ hz_bump_allocator_init(hz_bump_allocator_t *a,
         the next power of two.
 
     Arguments:
-        a - Pointer to the allocator.
+        ma - Pointer to the allocator.
         size - Size of the block to allocate.
 
     Returns:
-        Pointer to the newly allocated block. 
+        Pointer to the newly allocated block.
 */
-HZ_INLINE void *
-hz_bump_allocator_alloc(hz_bump_allocator_t *a,
+HZ_STATIC void *
+hz_bump_allocator_alloc(hz_bump_allocator_t *ma,
                         size_t size)
 {
+    uintptr_t startptr, endptr;
 #if HZ_BUMP_ALLOC_ALIGN_OPTIMALLY
     size_t potsize, potmask;
-    uintptr_t startptr, endptr;
 
     potsize = fastlog2l(size);
     potmask = potsize - 1;
-    startptr = a->ptr + (~a->ptr & potmask); /* adds offset to next block */
+    startptr = ma->ptr + (~ma->ptr & potmask); /* adds offset to next block */
     endptr = startptr + size;
 
-    if (endptr > a->size) {
+    if (endptr > ma->size) {
         /* end address of block, and over-flow address */
         void *ptraddr, *endaddr;
-        ptraddr = a->data + endptr;
-        endaddr = a->data + a->size;
-        fprintf(stderr, "monotonic allocator overflowed"
-            "(end address: %p, pointer address: %p)\n",endaddr,ptraddr);
+        ptraddr = ma->data + endptr;
+        endaddr = ma->data + ma->size;
+        fprintf(stderr, "monotonic allocator overflowed (end address: %p, pointer address: %p)\n",endaddr,ptraddr);
         return NULL;
     }
 
-    a->ptr = endptr;
-    return a->data + startptr;
+    ma->ptr = endptr;
+    return ma->data + startptr;
 #else
-    uintptr_t startptr = a->ptr;
-    a->ptr = startptr + size;
-    return a->data + startptr;
+    startptr = ma->ptr;
+    endptr = startptr + size;
+    if (endptr > ma->size) {
+        void *ptraddr, *endaddr;
+        ptraddr = ma->data + endptr;
+        endaddr = ma->data + ma->size;
+        fprintf(stderr, "monotonic allocator overflowed (end address: %p, pointer address: %p)\n",endaddr,ptraddr);
+        return NULL;
+    }
+
+    return ma->data + startptr;
 #endif
 }
 
@@ -218,11 +290,11 @@ hz_bump_allocator_alloc(hz_bump_allocator_t *a,
         Frees a previously allocated block. (currently a no-op)
 
     Arguments:
-        a - Pointer to the allocator.
+        ma - Pointer to the allocator.
         p - Pointer to a previously allocated block.
 */
-HZ_INLINE void
-hz_bump_allocator_free(hz_bump_allocator_t *a,
+HZ_STATIC void
+hz_bump_allocator_free(hz_bump_allocator_t *ma,
                        void *p)
 {
     /* No-Op */
@@ -233,12 +305,18 @@ hz_bump_allocator_free(hz_bump_allocator_t *a,
         Releases all resources held by the allocator. (currently a no-op)
 
     Arguments:
-        a - A pointer to the allocator.
+        ma - A pointer to the allocator.
 */
-HZ_INLINE void
-hz_bump_allocator_release(hz_bump_allocator_t *a)
+HZ_STATIC void
+hz_bump_allocator_release(hz_bump_allocator_t *ma)
 {
     /* No-Op */
+}
+
+void
+hz_bump_allocator_reset(hz_bump_allocator_t *ma)
+{
+    ma->ptr = 0;
 }
 
 /* no bound for buffer */
@@ -246,16 +324,16 @@ hz_bump_allocator_release(hz_bump_allocator_t *a)
 
 /*
     Struct: hz_stream_t
-        
+
         A struct to store a buffer.
         This is also used to handle reading bytes sequentially.
         Unpacks in network-order (big endian).
 */
 typedef struct hz_stream_t {
-    uint8_t *data;
+    const uint8_t *data;
     size_t size;
-    intptr_t ptr;
-    int flags;
+    uintptr_t ptr;
+    uint8_t flags;
 } hz_stream_t;
 
 /*
@@ -271,8 +349,8 @@ typedef struct hz_stream_t {
     Returns:
         A <hz_stream_t> instance.
 */
-HZ_INLINE hz_stream_t
-hz_stream_create(uint8_t *data, size_t size)
+HZ_STATIC hz_stream_t
+hz_stream_create(const uint8_t *data, size_t size)
 {
     hz_stream_t bs;
     bs.data = data;
@@ -286,13 +364,25 @@ hz_stream_create(uint8_t *data, size_t size)
     return bs;
 }
 
-HZ_INLINE uint8_t
+HZ_STATIC void
+stream_seek(hz_stream_t *stream, uintptr_t pos)
+{
+    stream->ptr = pos;
+}
+
+HZ_STATIC uintptr_t
+stream_tell(hz_stream_t *stream)
+{
+    return stream->ptr;
+}
+
+HZ_STATIC uint8_t
 unpack8(hz_stream_t *bs)
 {
     return *(bs->data + bs->ptr++);
 }
 
-HZ_INLINE uint16_t
+HZ_STATIC uint16_t
 unpack16(hz_stream_t *bs)
 {
     uint16_t val = 0;
@@ -304,7 +394,38 @@ unpack16(hz_stream_t *bs)
     return val;
 }
 
-HZ_INLINE uint32_t
+HZ_STATIC int
+endianness_check(void)
+{
+    static const uint16_t x = 1;
+    return *(const uint8_t * const)(&x) & 1;
+}
+
+// Does unpacking OpenType data require byte swapping
+HZ_STATIC int
+needs_bswap(void)
+{
+    return endianness_check();
+}
+
+HZ_STATIC void
+unpack16a(hz_stream_t *stream, size_t count,
+          uint16_t *dest)
+{
+    if (needs_bswap()) {
+        // TODO: optimize using SSE/AVX
+        for (size_t i = 0; i < count; ++i) {
+            uint16_t val = *(uint16_t *)(stream->data + stream->ptr);
+            *(dest++) = bswap16(val);
+            stream->ptr += 2;
+        }
+    } else {
+        memcpy(dest, stream->data + stream->ptr, count << 1);
+        stream->ptr += count << 1;
+    }
+}
+
+HZ_STATIC uint32_t
 unpack32(hz_stream_t *bs)
 {
     uint32_t val = 0;
@@ -318,7 +439,7 @@ unpack32(hz_stream_t *bs)
     return val;
 }
 
-HZ_INLINE uint64_t
+HZ_STATIC uint64_t
 unpack64(hz_stream_t *bs)
 {
     uint64_t val = 0;
@@ -336,16 +457,14 @@ unpack64(hz_stream_t *bs)
     return val;
 }
 
-HZ_INLINE char
+HZ_STATIC char
 peek_next(const char *p)
 {
     return p[1];
 }
 
 HZ_STATIC void
-unpackf(hz_stream_t *bs,
-        const char *f,
-        ...)
+unpackf(hz_stream_t *bs, const char *f,  ...)
 {
     va_list ap;
     const char *c;
@@ -464,7 +583,7 @@ hz_array_size(const hz_array_t *array)
     return array->size;
 }
 
-hz_bool_t
+hz_bool
 hz_array_is_empty(const hz_array_t *array)
 {
     return array->data == NULL || !array->size;
@@ -539,7 +658,7 @@ hz_array_at(const hz_array_t *array, size_t index)
     return array->data[index];
 }
 
-hz_bool_t
+hz_bool
 hz_array_has(hz_array_t *array, uint32_t val, size_t *val_idx)
 {
     size_t index = 0;
@@ -561,7 +680,7 @@ hz_array_set(hz_array_t *array, size_t index, uint32_t val)
     array->data[index] = val;
 }
 
-hz_bool_t
+hz_bool
 hz_array_range_eq(const hz_array_t *a_arr, size_t a_index,
                   const hz_array_t *b_arr, size_t b_index,
                   size_t len)
@@ -585,14 +704,15 @@ hz_array_range_eq(const hz_array_t *a_arr, size_t a_index,
 #define FNV_OFFSET_BASIS_32 0x811c9dc5
 #define FNV_PRIME_32 0x01000193
 
-HZ_INLINE uint32_t
+HZ_STATIC uint32_t
 hash_fnv1a(uint32_t val)
 {
     uint32_t hash = FNV_OFFSET_BASIS_32;
 
-    for (; val; val>>=8) {
+    while (val) {
         hash ^= val & 0xff;
         hash *= FNV_PRIME_32;
+        val>>=8;
     }
 
     return hash;
@@ -608,7 +728,7 @@ typedef struct hz_map_bucket_t {
     struct hz_map_bucket_node_t *root;
 } hz_map_bucket_t;
 
-HZ_INLINE void
+HZ_STATIC void
 hz_map_bucket_init(hz_map_bucket_t *b)
 {
     b->root = NULL;
@@ -619,7 +739,7 @@ typedef struct hz_map_t {
     size_t bucket_count;
 } hz_map_t;
 
-HZ_INLINE hz_map_t *
+HZ_STATIC hz_map_t *
 hz_map_create(void)
 {
     size_t i;
@@ -635,7 +755,7 @@ hz_map_create(void)
     return map;
 }
 
-HZ_INLINE void
+HZ_STATIC void
 hz_map_destroy(hz_map_t *map)
 {
     size_t i;
@@ -660,7 +780,7 @@ hz_map_destroy(hz_map_t *map)
 }
 
 /* Returns true if value exists, and false if it didn't */
-HZ_INLINE hz_bool_t
+HZ_STATIC hz_bool
 hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
 {
     uint32_t hash;
@@ -698,7 +818,7 @@ hz_map_set_value(hz_map_t *map, uint32_t key, uint32_t value)
     return HZ_FALSE;
 }
 
-HZ_INLINE uint32_t
+HZ_STATIC uint32_t
 hz_map_get_value(hz_map_t *map, uint32_t key)
 {
     uint32_t hash = hash_fnv1a(key);
@@ -721,13 +841,13 @@ hz_map_get_value(hz_map_t *map, uint32_t key)
     return 0;
 }
 
-HZ_INLINE void
+HZ_STATIC void
 hz_map_remove(hz_map_t *map, uint32_t key)
 {
 
 }
 
-HZ_INLINE hz_bool_t
+HZ_STATIC hz_bool
 hz_map_value_exists(hz_map_t *map, uint32_t key)
 {
     uint32_t hash = hash_fnv1a(key);
@@ -750,10 +870,10 @@ hz_map_value_exists(hz_map_t *map, uint32_t key)
 }
 
 
-HZ_INLINE hz_bool_t
+HZ_STATIC hz_bool
 hz_map_set_value_for_keys(hz_map_t *map, uint32_t k0, uint32_t k1, uint32_t value)
 {
-    hz_bool_t any_set = HZ_FALSE;
+    hz_bool any_set = HZ_FALSE;
     uint32_t k = k0;
 
     while (k <= k1) {
@@ -781,7 +901,7 @@ hz_blob_create(void)
     return blob;
 }
 
-hz_bool_t
+hz_bool
 hz_blob_is_empty(hz_blob_t *blob)
 {
     return blob->data == NULL || blob->size == 0;
@@ -812,56 +932,209 @@ hz_blob_get_size(hz_blob_t *blob)
     return blob->size;
 }
 
-typedef struct hz_segment_node_t hz_segment_node_t;
-
-struct hz_segment_node_t {
+typedef struct hz_glyph_info_t {
     hz_unicode_t codepoint;
-    
-    hz_index_t gid;
-    uint16_t comp_idx;
-    
-    hz_position_t x_offset;
-    hz_position_t y_offset;
-    hz_position_t x_advance;
-    hz_position_t y_advance;
+    uint16_t component_index;
+    uint16_t glyph_class, attachment_class;
+} hz_glyph_info_t;
 
-    uint16_t glyph_class, attach_class;
+typedef struct hz_glyph_position_t {
+    int32_t xOffset;
+    int32_t yOffset;
+    int32_t xAdvance;
+    int32_t yAdvance;
+} hz_glyph_position_t;
+
+/*
+struct hz_memory_pool_t {
+    uint8_t *mem;
+    size_t size;
 };
+*/
+
+typedef struct hz_buffer_t {
+    union mem_access {
+        uint8_t *u8;
+        uint16_t *u16;
+        uint32_t *u32;
+        uint32_t *u64;
+        int8_t *i8;
+        int16_t *i16;
+        int32_t *i32;
+        int64_t *i64;
+    } mem;
+    
+    size_t pos, cap, member_size;
+} hz_buffer_t;
+
+void hz_buffer_init(hz_buffer_t *buf, size_t isz)
+{
+    buf->cap = 0;
+    buf->mem.u8 = NULL;
+    buf->pos = 0;
+    buf->member_size = isz;
+}
+
+hz_buffer_t *hz_buffer_create(size_t isz)
+{
+    hz_buffer_t *buf = hz_malloc(sizeof(*buf));
+    hz_buffer_init(buf, isz);
+    return buf;
+}
+
+
+hz_bool hz_buffer_is_empty(hz_buffer_t *buf)
+{
+    return (buf->cap == 0);
+}
+
+void hz_buffer_clear(hz_buffer_t *buf)
+{
+    if (!hz_buffer_is_empty(buf)) {
+        hz_free(buf->mem.u8);
+        buf->mem.u8 = NULL;
+        buf->pos = 0;
+        buf->cap = 0;
+    }
+}
+
+void hz_buffer_destroy(hz_buffer_t *buf)
+{
+    hz_buffer_clear(buf);
+    hz_free(buf);
+}
+
+void hz_buffer_deep_copy(hz_buffer_t *to, hz_buffer_t *from)
+{
+    hz_buffer_clear(to);
+    if (!hz_buffer_is_empty(from)) {
+        // From has data to be copied
+        to->cap = from->cap; to->pos = from->pos;
+        to->mem.u8 = hz_malloc(from->cap*from->member_size);
+
+        if (from->pos > 0) {
+            memcpy(to->mem.u8, from->mem.u8, from->pos * from->member_size);
+        }
+    }
+}
+
+void hz_buffer_reserve(hz_buffer_t *buf, size_t new_cap)
+{
+    size_t sz = new_cap * buf->member_size;
+
+    if (new_cap < buf->pos) {
+        buf->pos = new_cap;
+    }
+
+    buf->cap = new_cap;
+    buf->mem.u8 = hz_buffer_is_empty(buf) ?
+            hz_malloc(sz) : hz_realloc(buf->mem.u8, sz);
+}
+
+void hz_buffer_grow(hz_buffer_t *buf)
+{
+    size_t new_cap;
+    if (buf->cap >= 2) {
+        new_cap = buf->cap + (buf->cap >> 1); // 1.5 factor
+    } else {
+        // constant growth otherwise
+        new_cap = 64;
+    }
+
+    hz_buffer_reserve(buf, new_cap);
+}
+
+void hz_buffer_add_members(hz_buffer_t *buf, void *elems, size_t n)
+{
+    size_t offset = buf->pos * buf->member_size;
+    size_t extra_sz = n * buf->member_size;
+
+    if (buf->pos + n > buf->cap) {
+        hz_buffer_grow(buf);
+    }
+
+    memcpy(buf->mem.u8 + offset, elems, extra_sz);
+    buf->pos += n;
+}
+
+typedef struct hz_glyph_metrics_t {
+    int32_t x_advance;
+    int32_t y_advance;
+    int32_t x_offset;
+    int32_t y_offset;
+} hz_glyph_metrics_t;
 
 struct hz_segment_t {
-    hz_segment_node_t *nodes;
-    size_t num_nodes;
     hz_language_t language;
     hz_script_t script;
     hz_direction_t direction;
+    size_t num_codepoints;
+    hz_unicode_t *codepoints;
+
+    // Buffers used in shaping process
+    size_t glyph_count;
+    uint16_t *glyph_indices;
+    uint16_t *glyph_classes;
+    uint16_t *attachment_classes;
+    hz_glyph_metrics_t *glyph_metrics;
+    hz_buffer_t out_buffer;
 };
 
 hz_segment_t *
 hz_segment_create(void)
 {
     hz_segment_t *seg = hz_malloc(sizeof(hz_segment_t));
-    seg->nodes = NULL;
-    seg->num_nodes = 0;
-    /*
+
+    seg->num_codepoints = 0;
+    seg->codepoints = NULL;
+
+    seg->glyph_count = 0;
+    seg->glyph_indices = NULL;
+    seg->glyph_classes = NULL;
+    seg->attachment_classes = NULL;
+
+    hz_buffer_init(&seg->out_buffer, sizeof(uint16_t));
+
     seg->language = HZ_LANGUAGE_ENGLISH;
     seg->script = HZ_SCRIPT_LATIN;
     seg->direction = HZ_DIRECTION_LTR;
-    */
+
+
     return seg;
 }
 
-hz_bool_t
-hz_segment_is_empty(hz_segment_t *seg)
+void
+hz_segment_clear_shaping_objects(hz_segment_t *seg)
 {
-    return seg->num_nodes == 0 || seg->nodes == NULL;
+    if (seg->glyph_count != 0) {
+        hz_free(seg->glyph_indices);
+        hz_free(seg->glyph_classes);
+        hz_free(seg->attachment_classes);
+        seg->glyph_indices = NULL;
+        seg->glyph_classes = NULL;
+        seg->attachment_classes = NULL;
+    }
+
+    hz_buffer_clear(&seg->out_buffer);
+}
+
+void
+hz_segment_clear(hz_segment_t *seg)
+{
+    hz_segment_clear_shaping_objects(seg);
+
+    if (seg->num_codepoints != 0)
+    {
+        hz_free(seg->codepoints);
+        seg->codepoints = NULL;
+        seg->num_codepoints = 0;
+    }
 }
 
 void
 hz_segment_destroy(hz_segment_t *seg)
 {
-    if (!hz_segment_is_empty(seg))
-        hz_free(seg->nodes);
-
+    hz_segment_clear(seg);
     hz_free(seg);
 }
 
@@ -882,9 +1155,14 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 {
     seg->direction = direction;
 }
+//
+//HZ_STATIC void
+//hz_segment_extend(hz_segment_t *seg, size_t n)
+//{
+//    seg->nodes = hz_pool_allocator_realloc(seg->nodes, se)
+//}
 
-
-//HZ_INLINE void
+//HZ_STATIC void
 //hz_segment_add(hz_segment_t *seg, hz_segment_node_t *new_node)
 //{
 //    new_node->prev = NULL;
@@ -904,7 +1182,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    }
 //}
 //
-//HZ_INLINE void
+//HZ_STATIC void
 //hz_segment_insert_node(hz_segment_node_t *p, hz_segment_node_t *q) {
 //    hz_segment_node_t *n = p->next;
 //
@@ -917,7 +1195,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    }
 //}
 //
-//HZ_INLINE void
+//HZ_STATIC void
 //hz_segment_pop_node(hz_segment_t *seg, hz_segment_node_t *node) {
 //    hz_segment_node_t *x = node->prev, *y = node->next;
 //    hz_free(node);
@@ -929,7 +1207,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    }
 //}
 //
-//HZ_INLINE void
+//HZ_STATIC void
 //hz_segment_remove_node(hz_segment_t *seg, size_t index) {
 //    size_t i = 0;
 //    hz_segment_node_t *g, *a, *b;
@@ -950,7 +1228,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    }
 //}
 //
-//HZ_INLINE size_t
+//HZ_STATIC size_t
 //hz_segment_node_count(hz_segment_node_t *node) {
 //    size_t count = 0;
 //
@@ -962,7 +1240,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    return count;
 //}
 //
-//HZ_INLINE hz_segment_node_t *
+//HZ_STATIC hz_segment_node_t *
 //hz_segment_last_node(hz_segment_node_t *node) {
 //    while (node->next != NULL) {
 //        node = node->next;
@@ -971,7 +1249,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 //    return node;
 //}
 //
-//HZ_INLINE hz_bool_t
+//HZ_STATIC hz_bool_t
 //hz_segment_rem_next_n_nodes(hz_segment_node_t *g, size_t n)
 //{
 //    hz_segment_node_t *next, *curr = g->next;
@@ -995,7 +1273,7 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction)
 ///* removes n nodes starting from start
 // * including start
 // * */
-//HZ_INLINE hz_bool_t
+//HZ_STATIC hz_bool_t
 //hz_segment_rem_node_range(hz_segment_node_t *n1, hz_segment_node_t *n2) {
 //    hz_segment_node_t *next, *n = n1->next;
 //
@@ -1018,23 +1296,22 @@ hz_segment_get_shaped_glyphs(hz_segment_t *seg,
                              size_t *num_glyphs)
 {
     if (glyphs == NULL && num_glyphs != 0) {
-        /* Get the number of glyphs */
-        *num_glyphs = seg->num_nodes;
+        // Get the number of glyphs
+        *num_glyphs = seg->glyph_count;
     } else {
-        /* Filling shaped glyph structures this time */
-        size_t i;
-        for (i = 0; i < seg->num_nodes; ++i) {
-            const hz_segment_node_t *node = &seg->nodes[i];
-            glyphs[i].x_offset = node->x_offset;
-            glyphs[i].y_offset = node->y_offset;
-            glyphs[i].x_advance = node->x_advance;
-            glyphs[i].y_advance = node->y_advance;
-            glyphs[i].codepoint = node->codepoint;
-            glyphs[i].gid = node->gid;
-            glyphs[i].glyph_class = node->glyph_class;
+        // Filling shaped glyph structures this time
+        for (long i = 0; i<seg->glyph_count; ++i) {
+            long j = (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT) ?
+                    seg->glyph_count - i - 1 : i;
+            glyphs[j].x_offset = seg->glyph_metrics[i].x_offset;
+            glyphs[j].y_offset = seg->glyph_metrics[i].y_offset;
+            glyphs[j].x_advance = seg->glyph_metrics[i].x_advance;
+            glyphs[j].y_advance = seg->glyph_metrics[i].y_advance;
+            //            glyphs[j].codepoint = node->codepoint;
+            glyphs[j].glyph_index = seg->glyph_indices[i];
+            glyphs[j].glyph_class = seg->glyph_classes[i];
         }
     }
-
 }
 
 typedef struct {
@@ -1062,13 +1339,13 @@ hz_utf8_cont(hz_utf8_dec_t *dec) {
            : HZ_UTF8_ERROR;
 }
 
-static int
+static int32_t
 hz_utf8_next(hz_utf8_dec_t *dec) {
     int c;
     int c1;
     int c2;
     int c3;
-    int r;
+    int32_t r;
     c = hz_utf8_get(dec);
 
     /*
@@ -1122,54 +1399,834 @@ hz_utf8_next(hz_utf8_dec_t *dec) {
 }
 
 
-static void
-hz_segment_load_utf8_full(hz_segment_t *seg, const char *str, size_t len) {
-    hz_unicode_t code;
-    int ch;
+typedef struct utf_naive_decoder_t {
+    const char8_t      *data;
+    char32_t            code;
+    uintptr_t           ptr;
+    size_t              size; /* if 0, no limit */
+    int                 step;
+} utf8_decoder_t;
 
-    hz_utf8_dec_t dec;
-    dec.data = (const uint8_t *) str;
-    dec.length = len;
-    dec.offset = 0;
+/*
+This table decodes the first byte of a utf-8 sequence.
+It returns the number of expected continuation bytes
+in the rest of the sequence.
+From wikipedia:
+# Bits      First       Last        Sequence    Byte 1      Byte 2      Byte 3      Byte 4      Byte 5      Byte 6
+# 7         0x0000      0x007F      1           0xxxxxxx
+# 11        0x0080      0x07FF      2           110xxxxx    10xxxxxx
+# 16        0x0800      0xFFFF      3           1110xxxx    10xxxxxx    10xxxxxx
+# 21        0x10000     0x1FFFFF    4           11110xxx    10xxxxxx    10xxxxxx    10xxxxxx
+# 26        0x200000    0x3FFFFFF   5           111110xx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
+# 31        0x4000000   0x7FFFFFFF  6           1111110x    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
+*/
+static const int8_t decode_byte_table[] = {
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x00 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x10 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x20 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x30 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x40 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x50 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x60 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x70 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x80 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x90 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xa0 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xb0 */
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xc0 */
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xd0 */
+        2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  /* 0xe0 */
+        3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5, -1, -1,  /* 0xf0 */
+};
 
-    /* TODO: do proper error handling for the UTF-8 decoder */
-    while ((ch = hz_utf8_next(&dec)) > 0) {
-//        hz_segment_node_t * node = hz_malloc(sizeof(hz_segment_node_t));
-//        node->codepoint = ch;
-//        node->gid = 0;
-//        node->comp_idx = 0;
-//        node->glyph_class = HZ_GLYPH_CLASS_ZERO;
-//        node->x_advance = 0;
-//        node->y_advance = 0;
-//        node->x_offset = 0;
-//        node->y_offset = 0;
-//        hz_segment_add(seg, node);
-    }
-}
+/* This table returns the mask for the data in the first byte
+of an n-byte sequence, where n is the index into the table.
+*/
+static const uint8_t decode_mask_table[] = {
+        0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01,
+};
 
-void
-hz_segment_load_unicode(hz_segment_t *seg, const hz_unicode_t *str, size_t len)
-{
-//    size_t i;
-//    for (i = 0; i < len; ++i) {
-//        hz_segment_node_t * node = hz_malloc(sizeof(hz_segment_node_t));
-//        node->codepoint = str[i];
-//        node->gid = 0;
-//        node->comp_idx = 0;
-//        node->attach_class = 0;
-//        node->glyph_class = HZ_GLYPH_CLASS_ZERO;
-//        node->x_advance = 0;
-//        node->y_advance = 0;
-//        node->x_offset = 0;
-//        node->y_offset = 0;
-//        hz_segment_add(seg, node);
-//    }
-}
+static const int8_t prefix_to_length_table[32] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3
+};
 
-void
-hz_segment_load_utf8(hz_segment_t *seg, const char *str) {
-    hz_segment_load_utf8_full(seg, str, UINT64_MAX);
-}
+/* 256 * 16 = 4096 */
+static const int8_t length_to_pattern1_table[256][16] = {
+        {0,-1,-1,-1,1,-1,-1,-1,2,-1,-1,-1,3,-1,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,2,-1,-1,-1,4,3,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,2,-1,-1,-1,5,4,3,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,2,-1,-1,-1,6,5,4,3},
+        {0,-1,-1,-1,1,-1,-1,-1,3,2,-1,-1,4,-1,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,3,2,-1,-1,5,4,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,3,2,-1,-1,6,5,4,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,3,2,-1,-1,7,6,5,4},
+        {0,-1,-1,-1,1,-1,-1,-1,4,3,2,-1,5,-1,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,4,3,2,-1,6,5,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,4,3,2,-1,7,6,5,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,4,3,2,-1,8,7,6,5},
+        {0,-1,-1,-1,1,-1,-1,-1,5,4,3,2,6,-1,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,5,4,3,2,7,6,-1,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,5,4,3,2,8,7,6,-1},
+        {0,-1,-1,-1,1,-1,-1,-1,5,4,3,2,9,8,7,6},
+        {0,-1,-1,-1,2,1,-1,-1,3,-1,-1,-1,4,-1,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,3,-1,-1,-1,5,4,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,3,-1,-1,-1,6,5,4,-1},
+        {0,-1,-1,-1,2,1,-1,-1,3,-1,-1,-1,7,6,5,4},
+        {0,-1,-1,-1,2,1,-1,-1,4,3,-1,-1,5,-1,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,4,3,-1,-1,6,5,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,4,3,-1,-1,7,6,5,-1},
+        {0,-1,-1,-1,2,1,-1,-1,4,3,-1,-1,8,7,6,5},
+        {0,-1,-1,-1,2,1,-1,-1,5,4,3,-1,6,-1,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,5,4,3,-1,7,6,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,5,4,3,-1,8,7,6,-1},
+        {0,-1,-1,-1,2,1,-1,-1,5,4,3,-1,9,8,7,6},
+        {0,-1,-1,-1,2,1,-1,-1,6,5,4,3,7,-1,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,6,5,4,3,8,7,-1,-1},
+        {0,-1,-1,-1,2,1,-1,-1,6,5,4,3,9,8,7,-1},
+        {0,-1,-1,-1,2,1,-1,-1,6,5,4,3,10,9,8,7},
+        {0,-1,-1,-1,3,2,1,-1,4,-1,-1,-1,5,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,4,-1,-1,-1,6,5,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,4,-1,-1,-1,7,6,5,-1},
+        {0,-1,-1,-1,3,2,1,-1,4,-1,-1,-1,8,7,6,5},
+        {0,-1,-1,-1,3,2,1,-1,5,4,-1,-1,6,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,5,4,-1,-1,7,6,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,5,4,-1,-1,8,7,6,-1},
+        {0,-1,-1,-1,3,2,1,-1,5,4,-1,-1,9,8,7,6},
+        {0,-1,-1,-1,3,2,1,-1,6,5,4,-1,7,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,6,5,4,-1,8,7,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,6,5,4,-1,9,8,7,-1},
+        {0,-1,-1,-1,3,2,1,-1,6,5,4,-1,10,9,8,7},
+        {0,-1,-1,-1,3,2,1,-1,7,6,5,4,8,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,7,6,5,4,9,8,-1,-1},
+        {0,-1,-1,-1,3,2,1,-1,7,6,5,4,10,9,8,-1},
+        {0,-1,-1,-1,3,2,1,-1,7,6,5,4,11,10,9,8},
+        {0,-1,-1,-1,4,3,2,1,5,-1,-1,-1,6,-1,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,5,-1,-1,-1,7,6,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,5,-1,-1,-1,8,7,6,-1},
+        {0,-1,-1,-1,4,3,2,1,5,-1,-1,-1,9,8,7,6},
+        {0,-1,-1,-1,4,3,2,1,6,5,-1,-1,7,-1,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,6,5,-1,-1,8,7,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,6,5,-1,-1,9,8,7,-1},
+        {0,-1,-1,-1,4,3,2,1,6,5,-1,-1,10,9,8,7},
+        {0,-1,-1,-1,4,3,2,1,7,6,5,-1,8,-1,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,7,6,5,-1,9,8,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,7,6,5,-1,10,9,8,-1},
+        {0,-1,-1,-1,4,3,2,1,7,6,5,-1,11,10,9,8},
+        {0,-1,-1,-1,4,3,2,1,8,7,6,5,9,-1,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,8,7,6,5,10,9,-1,-1},
+        {0,-1,-1,-1,4,3,2,1,8,7,6,5,11,10,9,-1},
+        {0,-1,-1,-1,4,3,2,1,8,7,6,5,12,11,10,9},
+        {1,0,-1,-1,2,-1,-1,-1,3,-1,-1,-1,4,-1,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,3,-1,-1,-1,5,4,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,3,-1,-1,-1,6,5,4,-1},
+        {1,0,-1,-1,2,-1,-1,-1,3,-1,-1,-1,7,6,5,4},
+        {1,0,-1,-1,2,-1,-1,-1,4,3,-1,-1,5,-1,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,4,3,-1,-1,6,5,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,4,3,-1,-1,7,6,5,-1},
+        {1,0,-1,-1,2,-1,-1,-1,4,3,-1,-1,8,7,6,5},
+        {1,0,-1,-1,2,-1,-1,-1,5,4,3,-1,6,-1,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,5,4,3,-1,7,6,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,5,4,3,-1,8,7,6,-1},
+        {1,0,-1,-1,2,-1,-1,-1,5,4,3,-1,9,8,7,6},
+        {1,0,-1,-1,2,-1,-1,-1,6,5,4,3,7,-1,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,6,5,4,3,8,7,-1,-1},
+        {1,0,-1,-1,2,-1,-1,-1,6,5,4,3,9,8,7,-1},
+        {1,0,-1,-1,2,-1,-1,-1,6,5,4,3,10,9,8,7},
+        {1,0,-1,-1,3,2,-1,-1,4,-1,-1,-1,5,-1,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,4,-1,-1,-1,6,5,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,4,-1,-1,-1,7,6,5,-1},
+        {1,0,-1,-1,3,2,-1,-1,4,-1,-1,-1,8,7,6,5},
+        {1,0,-1,-1,3,2,-1,-1,5,4,-1,-1,6,-1,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,5,4,-1,-1,7,6,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,5,4,-1,-1,8,7,6,-1},
+        {1,0,-1,-1,3,2,-1,-1,5,4,-1,-1,9,8,7,6},
+        {1,0,-1,-1,3,2,-1,-1,6,5,4,-1,7,-1,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,6,5,4,-1,8,7,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,6,5,4,-1,9,8,7,-1},
+        {1,0,-1,-1,3,2,-1,-1,6,5,4,-1,10,9,8,7},
+        {1,0,-1,-1,3,2,-1,-1,7,6,5,4,8,-1,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,7,6,5,4,9,8,-1,-1},
+        {1,0,-1,-1,3,2,-1,-1,7,6,5,4,10,9,8,-1},
+        {1,0,-1,-1,3,2,-1,-1,7,6,5,4,11,10,9,8},
+        {1,0,-1,-1,4,3,2,-1,5,-1,-1,-1,6,-1,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,5,-1,-1,-1,7,6,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,5,-1,-1,-1,8,7,6,-1},
+        {1,0,-1,-1,4,3,2,-1,5,-1,-1,-1,9,8,7,6},
+        {1,0,-1,-1,4,3,2,-1,6,5,-1,-1,7,-1,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,6,5,-1,-1,8,7,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,6,5,-1,-1,9,8,7,-1},
+        {1,0,-1,-1,4,3,2,-1,6,5,-1,-1,10,9,8,7},
+        {1,0,-1,-1,4,3,2,-1,7,6,5,-1,8,-1,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,7,6,5,-1,9,8,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,7,6,5,-1,10,9,8,-1},
+        {1,0,-1,-1,4,3,2,-1,7,6,5,-1,11,10,9,8},
+        {1,0,-1,-1,4,3,2,-1,8,7,6,5,9,-1,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,8,7,6,5,10,9,-1,-1},
+        {1,0,-1,-1,4,3,2,-1,8,7,6,5,11,10,9,-1},
+        {1,0,-1,-1,4,3,2,-1,8,7,6,5,12,11,10,9},
+        {1,0,-1,-1,5,4,3,2,6,-1,-1,-1,7,-1,-1,-1},
+        {1,0,-1,-1,5,4,3,2,6,-1,-1,-1,8,7,-1,-1},
+        {1,0,-1,-1,5,4,3,2,6,-1,-1,-1,9,8,7,-1},
+        {1,0,-1,-1,5,4,3,2,6,-1,-1,-1,10,9,8,7},
+        {1,0,-1,-1,5,4,3,2,7,6,-1,-1,8,-1,-1,-1},
+        {1,0,-1,-1,5,4,3,2,7,6,-1,-1,9,8,-1,-1},
+        {1,0,-1,-1,5,4,3,2,7,6,-1,-1,10,9,8,-1},
+        {1,0,-1,-1,5,4,3,2,7,6,-1,-1,11,10,9,8},
+        {1,0,-1,-1,5,4,3,2,8,7,6,-1,9,-1,-1,-1},
+        {1,0,-1,-1,5,4,3,2,8,7,6,-1,10,9,-1,-1},
+        {1,0,-1,-1,5,4,3,2,8,7,6,-1,11,10,9,-1},
+        {1,0,-1,-1,5,4,3,2,8,7,6,-1,12,11,10,9},
+        {1,0,-1,-1,5,4,3,2,9,8,7,6,10,-1,-1,-1},
+        {1,0,-1,-1,5,4,3,2,9,8,7,6,11,10,-1,-1},
+        {1,0,-1,-1,5,4,3,2,9,8,7,6,12,11,10,-1},
+        {1,0,-1,-1,5,4,3,2,9,8,7,6,13,12,11,10},
+        {2,1,0,-1,3,-1,-1,-1,4,-1,-1,-1,5,-1,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,4,-1,-1,-1,6,5,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,4,-1,-1,-1,7,6,5,-1},
+        {2,1,0,-1,3,-1,-1,-1,4,-1,-1,-1,8,7,6,5},
+        {2,1,0,-1,3,-1,-1,-1,5,4,-1,-1,6,-1,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,5,4,-1,-1,7,6,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,5,4,-1,-1,8,7,6,-1},
+        {2,1,0,-1,3,-1,-1,-1,5,4,-1,-1,9,8,7,6},
+        {2,1,0,-1,3,-1,-1,-1,6,5,4,-1,7,-1,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,6,5,4,-1,8,7,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,6,5,4,-1,9,8,7,-1},
+        {2,1,0,-1,3,-1,-1,-1,6,5,4,-1,10,9,8,7},
+        {2,1,0,-1,3,-1,-1,-1,7,6,5,4,8,-1,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,7,6,5,4,9,8,-1,-1},
+        {2,1,0,-1,3,-1,-1,-1,7,6,5,4,10,9,8,-1},
+        {2,1,0,-1,3,-1,-1,-1,7,6,5,4,11,10,9,8},
+        {2,1,0,-1,4,3,-1,-1,5,-1,-1,-1,6,-1,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,5,-1,-1,-1,7,6,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,5,-1,-1,-1,8,7,6,-1},
+        {2,1,0,-1,4,3,-1,-1,5,-1,-1,-1,9,8,7,6},
+        {2,1,0,-1,4,3,-1,-1,6,5,-1,-1,7,-1,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,6,5,-1,-1,8,7,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,6,5,-1,-1,9,8,7,-1},
+        {2,1,0,-1,4,3,-1,-1,6,5,-1,-1,10,9,8,7},
+        {2,1,0,-1,4,3,-1,-1,7,6,5,-1,8,-1,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,7,6,5,-1,9,8,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,7,6,5,-1,10,9,8,-1},
+        {2,1,0,-1,4,3,-1,-1,7,6,5,-1,11,10,9,8},
+        {2,1,0,-1,4,3,-1,-1,8,7,6,5,9,-1,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,8,7,6,5,10,9,-1,-1},
+        {2,1,0,-1,4,3,-1,-1,8,7,6,5,11,10,9,-1},
+        {2,1,0,-1,4,3,-1,-1,8,7,6,5,12,11,10,9},
+        {2,1,0,-1,5,4,3,-1,6,-1,-1,-1,7,-1,-1,-1},
+        {2,1,0,-1,5,4,3,-1,6,-1,-1,-1,8,7,-1,-1},
+        {2,1,0,-1,5,4,3,-1,6,-1,-1,-1,9,8,7,-1},
+        {2,1,0,-1,5,4,3,-1,6,-1,-1,-1,10,9,8,7},
+        {2,1,0,-1,5,4,3,-1,7,6,-1,-1,8,-1,-1,-1},
+        {2,1,0,-1,5,4,3,-1,7,6,-1,-1,9,8,-1,-1},
+        {2,1,0,-1,5,4,3,-1,7,6,-1,-1,10,9,8,-1},
+        {2,1,0,-1,5,4,3,-1,7,6,-1,-1,11,10,9,8},
+        {2,1,0,-1,5,4,3,-1,8,7,6,-1,9,-1,-1,-1},
+        {2,1,0,-1,5,4,3,-1,8,7,6,-1,10,9,-1,-1},
+        {2,1,0,-1,5,4,3,-1,8,7,6,-1,11,10,9,-1},
+        {2,1,0,-1,5,4,3,-1,8,7,6,-1,12,11,10,9},
+        {2,1,0,-1,5,4,3,-1,9,8,7,6,10,-1,-1,-1},
+        {2,1,0,-1,5,4,3,-1,9,8,7,6,11,10,-1,-1},
+        {2,1,0,-1,5,4,3,-1,9,8,7,6,12,11,10,-1},
+        {2,1,0,-1,5,4,3,-1,9,8,7,6,13,12,11,10},
+        {2,1,0,-1,6,5,4,3,7,-1,-1,-1,8,-1,-1,-1},
+        {2,1,0,-1,6,5,4,3,7,-1,-1,-1,9,8,-1,-1},
+        {2,1,0,-1,6,5,4,3,7,-1,-1,-1,10,9,8,-1},
+        {2,1,0,-1,6,5,4,3,7,-1,-1,-1,11,10,9,8},
+        {2,1,0,-1,6,5,4,3,8,7,-1,-1,9,-1,-1,-1},
+        {2,1,0,-1,6,5,4,3,8,7,-1,-1,10,9,-1,-1},
+        {2,1,0,-1,6,5,4,3,8,7,-1,-1,11,10,9,-1},
+        {2,1,0,-1,6,5,4,3,8,7,-1,-1,12,11,10,9},
+        {2,1,0,-1,6,5,4,3,9,8,7,-1,10,-1,-1,-1},
+        {2,1,0,-1,6,5,4,3,9,8,7,-1,11,10,-1,-1},
+        {2,1,0,-1,6,5,4,3,9,8,7,-1,12,11,10,-1},
+        {2,1,0,-1,6,5,4,3,9,8,7,-1,13,12,11,10},
+        {2,1,0,-1,6,5,4,3,10,9,8,7,11,-1,-1,-1},
+        {2,1,0,-1,6,5,4,3,10,9,8,7,12,11,-1,-1},
+        {2,1,0,-1,6,5,4,3,10,9,8,7,13,12,11,-1},
+        {2,1,0,-1,6,5,4,3,10,9,8,7,14,13,12,11},
+        {3,2,1,0,4,-1,-1,-1,5,-1,-1,-1,6,-1,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,5,-1,-1,-1,7,6,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,5,-1,-1,-1,8,7,6,-1},
+        {3,2,1,0,4,-1,-1,-1,5,-1,-1,-1,9,8,7,6},
+        {3,2,1,0,4,-1,-1,-1,6,5,-1,-1,7,-1,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,6,5,-1,-1,8,7,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,6,5,-1,-1,9,8,7,-1},
+        {3,2,1,0,4,-1,-1,-1,6,5,-1,-1,10,9,8,7},
+        {3,2,1,0,4,-1,-1,-1,7,6,5,-1,8,-1,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,7,6,5,-1,9,8,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,7,6,5,-1,10,9,8,-1},
+        {3,2,1,0,4,-1,-1,-1,7,6,5,-1,11,10,9,8},
+        {3,2,1,0,4,-1,-1,-1,8,7,6,5,9,-1,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,8,7,6,5,10,9,-1,-1},
+        {3,2,1,0,4,-1,-1,-1,8,7,6,5,11,10,9,-1},
+        {3,2,1,0,4,-1,-1,-1,8,7,6,5,12,11,10,9},
+        {3,2,1,0,5,4,-1,-1,6,-1,-1,-1,7,-1,-1,-1},
+        {3,2,1,0,5,4,-1,-1,6,-1,-1,-1,8,7,-1,-1},
+        {3,2,1,0,5,4,-1,-1,6,-1,-1,-1,9,8,7,-1},
+        {3,2,1,0,5,4,-1,-1,6,-1,-1,-1,10,9,8,7},
+        {3,2,1,0,5,4,-1,-1,7,6,-1,-1,8,-1,-1,-1},
+        {3,2,1,0,5,4,-1,-1,7,6,-1,-1,9,8,-1,-1},
+        {3,2,1,0,5,4,-1,-1,7,6,-1,-1,10,9,8,-1},
+        {3,2,1,0,5,4,-1,-1,7,6,-1,-1,11,10,9,8},
+        {3,2,1,0,5,4,-1,-1,8,7,6,-1,9,-1,-1,-1},
+        {3,2,1,0,5,4,-1,-1,8,7,6,-1,10,9,-1,-1},
+        {3,2,1,0,5,4,-1,-1,8,7,6,-1,11,10,9,-1},
+        {3,2,1,0,5,4,-1,-1,8,7,6,-1,12,11,10,9},
+        {3,2,1,0,5,4,-1,-1,9,8,7,6,10,-1,-1,-1},
+        {3,2,1,0,5,4,-1,-1,9,8,7,6,11,10,-1,-1},
+        {3,2,1,0,5,4,-1,-1,9,8,7,6,12,11,10,-1},
+        {3,2,1,0,5,4,-1,-1,9,8,7,6,13,12,11,10},
+        {3,2,1,0,6,5,4,-1,7,-1,-1,-1,8,-1,-1,-1},
+        {3,2,1,0,6,5,4,-1,7,-1,-1,-1,9,8,-1,-1},
+        {3,2,1,0,6,5,4,-1,7,-1,-1,-1,10,9,8,-1},
+        {3,2,1,0,6,5,4,-1,7,-1,-1,-1,11,10,9,8},
+        {3,2,1,0,6,5,4,-1,8,7,-1,-1,9,-1,-1,-1},
+        {3,2,1,0,6,5,4,-1,8,7,-1,-1,10,9,-1,-1},
+        {3,2,1,0,6,5,4,-1,8,7,-1,-1,11,10,9,-1},
+        {3,2,1,0,6,5,4,-1,8,7,-1,-1,12,11,10,9},
+        {3,2,1,0,6,5,4,-1,9,8,7,-1,10,-1,-1,-1},
+        {3,2,1,0,6,5,4,-1,9,8,7,-1,11,10,-1,-1},
+        {3,2,1,0,6,5,4,-1,9,8,7,-1,12,11,10,-1},
+        {3,2,1,0,6,5,4,-1,9,8,7,-1,13,12,11,10},
+        {3,2,1,0,6,5,4,-1,10,9,8,7,11,-1,-1,-1},
+        {3,2,1,0,6,5,4,-1,10,9,8,7,12,11,-1,-1},
+        {3,2,1,0,6,5,4,-1,10,9,8,7,13,12,11,-1},
+        {3,2,1,0,6,5,4,-1,10,9,8,7,14,13,12,11},
+        {3,2,1,0,7,6,5,4,8,-1,-1,-1,9,-1,-1,-1},
+        {3,2,1,0,7,6,5,4,8,-1,-1,-1,10,9,-1,-1},
+        {3,2,1,0,7,6,5,4,8,-1,-1,-1,11,10,9,-1},
+        {3,2,1,0,7,6,5,4,8,-1,-1,-1,12,11,10,9},
+        {3,2,1,0,7,6,5,4,9,8,-1,-1,10,-1,-1,-1},
+        {3,2,1,0,7,6,5,4,9,8,-1,-1,11,10,-1,-1},
+        {3,2,1,0,7,6,5,4,9,8,-1,-1,12,11,10,-1},
+        {3,2,1,0,7,6,5,4,9,8,-1,-1,13,12,11,10},
+        {3,2,1,0,7,6,5,4,10,9,8,-1,11,-1,-1,-1},
+        {3,2,1,0,7,6,5,4,10,9,8,-1,12,11,-1,-1},
+        {3,2,1,0,7,6,5,4,10,9,8,-1,13,12,11,-1},
+        {3,2,1,0,7,6,5,4,10,9,8,-1,14,13,12,11},
+        {3,2,1,0,7,6,5,4,11,10,9,8,12,-1,-1,-1},
+        {3,2,1,0,7,6,5,4,11,10,9,8,13,12,-1,-1},
+        {3,2,1,0,7,6,5,4,11,10,9,8,14,13,12,-1},
+        {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12}
+};
+
+static const uint8_t length_to_mask1_table[256][16] = {
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00,0x3F,0x3F,0x3F,0x07},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x7F,0x00,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x1F,0x00,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x0F,0x00},
+        {0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07,0x3F,0x3F,0x3F,0x07}
+};
+
+static const int8_t length_to_counts_table[256][16] = {
+        {0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1,2,1,0,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1,3,2,1,0},
+        {0,-1,-1,-1,0,-1,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,3,2,1,0,1,0,-1,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,3,2,1,0,2,1,0,-1},
+        {0,-1,-1,-1,0,-1,-1,-1,3,2,1,0,3,2,1,0},
+        {0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,1,0,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,2,1,0,-1,2,1,0,-1},
+        {0,-1,-1,-1,1,0,-1,-1,2,1,0,-1,3,2,1,0},
+        {0,-1,-1,-1,1,0,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,3,2,1,0,1,0,-1,-1},
+        {0,-1,-1,-1,1,0,-1,-1,3,2,1,0,2,1,0,-1},
+        {0,-1,-1,-1,1,0,-1,-1,3,2,1,0,3,2,1,0},
+        {0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,2,1,0,-1,1,0,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,1,0,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,1,0,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,2,1,0,-1,1,0,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,2,1,0,-1,2,1,0,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,2,1,0,-1,1,0,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,2,1,0,-1,2,1,0,-1},
+        {0,-1,-1,-1,2,1,0,-1,2,1,0,-1,3,2,1,0},
+        {0,-1,-1,-1,2,1,0,-1,3,2,1,0,0,-1,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,3,2,1,0,1,0,-1,-1},
+        {0,-1,-1,-1,2,1,0,-1,3,2,1,0,2,1,0,-1},
+        {0,-1,-1,-1,2,1,0,-1,3,2,1,0,3,2,1,0},
+        {0,-1,-1,-1,3,2,1,0,0,-1,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,0,-1,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,0,-1,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,3,2,1,0,0,-1,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,3,2,1,0,1,0,-1,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,1,0,-1,-1,1,0,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,1,0,-1,-1,2,1,0,-1},
+        {0,-1,-1,-1,3,2,1,0,1,0,-1,-1,3,2,1,0},
+        {0,-1,-1,-1,3,2,1,0,2,1,0,-1,0,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,2,1,0,-1,1,0,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,2,1,0,-1,2,1,0,-1},
+        {0,-1,-1,-1,3,2,1,0,2,1,0,-1,3,2,1,0},
+        {0,-1,-1,-1,3,2,1,0,3,2,1,0,0,-1,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,3,2,1,0,1,0,-1,-1},
+        {0,-1,-1,-1,3,2,1,0,3,2,1,0,2,1,0,-1},
+        {0,-1,-1,-1,3,2,1,0,3,2,1,0,3,2,1,0},
+        {1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1,3,2,1,0},
+        {1,0,-1,-1,0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,2,1,0,-1,2,1,0,-1},
+        {1,0,-1,-1,0,-1,-1,-1,2,1,0,-1,3,2,1,0},
+        {1,0,-1,-1,0,-1,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,3,2,1,0,1,0,-1,-1},
+        {1,0,-1,-1,0,-1,-1,-1,3,2,1,0,2,1,0,-1},
+        {1,0,-1,-1,0,-1,-1,-1,3,2,1,0,3,2,1,0},
+        {1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {1,0,-1,-1,1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,1,0,-1,-1,1,0,-1,-1,3,2,1,0},
+        {1,0,-1,-1,1,0,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,2,1,0,-1,2,1,0,-1},
+        {1,0,-1,-1,1,0,-1,-1,2,1,0,-1,3,2,1,0},
+        {1,0,-1,-1,1,0,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,3,2,1,0,1,0,-1,-1},
+        {1,0,-1,-1,1,0,-1,-1,3,2,1,0,2,1,0,-1},
+        {1,0,-1,-1,1,0,-1,-1,3,2,1,0,3,2,1,0},
+        {1,0,-1,-1,2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,0,-1,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,0,-1,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,2,1,0,-1,0,-1,-1,-1,3,2,1,0},
+        {1,0,-1,-1,2,1,0,-1,1,0,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,1,0,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,1,0,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,2,1,0,-1,1,0,-1,-1,3,2,1,0},
+        {1,0,-1,-1,2,1,0,-1,2,1,0,-1,0,-1,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,2,1,0,-1,1,0,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,2,1,0,-1,2,1,0,-1},
+        {1,0,-1,-1,2,1,0,-1,2,1,0,-1,3,2,1,0},
+        {1,0,-1,-1,2,1,0,-1,3,2,1,0,0,-1,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,3,2,1,0,1,0,-1,-1},
+        {1,0,-1,-1,2,1,0,-1,3,2,1,0,2,1,0,-1},
+        {1,0,-1,-1,2,1,0,-1,3,2,1,0,3,2,1,0},
+        {1,0,-1,-1,3,2,1,0,0,-1,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,3,2,1,0,0,-1,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,3,2,1,0,0,-1,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,3,2,1,0,0,-1,-1,-1,3,2,1,0},
+        {1,0,-1,-1,3,2,1,0,1,0,-1,-1,0,-1,-1,-1},
+        {1,0,-1,-1,3,2,1,0,1,0,-1,-1,1,0,-1,-1},
+        {1,0,-1,-1,3,2,1,0,1,0,-1,-1,2,1,0,-1},
+        {1,0,-1,-1,3,2,1,0,1,0,-1,-1,3,2,1,0},
+        {1,0,-1,-1,3,2,1,0,2,1,0,-1,0,-1,-1,-1},
+        {1,0,-1,-1,3,2,1,0,2,1,0,-1,1,0,-1,-1},
+        {1,0,-1,-1,3,2,1,0,2,1,0,-1,2,1,0,-1},
+        {1,0,-1,-1,3,2,1,0,2,1,0,-1,3,2,1,0},
+        {1,0,-1,-1,3,2,1,0,3,2,1,0,0,-1,-1,-1},
+        {1,0,-1,-1,3,2,1,0,3,2,1,0,1,0,-1,-1},
+        {1,0,-1,-1,3,2,1,0,3,2,1,0,2,1,0,-1},
+        {1,0,-1,-1,3,2,1,0,3,2,1,0,3,2,1,0},
+        {2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {2,1,0,-1,0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {2,1,0,-1,0,-1,-1,-1,1,0,-1,-1,3,2,1,0},
+        {2,1,0,-1,0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,2,1,0,-1,2,1,0,-1},
+        {2,1,0,-1,0,-1,-1,-1,2,1,0,-1,3,2,1,0},
+        {2,1,0,-1,0,-1,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,3,2,1,0,1,0,-1,-1},
+        {2,1,0,-1,0,-1,-1,-1,3,2,1,0,2,1,0,-1},
+        {2,1,0,-1,0,-1,-1,-1,3,2,1,0,3,2,1,0},
+        {2,1,0,-1,1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {2,1,0,-1,1,0,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {2,1,0,-1,1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {2,1,0,-1,1,0,-1,-1,1,0,-1,-1,3,2,1,0},
+        {2,1,0,-1,1,0,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,2,1,0,-1,2,1,0,-1},
+        {2,1,0,-1,1,0,-1,-1,2,1,0,-1,3,2,1,0},
+        {2,1,0,-1,1,0,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,3,2,1,0,1,0,-1,-1},
+        {2,1,0,-1,1,0,-1,-1,3,2,1,0,2,1,0,-1},
+        {2,1,0,-1,1,0,-1,-1,3,2,1,0,3,2,1,0},
+        {2,1,0,-1,2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,2,1,0,-1,0,-1,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,2,1,0,-1,0,-1,-1,-1,2,1,0,-1},
+        {2,1,0,-1,2,1,0,-1,0,-1,-1,-1,3,2,1,0},
+        {2,1,0,-1,2,1,0,-1,1,0,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,2,1,0,-1,1,0,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,2,1,0,-1,1,0,-1,-1,2,1,0,-1},
+        {2,1,0,-1,2,1,0,-1,1,0,-1,-1,3,2,1,0},
+        {2,1,0,-1,2,1,0,-1,2,1,0,-1,0,-1,-1,-1},
+        {2,1,0,-1,2,1,0,-1,2,1,0,-1,1,0,-1,-1},
+        {2,1,0,-1,2,1,0,-1,2,1,0,-1,2,1,0,-1},
+        {2,1,0,-1,2,1,0,-1,2,1,0,-1,3,2,1,0},
+        {2,1,0,-1,2,1,0,-1,3,2,1,0,0,-1,-1,-1},
+        {2,1,0,-1,2,1,0,-1,3,2,1,0,1,0,-1,-1},
+        {2,1,0,-1,2,1,0,-1,3,2,1,0,2,1,0,-1},
+        {2,1,0,-1,2,1,0,-1,3,2,1,0,3,2,1,0},
+        {2,1,0,-1,3,2,1,0,0,-1,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,3,2,1,0,0,-1,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,3,2,1,0,0,-1,-1,-1,2,1,0,-1},
+        {2,1,0,-1,3,2,1,0,0,-1,-1,-1,3,2,1,0},
+        {2,1,0,-1,3,2,1,0,1,0,-1,-1,0,-1,-1,-1},
+        {2,1,0,-1,3,2,1,0,1,0,-1,-1,1,0,-1,-1},
+        {2,1,0,-1,3,2,1,0,1,0,-1,-1,2,1,0,-1},
+        {2,1,0,-1,3,2,1,0,1,0,-1,-1,3,2,1,0},
+        {2,1,0,-1,3,2,1,0,2,1,0,-1,0,-1,-1,-1},
+        {2,1,0,-1,3,2,1,0,2,1,0,-1,1,0,-1,-1},
+        {2,1,0,-1,3,2,1,0,2,1,0,-1,2,1,0,-1},
+        {2,1,0,-1,3,2,1,0,2,1,0,-1,3,2,1,0},
+        {2,1,0,-1,3,2,1,0,3,2,1,0,0,-1,-1,-1},
+        {2,1,0,-1,3,2,1,0,3,2,1,0,1,0,-1,-1},
+        {2,1,0,-1,3,2,1,0,3,2,1,0,2,1,0,-1},
+        {2,1,0,-1,3,2,1,0,3,2,1,0,3,2,1,0},
+        {3,2,1,0,0,-1,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {3,2,1,0,0,-1,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {3,2,1,0,0,-1,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {3,2,1,0,0,-1,-1,-1,1,0,-1,-1,3,2,1,0},
+        {3,2,1,0,0,-1,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,2,1,0,-1,2,1,0,-1},
+        {3,2,1,0,0,-1,-1,-1,2,1,0,-1,3,2,1,0},
+        {3,2,1,0,0,-1,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,3,2,1,0,1,0,-1,-1},
+        {3,2,1,0,0,-1,-1,-1,3,2,1,0,2,1,0,-1},
+        {3,2,1,0,0,-1,-1,-1,3,2,1,0,3,2,1,0},
+        {3,2,1,0,1,0,-1,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,1,0,-1,-1,0,-1,-1,-1,1,0,-1,-1},
+        {3,2,1,0,1,0,-1,-1,0,-1,-1,-1,2,1,0,-1},
+        {3,2,1,0,1,0,-1,-1,0,-1,-1,-1,3,2,1,0},
+        {3,2,1,0,1,0,-1,-1,1,0,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,1,0,-1,-1,1,0,-1,-1,1,0,-1,-1},
+        {3,2,1,0,1,0,-1,-1,1,0,-1,-1,2,1,0,-1},
+        {3,2,1,0,1,0,-1,-1,1,0,-1,-1,3,2,1,0},
+        {3,2,1,0,1,0,-1,-1,2,1,0,-1,0,-1,-1,-1},
+        {3,2,1,0,1,0,-1,-1,2,1,0,-1,1,0,-1,-1},
+        {3,2,1,0,1,0,-1,-1,2,1,0,-1,2,1,0,-1},
+        {3,2,1,0,1,0,-1,-1,2,1,0,-1,3,2,1,0},
+        {3,2,1,0,1,0,-1,-1,3,2,1,0,0,-1,-1,-1},
+        {3,2,1,0,1,0,-1,-1,3,2,1,0,1,0,-1,-1},
+        {3,2,1,0,1,0,-1,-1,3,2,1,0,2,1,0,-1},
+        {3,2,1,0,1,0,-1,-1,3,2,1,0,3,2,1,0},
+        {3,2,1,0,2,1,0,-1,0,-1,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,2,1,0,-1,0,-1,-1,-1,1,0,-1,-1},
+        {3,2,1,0,2,1,0,-1,0,-1,-1,-1,2,1,0,-1},
+        {3,2,1,0,2,1,0,-1,0,-1,-1,-1,3,2,1,0},
+        {3,2,1,0,2,1,0,-1,1,0,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,2,1,0,-1,1,0,-1,-1,1,0,-1,-1},
+        {3,2,1,0,2,1,0,-1,1,0,-1,-1,2,1,0,-1},
+        {3,2,1,0,2,1,0,-1,1,0,-1,-1,3,2,1,0},
+        {3,2,1,0,2,1,0,-1,2,1,0,-1,0,-1,-1,-1},
+        {3,2,1,0,2,1,0,-1,2,1,0,-1,1,0,-1,-1},
+        {3,2,1,0,2,1,0,-1,2,1,0,-1,2,1,0,-1},
+        {3,2,1,0,2,1,0,-1,2,1,0,-1,3,2,1,0},
+        {3,2,1,0,2,1,0,-1,3,2,1,0,0,-1,-1,-1},
+        {3,2,1,0,2,1,0,-1,3,2,1,0,1,0,-1,-1},
+        {3,2,1,0,2,1,0,-1,3,2,1,0,2,1,0,-1},
+        {3,2,1,0,2,1,0,-1,3,2,1,0,3,2,1,0},
+        {3,2,1,0,3,2,1,0,0,-1,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,3,2,1,0,0,-1,-1,-1,1,0,-1,-1},
+        {3,2,1,0,3,2,1,0,0,-1,-1,-1,2,1,0,-1},
+        {3,2,1,0,3,2,1,0,0,-1,-1,-1,3,2,1,0},
+        {3,2,1,0,3,2,1,0,1,0,-1,-1,0,-1,-1,-1},
+        {3,2,1,0,3,2,1,0,1,0,-1,-1,1,0,-1,-1},
+        {3,2,1,0,3,2,1,0,1,0,-1,-1,2,1,0,-1},
+        {3,2,1,0,3,2,1,0,1,0,-1,-1,3,2,1,0},
+        {3,2,1,0,3,2,1,0,2,1,0,-1,0,-1,-1,-1},
+        {3,2,1,0,3,2,1,0,2,1,0,-1,1,0,-1,-1},
+        {3,2,1,0,3,2,1,0,2,1,0,-1,2,1,0,-1},
+        {3,2,1,0,3,2,1,0,2,1,0,-1,3,2,1,0},
+        {3,2,1,0,3,2,1,0,3,2,1,0,0,-1,-1,-1},
+        {3,2,1,0,3,2,1,0,3,2,1,0,1,0,-1,-1},
+        {3,2,1,0,3,2,1,0,3,2,1,0,2,1,0,-1},
+        {3,2,1,0,3,2,1,0,3,2,1,0,3,2,1,0}
+};
 
 uint8_t *
 hz_blob_get_data(hz_blob_t *blob)
@@ -1182,42 +2239,49 @@ hz_blob_to_stream(hz_blob_t *blob) {
     return hz_stream_create(blob->data, blob->size);
 }
 
-typedef struct hz_face_table_node_t hz_face_table_node_t;
-
-struct hz_face_table_node_t {
-    hz_tag_t tag;
-    hz_blob_t *blob;
-    hz_face_table_node_t *prev, *next;
-};
-
-typedef struct hz_face_tables_t {
-    hz_face_table_node_t *root;
-} hz_face_tables_t;
+//typedef struct hz_face_table_node_t hz_face_table_node_t;
+//
+//struct hz_face_table_node_t {
+//    hz_tag_t tag;
+//    hz_blob_t *blob;
+//    hz_face_table_node_t *prev, *next;
+//};
+//
+//typedef struct hz_face_tables_t {
+//    hz_face_table_node_t *root;
+//} hz_face_tables_t;
 
 /* Group: Arabic joining */
-
-hz_bool_t
-hz_ot_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
-                                        uint16_t *joining)
+HZ_STATIC hz_bool
+hz_is_arabic_codepoint(hz_unicode_t c)
 {
-    const hz_arabic_joining_entry_t *curr_entry = NULL;
-    size_t index = 0;
+    return (c >= 0x0600u && c <= 0x06FFu) || /* Arabic (0600–06FF) */
+           (c >= 0x0750u && c <= 0x077Fu) || /* Arabic Supplement (0750–077F) */
+           (c >= 0x08A0u && c <= 0x08FFu) || /* Arabic Extended-A (08A0–08FF) */
+           (c >= 0xFB50u && c <= 0xFDFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
+           (c >= 0xFE70u && c <= 0xFEFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
+           (c >= 0x1EE00u && c <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
+}
 
-    while (index < HZ_ARRLEN(hz_arabic_joining_list)) {
-        curr_entry = &hz_arabic_joining_list[index];
+HZ_STATIC hz_bool
+hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
+                                     uint16_t *joining)
+{
+    if (hz_is_arabic_codepoint(codepoint)) {
+        for (size_t index = 0; index < HZ_ARRLEN(hz_arabic_joining_list); ++index) {
+            const hz_arabic_joining_entry_t *curr_entry = &hz_arabic_joining_list[index];
 
-        if (curr_entry->codepoint == codepoint) {
-            /* Found entry for current harf */
-            *joining = curr_entry->joining;
-            return HZ_TRUE;
+            if (curr_entry->codepoint == codepoint) {
+                // Found entry
+                *joining = curr_entry->joining;
+                return HZ_TRUE;
+            }
         }
 
-        ++index;
-    }
-
-    if (codepoint == 0x0640) {
-        *joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
-        return HZ_TRUE;
+        if (codepoint == 0x0640) { // Kashida
+            *joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
+            return HZ_TRUE;
+        }
     }
 
     return HZ_FALSE;
@@ -1228,15 +2292,6 @@ typedef enum hz_joining_dir_t {
     JOINING_PREV
 } hz_joining_dir_t;
 
-static hz_bool_t
-is_arabic_codepoint(hz_unicode_t cp) {
-    return (cp >= 0x0600u && cp <= 0x06FFu) || /* Arabic (0600–06FF) */
-           (cp >= 0x0750u && cp <= 0x077Fu) || /* Arabic Supplement (0750–077F) */
-           (cp >= 0x08A0u && cp <= 0x08FFu) || /* Arabic Extended-A (08A0–08FF) */
-           (cp >= 0xFB50u && cp <= 0xFDFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-           (cp >= 0xFE70u && cp <= 0xFEFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-           (cp >= 0x1EE00u && cp <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
-}
 //
 //hz_segment_node_t *
 //hz_ot_shape_complex_arabic_adjacent_char(const hz_segment_node_t *node, hz_bool_t do_reverse)
@@ -1380,17 +2435,17 @@ is_arabic_codepoint(hz_unicode_t cp) {
 //}
 
 
-typedef struct hz_face_ot_tables_t {
-    uint8_t *BASE_table;
-    uint8_t *GDEF_table;
-    uint8_t *GSUB_table;
-    uint8_t *GPOS_table;
-    uint8_t *JSTF_table;
-} hz_face_ot_tables_t;
+//typedef struct hz_face_ot_tables_t {
+//    uint8_t *BASE_table;
+//    uint8_t *GDEF_table;
+//    uint8_t *GSUB_table;
+//    uint8_t *GPOS_table;
+//    uint8_t *JSTF_table;
+//} hz_face_ot_tables_t;
 
 struct hz_face_t {
-    hz_face_tables_t tables;
-    hz_face_ot_tables_t ot_tables;
+    unsigned char *data;
+    unsigned int gpos,gsub,gdef,jstf,cmap,maxp,glyf,hmtx,kern;
 
     uint16_t num_glyphs;
     uint16_t num_of_h_metrics;
@@ -1419,7 +2474,6 @@ hz_face_create()
     face->descender = 0;
     face->linegap = 0;
     face->upem = 0;
-    face->tables.root = NULL;
     face->class_map = hz_map_create();
     face->attach_class_map = hz_map_create();
     return face;
@@ -1444,46 +2498,46 @@ hz_face_set_upem(hz_face_t *face, uint16_t upem)
 }
 
 
-void
-hz_face_set_table(hz_face_t *face, hz_tag_t tag, hz_blob_t *blob)
-{
-    hz_face_table_node_t *new_node = hz_malloc(sizeof(hz_face_table_node_t));
-    new_node->tag = tag;
-    new_node->blob = blob;
-    new_node->next = NULL;
-
-    if (face->tables.root == NULL) {
-        new_node->prev = NULL;
-        face->tables.root = new_node;
-    } else {
-        hz_face_table_node_t *node = face->tables.root;
-        while (node != NULL) {
-            if (node->next == NULL) {
-                /* found last node */
-                new_node->prev = node;
-                node->next = new_node;
-                break;
-            }
-
-            node = node->next;
-        }
-    }
-}
-
-hz_blob_t *
-hz_face_reference_table(hz_face_t *face, hz_tag_t tag)
-{
-    hz_face_table_node_t *node = face->tables.root;
-
-    while (node != NULL) {
-        if (node->tag == tag)
-            return node->blob; /* tags match, found table */
-
-        node = node->next;
-    }
-
-    return NULL;
-}
+//void
+//hz_face_set_table(hz_face_t *face, hz_tag_t tag, hz_blob_t *blob)
+//{
+//    hz_face_table_node_t *new_node = hz_malloc(sizeof(hz_face_table_node_t));
+//    new_node->tag = tag;
+//    new_node->blob = blob;
+//    new_node->next = NULL;
+//
+//    if (face->tables.root == NULL) {
+//        new_node->prev = NULL;
+//        face->tables.root = new_node;
+//    } else {
+//        hz_face_table_node_t *node = face->tables.root;
+//        while (node != NULL) {
+//            if (node->next == NULL) {
+//                /* found last node */
+//                new_node->prev = node;
+//                node->next = new_node;
+//                break;
+//            }
+//
+//            node = node->next;
+//        }
+//    }
+//}
+//
+//hz_blob_t *
+//hz_face_reference_table(hz_face_t *face, hz_tag_t tag)
+//{
+//    hz_face_table_node_t *node = face->tables.root;
+//
+//    while (node != NULL) {
+//        if (node->tag == tag)
+//            return node->blob; /* tags match, found table */
+//
+//        node = node->next;
+//    }
+//
+//    return NULL;
+//}
 
 void
 hz_face_set_num_glyphs(hz_face_t *face, uint16_t num_glyphs)
@@ -1528,8 +2582,7 @@ hz_face_set_num_of_h_metrics(hz_face_t *face, uint16_t num_of_h_metrics)
 void
 hz_face_load_num_glyphs(hz_face_t *face)
 {
-    hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('m','a','x','p'));
-    hz_stream_t bs = hz_stream_create(blob->data, blob->size);
+    hz_stream_t bs = hz_stream_create(face->data + face->maxp, 0);
 
     Version16Dot16 version;
     uint16_t num_glyphs;
@@ -1558,8 +2611,8 @@ hz_face_load_num_glyphs(hz_face_t *face)
 void
 hz_face_load_class_maps(hz_face_t *face)
 {
-    if (face->ot_tables.GDEF_table != NULL) {
-        hz_stream_t bs = hz_stream_create(face->ot_tables.GDEF_table, 0);
+    if (!face->gdef) {
+        hz_stream_t bs = hz_stream_create(face->data + face->gdef, 0);
         Version16Dot16 version;
 
         Offset16 glyph_class_def_offset;
@@ -1670,17 +2723,16 @@ typedef union hz_kern_coverage_t {
 hz_error_t
 hz_face_load_kerning_pairs(hz_face_t *face)
 {
-    hz_stream_t bs;
+    hz_stream_t table;
     uint16_t version, i, n;
-    hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('k','e','r','n'));
 
-    if (blob == NULL) {
+    if (!face->kern) {
         return HZ_ERROR_TABLE_DOES_NOT_EXIST;
     }
 
-    bs = hz_stream_create(blob->data, blob->size);
-    version = unpack16(&bs);
-    n = unpack16(&bs);
+    table = hz_stream_create(face->data + face->kern, 0);
+    version = unpack16(&table);
+    n = unpack16(&table);
 
     if (version != 0) {
         return HZ_ERROR_INVALID_TABLE_VERSION;
@@ -1689,7 +2741,7 @@ hz_face_load_kerning_pairs(hz_face_t *face)
     for (i = 0; i < n; ++i) {
         uint16_t version, length;
         hz_kern_coverage_field_t coverage;
-        unpackf(&bs, "hhh", &version, &length, &coverage);
+        unpackf(&table, "hhh", &version, &length, &coverage);
 
         switch (coverage.format) {
             case 0:
@@ -1707,6 +2759,7 @@ hz_face_load_kerning_pairs(hz_face_t *face)
 hz_glyph_class_t
 hz_face_get_glyph_class(hz_face_t *face, hz_index_t id)
 {
+    /* TODO: This is slow, implement faster hash table */
     if (hz_map_value_exists(face->class_map, id)) {
         return hz_map_get_value(face->class_map, id);
     }
@@ -1735,25 +2788,25 @@ hz_face_line_skip(hz_face_t *face)
     return (float)(face->ascender - face->descender + face->linegap) / 64.0f;
 }
 
-hz_blob_t*
-hz_ft_load_snft_table(FT_Face face, hz_tag_t tag)
-{
-    FT_ULong size, ft_tag, length;
-    
-    size = 0;
-    ft_tag = tag;
-    
-    FT_Load_Sfnt_Table(face, tag, 0, NULL, &size);
-
-    if (size) {
-        hz_blob_t *blob = hz_blob_create();
-        hz_blob_resize(blob, size);
-        FT_Load_Sfnt_Table(face, tag, 0, hz_blob_get_data(blob), &size);
-        return blob;
-    }
-
-    return NULL;
-}
+//HZ_STATIC hz_blob_t*
+//hz_ft_load_snft_table(FT_Face face, hz_tag_t tag)
+//{
+//    FT_ULong size, ft_tag, length;
+//
+//    size = 0;
+//    ft_tag = tag;
+//
+//    FT_Load_Sfnt_Table(face, tag, 0, NULL, &size);
+//
+//    if (size) {
+//        hz_blob_t *blob = hz_blob_create();
+//        hz_blob_resize(blob, size);
+//        FT_Load_Sfnt_Table(face, tag, 0, hz_blob_get_data(blob), &size);
+//        return blob;
+//    }
+//
+//    return NULL;
+//}
 
 HZ_STATIC const hz_tag_t required_ft_table_tags[] = {
         HZ_TAG('c','m','a','p'),
@@ -1808,92 +2861,178 @@ hz_font_get_face(hz_font_t *font)
     return font->face;
 }
 
-hz_font_t *
-hz_ft_font_create(FT_Face ft_face)
+HZ_API hz_font_t *
+hz_stbtt_font_create(stbtt_fontinfo *info)
 {
-    size_t            i;
-    const hz_tag_t   *tags;
-    size_t            n_tags;
-    hz_face_t        *face;
-    hz_font_t        *font;
-
-    FT_Bytes BASE_table;
-    FT_Bytes GDEF_table;
-    FT_Bytes GSUB_table;
-    FT_Bytes GPOS_table;
-    FT_Bytes JSTF_table;
-
-    if (ft_face == NULL) {
-        DEBUG_MSG("FreeType face passed in is NULL!");
-        return NULL;
-    }
-
-    tags = required_ft_table_tags;
-    n_tags = HZ_ARRLEN(required_ft_table_tags);
+    static float scale = 1.0f;
+    int g;
+    hz_font_t *font;
+    hz_face_t *face;
 
     font = hz_font_create();
     face = hz_face_create();
-    hz_face_set_upem(face, ft_face->units_per_EM);
+    face->data = info->data;
 
-    if (FT_OpenType_Validate(ft_face, FT_VALIDATE_OT,
-                             &BASE_table, &GDEF_table, &GPOS_table, &GSUB_table, &JSTF_table)
-                             != FT_Err_Ok) {
-        ERROR_MSG("Failed to validate OpenType tables!");
-        hz_face_destroy(face);
-        hz_font_destroy(font);
-        return NULL;
-    }
+    face->gsub = stbtt__find_table(info->data,0,"GSUB");
+    face->gpos = info->gpos;
+    face->gdef = stbtt__find_table(info->data,0,"GDEF");
+    face->maxp = stbtt__find_table(info->data,0,"maxp");
+    face->glyf = info->glyf;
+    face->cmap = stbtt__find_table(info->data,0,"cmap");
+    face->kern = info->kern;
 
-    face->ot_tables.BASE_table = (hz_byte_t *)BASE_table;
-    face->ot_tables.GDEF_table = (hz_byte_t *)GDEF_table;
-    face->ot_tables.GSUB_table = (hz_byte_t *)GSUB_table;
-    face->ot_tables.GPOS_table = (hz_byte_t *)GPOS_table;
-    face->ot_tables.JSTF_table = (hz_byte_t *)JSTF_table;
+    face->num_glyphs = info->numGlyphs;
 
-    for (i = 0; i < n_tags; ++i) {
-        hz_blob_t *blob = hz_ft_load_snft_table(ft_face, tags[i]);
-        if (blob != NULL) {
-            hz_face_set_table(face, tags[i], blob);
-        }
-    }
-
-    hz_face_load_num_glyphs(face);
     face->metrics = hz_malloc(sizeof(hz_metrics_t) * face->num_glyphs);
 
-    for (i = 0; i < face->num_glyphs; ++i) {
-        FT_GlyphSlot slot = ft_face->glyph;
-        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
-            hz_metrics_t *mo;
-            FT_Glyph_Metrics *mi;
-            FT_BBox bbox;
-            FT_Glyph glyph;
-            mi = &ft_face->glyph->metrics;
+    int ascent, descent, lineGap;
+    stbtt_GetFontVMetrics(info, &ascent, &descent, &lineGap);
 
-            /* Load glyph bounding box */
-            FT_Get_Glyph(slot, &glyph);
-            FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
-            FT_Done_Glyph(glyph);
+    for (g = 0; g < face->num_glyphs; ++g) {
+        /* how wide is this character */
+        int ax;
+        int lsb;
+        stbtt_GetGlyphHMetrics(info, g, &ax, &lsb);
+        /* (Note that each Codepoint call has an alternative Glyph version which caches the work required to lookup the character word[i].) */
 
-            mo = hz_face_get_glyph_metrics(face, i);
-            
-            mo->x_advance = (hz_position_t)mi->horiAdvance;
-            mo->y_advance = (hz_position_t)mi->vertAdvance;
-            mo->x_bearing = (hz_position_t)mi->horiBearingX;
-            mo->y_bearing = 0;//mi->horiBearingY;
-            mo->w = (hz_position_t)mi->width;
-            mo->h = (hz_position_t)mi->height;
-            mo->bbox.x0 = (hz_position_t)bbox.xMin;
-            mo->bbox.x1 = (hz_position_t)bbox.xMax;
-            mo->bbox.y0 = (hz_position_t)bbox.yMin;
-            mo->bbox.y1 = (hz_position_t)bbox.yMax;
-        }
+        /* get bounding box for character (may be offset to account for chars that dip above or below the line */
+        int c_x1, c_y1, c_x2, c_y2;
+        stbtt_GetGlyphBitmapBox(info, g, scale, scale, &c_x1, &c_y1, &c_x2, &c_y2);
+
+        /* compute y (different characters have different heights */
+        int y = ascent + c_y1;
+
+        face->metrics[g].w = c_x2 - c_x1;
+        face->metrics[g].h = c_y2 - c_y1;
+        face->metrics[g].x_advance = ax;
+        face->metrics[g].y_advance = 0;
+
+        //        FT_GlyphSlot slot = ft_face->glyph;
+//        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
+//            hz_metrics_t *mo;
+//            FT_Glyph_Metrics *mi;
+//            FT_BBox bbox;
+//            FT_Glyph glyph;
+//            mi = &ft_face->glyph->metrics;
+//
+//            /* Load glyph bounding box */
+//            FT_Get_Glyph(slot, &glyph);
+//            FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
+//            FT_Done_Glyph(glyph);
+//
+//            mo = hz_face_get_glyph_metrics(face, i);
+//
+//            mo->x_advance = (hz_position_t)mi->horiAdvance;
+//            mo->y_advance = (hz_position_t)mi->vertAdvance;
+//            mo->x_bearing = (hz_position_t)mi->horiBearingX;
+//            mo->y_bearing = 0;//mi->horiBearingY;
+//            mo->w = (hz_position_t)mi->width;
+//            mo->h = (hz_position_t)mi->height;
+//            mo->bbox.x0 = (hz_position_t)bbox.xMin;
+//            mo->bbox.x1 = (hz_position_t)bbox.xMax;
+//            mo->bbox.y0 = (hz_position_t)bbox.yMin;
+//            mo->bbox.y1 = (hz_position_t)bbox.yMax;
+//        }
     }
+
 
     hz_face_load_class_maps(face);
     hz_face_load_kerning_pairs(face);
     hz_font_set_face(font, face);
+
     return font;
 }
+
+//hz_font_t *
+//hz_ft_font_create(FT_Face ft_face)
+//{
+//    FT_Error         err;
+//    size_t            i;
+//    const hz_tag_t   *tags;
+//    size_t            n_tags;
+//    hz_face_t        *face;
+//    hz_font_t        *font;
+//
+//    FT_Bytes BASE_table;
+//    FT_Bytes GDEF_table;
+//    FT_Bytes GSUB_table;
+//    FT_Bytes GPOS_table;
+//    FT_Bytes JSTF_table;
+//
+//    if (ft_face == NULL) {
+//        DEBUG_MSG("FreeType face passed in is NULL!");
+//        return NULL;
+//    }
+//
+//    tags = required_ft_table_tags;
+//    n_tags = HZ_ARRLEN(required_ft_table_tags);
+//
+//    font = hz_font_create();
+//    face = hz_face_create();
+//    hz_face_set_upem(face, ft_face->units_per_EM);
+//
+//    if ((err = FT_OpenType_Validate(ft_face, FT_VALIDATE_OT,
+//                             &BASE_table, &GDEF_table, &GPOS_table, &GSUB_table, &JSTF_table))
+//                             != FT_Err_Ok)
+//    {
+//        fprintf(stderr, "Failed to validate OpenType Face! Error: %s (code %d).\n",
+//                FT_Error_String(err), err);
+//
+//        hz_face_destroy(face);
+//        hz_font_destroy(font);
+//        return NULL;
+//    }
+//
+//    face->ot_tables.BASE_table = (hz_byte_t *)BASE_table;
+//    face->ot_tables.GDEF_table = (hz_byte_t *)GDEF_table;
+//    face->ot_tables.GSUB_table = (hz_byte_t *)GSUB_table;
+//    face->ot_tables.GPOS_table = (hz_byte_t *)GPOS_table;
+//    face->ot_tables.JSTF_table = (hz_byte_t *)JSTF_table;
+//
+//    for (i = 0; i < n_tags; ++i) {
+//        hz_blob_t *blob = hz_ft_load_snft_table(ft_face, tags[i]);
+//        if (blob != NULL) {
+//            hz_face_set_table(face, tags[i], blob);
+//        }
+//    }
+//
+//    hz_face_load_num_glyphs(face);
+//    face->metrics = hz_malloc(sizeof(hz_metrics_t) * face->num_glyphs);
+//
+//    for (i = 0; i < face->num_glyphs; ++i) {
+//        FT_GlyphSlot slot = ft_face->glyph;
+//        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
+//            hz_metrics_t *mo;
+//            FT_Glyph_Metrics *mi;
+//            FT_BBox bbox;
+//            FT_Glyph glyph;
+//            mi = &ft_face->glyph->metrics;
+//
+//            /* Load glyph bounding box */
+//            FT_Get_Glyph(slot, &glyph);
+//            FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
+//            FT_Done_Glyph(glyph);
+//
+//            mo = hz_face_get_glyph_metrics(face, i);
+//
+//            mo->x_advance = (hz_position_t)mi->horiAdvance;
+//            mo->y_advance = (hz_position_t)mi->vertAdvance;
+//            mo->x_bearing = (hz_position_t)mi->horiBearingX;
+//            mo->y_bearing = 0;//mi->horiBearingY;
+//            mo->w = (hz_position_t)mi->width;
+//            mo->h = (hz_position_t)mi->height;
+//            mo->bbox.x0 = (hz_position_t)bbox.xMin;
+//            mo->bbox.x1 = (hz_position_t)bbox.xMax;
+//            mo->bbox.y0 = (hz_position_t)bbox.yMin;
+//            mo->bbox.y1 = (hz_position_t)bbox.yMax;
+//        }
+//    }
+//
+//    hz_face_load_class_maps(face);
+//    hz_face_load_kerning_pairs(face);
+//    hz_font_set_face(font, face);
+//    return font;
+//}
 
 hz_glyph_class_t
 hz_ignored_classes_from_lookup_flags(hz_lookup_flag_t flags)
@@ -2023,35 +3162,22 @@ hz_ot_tag_from_feature(hz_feature_t feature) {
 //    }
 //}
 //
-//void
-//hz_set_sequence_glyph_info(hz_face_t *face, hz_segment_t *seg) {
-////    const hz_face_ot_tables_t *tables = hz_face_get_ot_tables(face);
-////    if (tables->GDEF_table != NULL) {
-////        hz_ot_parse_gdef_table(face, seg);
-////    } else {
-////        hz_sequence_node_t *node = seg->root;
-////
-////        while (node != NULL) {
-////            node->glyph_class = HZ_GLYPH_CLASS_BASE;
-////            node = node->next;
-////        }
-////    }
-//
-//    hz_segment_node_t * node;
-//    for (node = seg->root; node != NULL; node=node->next) {
-//        node->glyph_class = hz_face_get_glyph_class(face, node->gid);
-//        if (node->glyph_class & HZ_GLYPH_CLASS_MARK) {
-//            node->attach_class = hz_face_get_glyph_attach_class(face, node->gid);
-//        } else {
-//            node->attach_class = 0;
-//        }
-//    }
-//}
+void
+hz_segment_set_glyph_info(hz_segment_t *seg, hz_face_t *face) {
+    for (size_t i = 0; i < seg->glyph_count; ++i) {
+        seg->glyph_classes[i] = hz_face_get_glyph_class(face, seg->glyph_indices[i]);
+        if (seg->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
+            seg->attachment_classes[i] = hz_face_get_glyph_attach_class(face, seg->glyph_indices[i]);
+        } else {
+            seg->attachment_classes[i] = 0;
+        }
+    }
+}
 
 typedef struct hz_rec16_t {
     hz_tag_t tag;
     uint16_t offset;
-} hz_rec16_t;
+} Record16;
 
 typedef struct hz_lang_sys_t {
     /* = NULL (reserved for an offset to a reordering table) */
@@ -2063,27 +3189,6 @@ typedef struct hz_lang_sys_t {
     /* Number of feature index values for this language system — excludes the required feature */
     uint16_t feature_index_count;
 } hz_lang_sys_t;
-
-typedef struct hz_ligature_t {
-    uint16_t ligature_glyph;
-    uint16_t component_count;
-    uint16_t *component_glyph_ids;
-} hz_ligature_t;
-
-hz_ligature_t *
-hz_ligature_create() {
-    hz_ligature_t *ligature = hz_malloc(sizeof(hz_ligature_t));
-    ligature->ligature_glyph = 0;
-    ligature->component_count = 0;
-    ligature->component_glyph_ids = NULL;
-    return ligature;
-}
-
-void
-hz_ligature_destroy(hz_ligature_t *ligature) {
-    hz_free(ligature->component_glyph_ids);
-    hz_free(ligature);
-}
 
 typedef struct hz_sequence_lookup_record_t {
     uint16_t sequence_index;
@@ -2120,14 +3225,14 @@ typedef struct hz_chained_sequence_rule_set_t {
 } hz_chained_sequence_rule_set_t;
 
 /*
-    Struct: hz_sequence_node_cache_t  
+    Struct: hz_sequence_node_cache_t
         Sequence of pointers to nodes which may have a gap between
         useful for when checking sub-sequences with glyph class skip flags when applying lookups
         as a form of cache. i.e. it's used in contextual substitutions when comparing a subsection of a seg
         and caching those nodes, so that later can easily move to specific subsections of the seg.
 */
 typedef struct hz_sequence_node_cache_t {
-    hz_segment_node_t **nodes;
+    hz_glyph_info_t **nodes;
     size_t node_count;
 } hz_sequence_node_cache_t;
 
@@ -2138,7 +3243,7 @@ hz_sequence_node_cache_t *hz_sequence_node_cache_create(void) {
     return cache;
 }
 
-hz_bool_t
+hz_bool
 hz_sequence_node_cache_is_empty(hz_sequence_node_cache_t *cache) {
     return cache->node_count == 0 || cache->nodes == NULL;
 }
@@ -2173,14 +3278,14 @@ void hz_sequence_node_cache_shrink(hz_sequence_node_cache_t *cache, size_t amt) 
 }
 
 void
-hz_sequence_node_cache_add(hz_sequence_node_cache_t *cache, hz_segment_node_t *node) {
+hz_sequence_node_cache_add(hz_sequence_node_cache_t *cache, hz_glyph_info_t *node) {
     hz_sequence_node_cache_grow(cache, 1);
     cache->nodes[cache->node_count-1] = node;
 }
 
 void
 hz_sequence_node_cache_insert(hz_sequence_node_cache_t *cache, size_t index,
-                              hz_segment_node_t *node)
+                              hz_glyph_info_t *node)
 {
     size_t i, rem = cache->node_count - index;
     hz_sequence_node_cache_grow(cache, 1);
@@ -2209,15 +3314,6 @@ hz_sequence_node_cache_destroy(hz_sequence_node_cache_t *cache) {
     hz_free(cache);
 }
 
-void
-hz_ligature_decode(hz_ligature_t *ligature, uint8_t *data) {
-    hz_stream_t table = hz_stream_create(data, 0);
-    unpackf(&table, "hh", &ligature->ligature_glyph, &ligature->component_count);
-    ligature->component_glyph_ids = hz_malloc(sizeof(uint16_t) * (ligature->component_count - 1));
-    unpackf(&table, "h:*", ligature->component_glyph_ids, ligature->component_count - 1);
-}
-
-
 typedef struct hz_range_rec_t {
     hz_index_t start_glyph_id;
     hz_index_t end_glyph_id;
@@ -2225,11 +3321,12 @@ typedef struct hz_range_rec_t {
 } hz_range_rec_t;
 
 typedef struct hz_feature_table_t {
-    /* = NULL (reserved for offset to FeatureParams) */
+    // = NULL (reserved for offset to FeatureParams)
     Offset16 feature_params;
-
-    /* Number of LookupList indices for this feature */
+    // Number of LookupList indices for this feature
     uint16_t lookup_index_count;
+    // Array of indices into the LookupList — zero-based (first lookup is LookupListIndex = 0)
+    uint16_t *lookup_list_indices;
 } hz_feature_table_t;
 
 HZ_STATIC hz_error_t
@@ -2267,7 +3364,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
                              hz_tag_t script,
                              hz_tag_t language)
 {
-    uint8_t                      buffer[1024];
+    uint8_t                 buffer[1024];
     hz_bump_allocator_t     allocator;
 
     hz_bump_allocator_init(&allocator, buffer, sizeof(buffer));
@@ -2275,12 +3372,12 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
     hz_stream_t subtable = hz_stream_create(data, 0);
     uint16_t script_count = 0;
     uint16_t index = 0;
-    hz_rec16_t *script_records = NULL;
+    Record16 *script_records = NULL;
     uint16_t found_script = 0;
     const uint8_t *found_addr;
 
     script_count = unpack16(&subtable);
-    script_records = hz_bump_allocator_alloc(&allocator, sizeof(hz_rec16_t) * script_count);
+    script_records = hz_bump_allocator_alloc(&allocator, sizeof(Record16) * script_count);
 
     while (index < script_count) {
         hz_tag_t curr_tag;
@@ -2309,7 +3406,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
 
     uint16_t lang_sysIndex = 0;
     while (lang_sysIndex < lang_sys_count) {
-        hz_rec16_t lang_sys_rec;
+        Record16 lang_sys_rec;
         unpackf(&script_stream, "ih", &lang_sys_rec.tag,
                 &lang_sys_rec.offset);
 
@@ -2378,9 +3475,9 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
     uint32_t feature_variations_offset;
 
     if (table_tag == HZ_OT_TAG_GSUB) {
-        table = hz_stream_create(face->ot_tables.GSUB_table, 0);
+        table = hz_stream_create(face->data + face->gsub, 0);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-        table = hz_stream_create(face->ot_tables.GPOS_table, 0);
+        table = hz_stream_create(face->data + face->gpos, 0);
     } else {
         /* error */
         return HZ_ERROR_INVALID_TABLE_TAG;
@@ -2427,7 +3524,12 @@ hz_ot_layout_apply_lookup(hz_face_t *face,
     return HZ_OK;
 }
 
-HZ_STATIC hz_bool_t
+typedef struct hz_feature_list_item_t {
+    hz_tag_t tag;
+    hz_feature_table_t table;
+} hz_feature_list_item_t;
+
+HZ_STATIC hz_bool
 hz_ot_layout_apply_features(hz_face_t *face,
                             hz_tag_t table_tag,
                             hz_tag_t script,
@@ -2439,9 +3541,9 @@ hz_ot_layout_apply_features(hz_face_t *face,
     hz_stream_t table;
 
     if (table_tag == HZ_OT_TAG_GSUB) {
-        table = hz_stream_create(face->ot_tables.GSUB_table, 0);
+        table = hz_stream_create(face->data + face->gsub, 0);
     } else if (table_tag == HZ_OT_TAG_GPOS) {
-        table = hz_stream_create(face->ot_tables.GPOS_table, 0);
+        table = hz_stream_create(face->data + face->gpos, 0);
     } else {
         /* error */
         return HZ_ERROR_INVALID_TABLE_TAG;
@@ -2521,7 +3623,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
         /* Parsing the FeatureList and applying selected Features */
         uint16_t feature_index = 0;
         uint16_t feature_count = unpack16(&feature_list);
-        
+
         hz_map_t *feature_map = hz_map_create();
 
         /* fill map from feature type to offset */
@@ -2567,7 +3669,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
     return HZ_OK;
 }
 
-hz_bool_t
+hz_bool
 hz_ot_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
 {
     uint16_t coverage_format;
@@ -3053,7 +4155,7 @@ hz_ot_parse_sequence_rule_set(uint8_t *data, hz_sequence_rule_set_t *rule_set)
 
     hz_bump_allocator_init(&allocator, buffer, sizeof(buffer));
 
-    rule_offsets = hz_bump_allocator_alloc(&allocator, 
+    rule_offsets = hz_bump_allocator_alloc(&allocator,
         rule_set->rule_count * sizeof(uint16_t));
 
     bs = hz_stream_create(data, 0);
@@ -3082,7 +4184,7 @@ void
 hz_ot_parse_chained_sequence_rule(uint8_t *data, hz_chained_sequence_rule_t *rule) {
     uint8_t                    tmpbuf[1024];
     hz_bump_allocator_t        allocator;
-    hz_stream_t                      buf;
+    hz_stream_t                buf;
     size_t                     i;
 
     hz_bump_allocator_init(&allocator, tmpbuf, sizeof tmpbuf);
@@ -3113,8 +4215,8 @@ hz_ot_parse_chained_sequence_rule(uint8_t *data, hz_chained_sequence_rule_t *rul
 void
 hz_ot_parse_chained_sequence_rule_set(uint8_t *data, hz_chained_sequence_rule_set_t *rule_set) {
     size_t          i;
-    Offset16   *offsets;
-    hz_stream_t           buf;
+    Offset16        *offsets;
+    hz_stream_t     buf;
 
     buf = hz_stream_create(data, 0);
 
@@ -3248,7 +4350,7 @@ hz_ot_clear_chained_sequence_context_format3_table(hz_chained_sequence_context_f
 }
 
 void
-hz_ot_layout_apply_gsub_lookup_to_glyph(hz_segment_node_t *g) {
+hz_ot_layout_apply_gsub_lookup_to_glyph(hz_glyph_info_t *g) {
 
 }
 
@@ -3335,14 +4437,14 @@ static void
 hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
                                            hz_reverse_chain_single_subst_format1_t *subst)
 {
-    uint8_t             tmpbuf[4096];
+    uint8_t             buffer[4096];
     hz_bump_allocator_t allocator;
-    Offset16       coverage_offset;
-    Offset16       *prefix_coverage_offsets;
-    Offset16       *suffix_coverage_offsets;
+    Offset16            coverage_offset;
+    Offset16            *prefix_coverage_offsets;
+    Offset16            *suffix_coverage_offsets;
     uint16_t            i;
 
-    hz_bump_allocator_init(&allocator, tmpbuf, sizeof tmpbuf);
+    hz_bump_allocator_init(&allocator, buffer, sizeof buffer);
 
     coverage_offset = unpack16(buf);
     subst->coverage = hz_map_create();
@@ -3754,18 +4856,18 @@ hz_free_reverse_chain_single_subst_format1(hz_reverse_chain_single_subst_format1
 //                                        hz_sequence_node_cache_t *seg_context,
 //                                        uint16_t nested_index);
 //
-hz_bool_t
-hz_ot_apply_repos_value(hz_segment_node_t *g, uint16_t value_format, const hz_value_record_t *record) {
+hz_bool
+hz_ot_apply_repos_value(hz_glyph_info_t *g, uint16_t value_format, const hz_value_record_t *record) {
     if (!value_format) return HZ_FALSE;
 
-    if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT)
-        g->x_offset += record->x_placement;
-    if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT)
-        g->y_offset += record->y_placement;
-    if (value_format & HZ_VALUE_FORMAT_X_ADVANCE)
-        g->x_advance += record->x_advance;
-    if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE)
-        g->y_advance += record->y_advance;
+//    if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT)
+//        g->x_offset += record->x_placement;
+//    if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT)
+//        g->y_offset += record->y_placement;
+//    if (value_format & HZ_VALUE_FORMAT_X_ADVANCE)
+//        g->x_advance += record->x_advance;
+//    if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE)
+//        g->y_advance += record->y_advance;
 
     return HZ_TRUE;
 }
@@ -4294,7 +5396,7 @@ typedef struct hz_anchor_t {
 } hz_anchor_t;
 
 typedef struct hz_anchor_pair_t {
-    hz_bool_t has_entry, has_exit;
+    hz_bool has_entry, has_exit;
     hz_anchor_t entry, exit;
 } hz_anchor_pair_t;
 
@@ -5147,7 +6249,7 @@ typedef enum hz_feature_flag_t {
 
 typedef struct hz_feature_layout_op_t {
     hz_feature_t feature;
-    hz_tag_t layout_op; /* GSUB or GPOS */
+    hz_tag_t layout_op; // 'GSUB' or 'GPOS'
     uint8_t flags;
 } hz_feature_layout_op_t;
 
@@ -5233,7 +6335,7 @@ static const hz_feature_layout_op_t simple_script_feature_orders[] = {
     { HZ_FEATURE_MKMK, HZ_OT_TAG_GPOS, HZ_FEATURE_FLAG_REQUIRED },
 };
 
-hz_bool_t
+hz_bool
 hz_ot_is_complex_script(hz_script_t script)
 {
     int i;
@@ -5243,7 +6345,7 @@ hz_ot_is_complex_script(hz_script_t script)
             return HZ_TRUE;
         }
     }
-    
+
     return HZ_FALSE;
 }
 
@@ -5261,7 +6363,7 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
             if (order.script == script) {
                 unsigned int cnt = 0;
 
-                /* count required, on by default and always applied features */
+                // count required, on by default and always applied features
                 for (j=0;j<order.num_ops;++j)
                     if (order.ops[j].flags & inclmask)
                         ++cnt;
@@ -5271,7 +6373,7 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
                     *featuresptr = hz_malloc(cnt * sizeof(hz_feature_t));
                     *countptr = cnt;
 
-                    /* again, go over the list and copy features */
+                    // again, go over the list and copy features
                     for (j=f=0; f<cnt && j<order.num_ops; ++j) {
                         if (order.ops[j].flags & inclmask) {
                             (*featuresptr)[f] = order.ops[j].feature;
@@ -5279,12 +6381,12 @@ hz_ot_script_load_features(hz_script_t script, hz_feature_t **featuresptr, unsig
                         }
                     }
                 }
-                
+
                 break;
             }
         }
     } else {
-        /* standard scripts (Latin, Cyrillic, Greek, etc) */ 
+        /* standard scripts (Latin, Cyrillic, Greek, etc) */
     }
 }
 
@@ -5305,10 +6407,9 @@ hz_language_to_ot_tag(hz_language_t lang)
     return 0;
 }
 
-/*
-    Enum: hz_cmap_platform_t
-        <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids>
-*/
+/*  Enum: hz_cmap_platform_t
+ *      <https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#platform-ids>
+ */
 typedef enum hz_cmap_platform_t  {
     /* Various */
     HZ_CMAP_PLATFORM_UNICODE = 0,
@@ -5323,7 +6424,7 @@ typedef enum hz_cmap_platform_t  {
     /* Platform ID values 240 through 255 are reserved for user-defined platforms.
      * This specification will never assign these values to a registered platform.
      * Platform ID 2 (ISO) was deprecated as of OpenType version v1.3.
-     * */
+     */
 } hz_cmap_platform_t;
 
 typedef enum hz_cmap_subtable_format_t {
@@ -5332,9 +6433,9 @@ typedef enum hz_cmap_subtable_format_t {
 } hz_cmap_subtable_format_t;
 
 typedef struct hz_cmap_encoding_t {
-    uint16_t        platform_id; /* Platform ID. */
-    uint16_t        encoding_id; /* Platform-specific encoding ID. */
-    Offset32        subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
+    uint16_t platform_id; /* Platform ID. */
+    uint16_t encoding_id; /* Platform-specific encoding ID. */
+    Offset32 subtable_offset; /* Byte offset from beginning of table to the subtable for this encoding. */
 } hz_cmap_encoding_t;
 
 static const char *
@@ -5349,18 +6450,17 @@ hz_cmap_platform_to_string(hz_cmap_platform_t platform) {
     }
 }
 
-/*
- * Format 0: Byte encoding table
+/* Format 0: Byte encoding table
  * https://docs.microsoft.com/en-us/typography/opentype/spec/cmap#format-0-byte-encoding-table
- * */
+ */
 typedef struct hz_cmap_subtable_format0_t {
-    uint16_t format; /* Format number is set to 0. */
-    uint16_t length; /* This is the length in bytes of the subtable. */
+    uint16_t format; // Format number is set to 0.
+    uint16_t length; // This is the length in bytes of the subtable.
     /* For requirements on use of the language field,
      * see “Use of the language field in 'cmap' subtables” in this document.
-     * */
+     */
     uint16_t language;
-    /* An array that maps character codes to glyph index values. */
+    // An array that maps character codes to glyph index values.
     uint8_t glyph_id_array[256];
 } hz_cmap_subtable_format0_t;
 
@@ -5389,18 +6489,19 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
 
     /* search for code range */
     while (i < range_count) {
-        uint16_t start_code = bswap16(st->start_code[i]);
-        uint16_t end_code = bswap16(st->end_code[i]);
-        int16_t id_delta = (int16_t)bswap16(st->id_delta[i]);
-        uint16_t id_range_offset = bswap16(st->id_range_offsets[i]);
+        uint16_t start_code = st->start_code[i];
+        uint16_t end_code = st->end_code[i];
+        int16_t id_delta = st->id_delta[i];
+        uint16_t id_range_offset = st->id_range_offsets[i];
 
-        if (end_code >= c && start_code <= c) {
+        if (c >= start_code && c <= end_code) {
             if (id_range_offset != 0) {
-                uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
-                id = bswap16( raw_val );
+                uint16_t offset = *(st->glyph_id_array + (id_range_offset/2 + (c - start_code) - (range_count - i)));
+                id = endianness_check() ? bswap16(offset) : offset;
                 if (id != 0) id += id_delta;
-            } else
-                id = id_delta + c;
+            } else {
+                id = c + id_delta;
+            }
 
             return id;
         }
@@ -5408,10 +6509,204 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
         ++i;
     }
 
-    return 0; /* map to .notdef */
+    return 0; // map to .notdef
 }
 
-HZ_STATIC hz_bool_t
+void avx256_print_16bit(const char * prefix, const char *fmt, const __m256i *val)
+{
+    uint16_t *p = (uint16_t *)val;
+
+    #pragma GCC unroll 16
+    for (size_t i = 0; i < 16; ++i) {
+        printf(fmt, p[i]);
+    }
+
+    printf("(%s)\n", prefix);
+}
+
+void avx256_print_i16(const char *prefix, const __m256i *val)
+{
+    int16_t *p = (int16_t *)val;
+
+    #pragma GCC unroll 16
+    for (size_t i = 0; i < 16; ++i) {
+        printf("%d ", p[i]);
+    }
+
+    printf("(%s)\n", prefix);
+
+}
+
+HZ_STATIC __m256i
+simulate__mm256_i16gather_epi16(short const* base_addr, __m256i vindex, const int scale)
+{
+    __m256i vout;
+    unsigned short out[16], index_array[16];
+
+    _mm256_storeu_si256((__m256i *)index_array, vindex);
+
+    #pragma GCC unroll 16
+    for (size_t i = 0; i < 16; ++i) {
+        out[i] = *(unsigned short *)((char *)base_addr + index_array[i] * scale);
+    }
+
+    vout = _mm256_loadu_si256((__m256i *)out);
+    return vout;
+}
+
+HZ_INLINE HZ_STATIC __m256i
+_mm256_bswap16(__m256i a)
+{
+    return _mm256_or_si256(_mm256_slli_epi16(a, 8), _mm256_srli_epi16(a, 8));
+}
+
+HZ_STATIC void
+x86cpuid (long int a[4], long int fid)
+{
+
+}
+
+HZ_STATIC int
+setup_x86cpu (void)
+{
+    long int result[4];
+    x86cpuid(result, 0);
+}
+
+int
+hz_setup (void)
+{
+#if HZ_ARCH & HZ_ARCH_X86
+    setup_x86cpu();
+#endif
+}
+
+int
+hz_cleanup (void)
+{
+}
+
+// AVX2 codepoint to glyph index convert function using TrueType's cmap format 4 subtable
+// Assumes the codepoint arrays are sorted
+// Supports only the Unicode Basic Multilingual Plane (U+0000 to U+FFFF)
+HZ_STATIC void
+hz_apply_cmap_format4_encoding_unaligned_avx2(const hz_cmap_subtable_format4_t *subtable,
+                                              uint16_t outdata[],
+                                              const uint32_t indata[],
+                                              size_t count)
+{
+    size_t dataptr;
+    uint16_t segment_count = subtable->seg_count_x2/2;
+
+#if HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS
+    // Rely on binary search data embedded in the OpenType table
+#else
+    // Manually calculate binary search constants
+#endif
+
+    #pragma clang loop unroll(enable)
+    #pragma GCC ivdep
+    for (dataptr = 0; dataptr + 16 <= count; dataptr += 16) {
+        __m256i v1 = _mm256_loadu_si256((const __m256i *)(indata + dataptr)); // read first 8 32-bit values
+        __m256i v2 = _mm256_loadu_si256((const __m256i *)(indata + dataptr + 8)); // read following 8 32-bit values
+        __m256i vin = _mm256_packus_epi32(v1, v2);//_mm256_permute4x64_epi64(_mm256_packus_epi32(v1,v2), 0xd8); // 0b11011000 [0,2,1,3] -> 0xd8
+
+        // Binary search for 16 elements
+        __m256i start, end, mid, done_mask, found_indices, found_start;
+
+        start = _mm256_setzero_si256();
+        found_start = _mm256_setzero_si256();
+        found_indices = _mm256_setzero_si256();
+        done_mask = _mm256_setzero_si256();
+        end = _mm256_set1_epi16(segment_count-1);
+
+        // while(!done)
+        while (likely(~_mm256_movemask_epi8(_mm256_or_si256(_mm256_cmpgt_epi16(start, end), done_mask)))) {
+            __m256i segment_start, segment_end;
+
+            mid = _mm256_adds_epu16(start, _mm256_srli_epi16(_mm256_adds_epu16(_mm256_subs_epu16(end, start),
+                              _mm256_set1_epi16(1)), 1)); // start + (start-end)/2 to avoid overflow
+
+
+            // read in values at mid
+            segment_start = simulate__mm256_i16gather_epi16((short const *)subtable->start_code, mid, 2);
+            segment_end = simulate__mm256_i16gather_epi16((short const *)subtable->end_code, mid, 2);
+
+            // Update search parameters
+            // !(x == start) && start > x
+            __m256i lt_cond = _mm256_andnot_si256(_mm256_cmpeq_epi16(segment_start, vin), _mm256_cmpgt_epi16(segment_start, vin));
+            __m256i gt_cond = _mm256_cmpgt_epi16(vin, segment_end);
+            __m256i within_cond = _mm256_xor_si256(_mm256_or_si256(lt_cond, gt_cond), _mm256_set1_epi16(0xffffu)); // x >= start && x <= end
+
+            // Update parameters
+            __m256i blend_mask = _mm256_andnot_si256(done_mask, within_cond);
+            done_mask = _mm256_or_si256(done_mask, blend_mask);
+            found_indices = _mm256_or_si256(found_indices, _mm256_and_si256(blend_mask, mid));//_mm256_or_si256(found_indices, _mm256_and_si256(blend_mask, mid));
+            found_start = _mm256_or_si256(found_start, _mm256_and_si256(blend_mask, segment_start));
+
+            // if (x > A[mid]) start = mid + 1
+            start = _mm256_or_si256(_mm256_andnot_si256(gt_cond, start),
+            _mm256_and_si256(_mm256_adds_epi16(mid, _mm256_set1_epi16(1)), gt_cond));
+
+            // if (x < A[mid]) end = mid - 1
+            end = _mm256_or_si256(_mm256_andnot_si256(lt_cond, end),
+            _mm256_and_si256(_mm256_subs_epi16(mid, _mm256_set1_epi16(1)), lt_cond));
+        }
+
+        {
+            // Find glyph index for the codepoints
+            __m256i id_delta, id_range_offsets;
+
+            id_delta = simulate__mm256_i16gather_epi16((short const *)subtable->id_delta,
+                                                       found_indices,
+                                                       2);
+
+            id_range_offsets = simulate__mm256_i16gather_epi16((short const *)subtable->id_range_offsets,
+                                                       found_indices,
+                                                       2);
+
+            __m256i offset_cond = _mm256_cmpgt_epi16(id_range_offsets, _mm256_setzero_si256());
+            __m256i mask1 = _mm256_andnot_si256(offset_cond, done_mask);
+            __m256i mask2 = _mm256_and_si256(offset_cond, done_mask);
+
+            __m256i final_id = _mm256_and_si256(mask1, _mm256_add_epi16(vin, id_delta));
+
+            // Compute the index into sutable->glyph_id_array
+
+            // P/2 + (x - S) - (R - y)
+            // P : offset
+            // S : start code of the range
+            // R : range count
+            // x : codepoint
+            // y : range index
+            __m256i glyph_id_index = _mm256_add_epi16(_mm256_srli_epi16(id_range_offsets, 1),
+                _mm256_sub_epi16(_mm256_sub_epi16(vin, found_start),
+                _mm256_sub_epi16(_mm256_set1_epi16(segment_count), found_indices)));
+
+            glyph_id_index = _mm256_and_si256(glyph_id_index, mask2);
+
+            __m256i glyph_id = _mm256_bswap16(simulate__mm256_i16gather_epi16((short const *)subtable->glyph_id_array,
+                                                                                 glyph_id_index,
+                                                                                 2));
+
+            final_id = _mm256_or_si256(final_id, _mm256_and_si256(_mm256_add_epi16(glyph_id, id_delta), mask2));
+            final_id = _mm256_permute4x64_epi64(final_id, 0xd8); // 0b11011000 [0,2,1,3] -> 0xd8
+            _mm256_storeu_si256((__m256i *)(outdata + dataptr), final_id);
+        }
+    }
+}
+
+HZ_STATIC void
+hz_apply_cmap_format4_encoding(hz_cmap_subtable_format4_t *subtable,
+                               hz_segment_t *seg)
+{
+    for (size_t i = 0; i < seg->num_codepoints; ++i) {
+        // map unicode characters to glyph indices in sequence
+        seg->glyph_indices[i] = hz_cmap_unicode_to_id(subtable, seg->codepoints[i]);
+    }
+}
+
+HZ_STATIC hz_bool
 hz_cmap_apply_encoding(hz_stream_t *table, hz_segment_t *seg,
                        hz_cmap_encoding_t enc)
 {
@@ -5423,6 +6718,8 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_segment_t *seg,
         case 2: break;
         case HZ_CMAP_SUBTABLE_FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: {
             hz_cmap_subtable_format4_t st;
+            size_t i;
+
             unpackf(&subtable, "hhhhhh",
                     &st.length,
                     &st.language,
@@ -5431,21 +6728,35 @@ hz_cmap_apply_encoding(hz_stream_t *table, hz_segment_t *seg,
                     &st.entry_selector,
                     &st.range_shift);
 
-            uint16_t seg_jmp = (st.seg_count_x2>>1) * sizeof(uint16_t);
+            uint16_t num_segments = (st.seg_count_x2>>1);
+            size_t table_size = num_segments * sizeof(uint16_t);
 
-            const uint8_t *curr_addr = subtable.data + subtable.ptr;
-            st.end_code = (uint16_t *)curr_addr;
-            st.start_code = (uint16_t *)(curr_addr + seg_jmp + sizeof(uint16_t));
-            st.id_delta = (int16_t *)(curr_addr + 2*seg_jmp + sizeof(uint16_t));
-            st.id_range_offsets = (uint16_t *)(curr_addr + 3*seg_jmp + sizeof(uint16_t));
+            st.end_code = hz_malloc(table_size);
+            st.start_code = hz_malloc(table_size);
+            st.id_delta = hz_malloc(table_size);
+            st.id_range_offsets = hz_malloc(table_size);
 
-            /* map unicode characters to glyph indices in sequenceion */
-//            hz_segment_node_t * curr_node = seg->root;
-//
-//            while (curr_node != NULL) {
-//                curr_node->gid = hz_cmap_unicode_to_id(&st, curr_node->codepoint);
-//                curr_node = curr_node->next;
-//            }
+            unpack16a(&subtable, num_segments, st.end_code);
+            st.reserved_pad = unpack16(&subtable);
+            unpack16a(&subtable, num_segments, st.start_code);
+            unpack16a(&subtable, num_segments, (uint16_t *)st.id_delta);
+            unpack16a(&subtable, num_segments, st.id_range_offsets);
+            st.glyph_id_array = (uint16_t *)(subtable.data + subtable.ptr);
+
+#if HZ_CONFIG_USE_SIMD
+            #if HZ_ARCH & HZ_ARCH_AVX2_BIT
+            hz_apply_cmap_format4_encoding_unaligned_avx2(&st, seg->glyph_indices, seg->codepoints, seg->num_codepoints);
+            #else
+            #endif
+#else
+            hz_apply_cmap_format4_encoding(&st, seg);
+#endif
+
+            hz_free(st.end_code);
+            hz_free(st.start_code);
+            hz_free(st.id_delta);
+            hz_free(st.id_range_offsets);
+
             break;
         }
         default:
@@ -5459,19 +6770,18 @@ HZ_STATIC void
 hz_map_to_nominal_forms(hz_face_t *face,
                         hz_segment_t *seg)
 {
-    hz_blob_t *blob = hz_face_reference_table(face, HZ_TAG('c','m','a','p'));
-    hz_stream_t table = hz_stream_create(hz_blob_get_data(blob), 0);
+    hz_stream_t table = hz_stream_create(face->data + face->cmap, 0);
 
     uint16_t version = unpack16(&table);
 
-    /* Table version number must be 0 */
+    // Table version number must be 0
     HZ_ASSERT(version == 0);
 
     uint16_t num_encodings, enc_idx;
     num_encodings = unpack16(&table);
 
     {
-        hz_cmap_encoding_t enc = {};
+        hz_cmap_encoding_t enc = {0};
         unpackf(&table, "hhi",
                 &enc.platform_id,
                 &enc.encoding_id,
@@ -5481,10 +6791,30 @@ hz_map_to_nominal_forms(hz_face_t *face,
     }
 }
 
+HZ_STATIC void
+hz_unicode_mirror_punctuation(hz_segment_t *seg)
+{
+    for (size_t i = 0; i < seg->num_codepoints; ++i) {
+        switch (seg->codepoints[i]) {
+            case '(': seg->codepoints[i] = ')'; break;
+            case ')': seg->codepoints[i] = '('; break;
+            case '[': seg->codepoints[i] = ']'; break;
+            case ']': seg->codepoints[i] = '['; break;
+            case '{': seg->codepoints[i] = '}'; break;
+            case '}': seg->codepoints[i] = '{'; break;
+            case '<': seg->codepoints[i] = '>'; break;
+            case '>': seg->codepoints[i] = '<'; break;
+            case ',': seg->codepoints[i] = 0x2E41; break; // reversed comma
+//            case ',': seg->codepoints[i] = 0x060C; break; // arabic comma U+060C
+            case ';': seg->codepoints[i] = 0x204F; break; // reversed semicolon
+            case '?': seg->codepoints[i] = 0x2E2E; break; // reversed question mark
+        }
+    }
+}
 
 typedef struct hz_long_hor_metric_t {
-    uint16_t advance_width; /* advance width */
-    int16_t lsb; /* left side bearing */
+    uint16_t advance_width; // Advance width
+    int16_t lsb; // left side bearing
 } hz_long_hor_metric_t;
 
 void
@@ -5502,40 +6832,41 @@ hz_read_h_metrics(hz_stream_t *table, size_t metrics_count, hz_long_hor_metric_t
 void
 hz_read_lv_metrics();
 */
-
+/*
 void
 hz_apply_tt1_metrics(hz_face_t *face, hz_segment_t *seg)
 {
-    /* apply the metrics to position the glyphs */
-//    hz_segment_node_t * curr_node = seg->root;
-//    while (curr_node != NULL) {
-//        hz_index_t id = curr_node->gid;
-//        hz_metrics_t *metric = hz_face_get_glyph_metrics(face, id);
-//
-//        curr_node->x_advance = metric->x_advance;
-//        curr_node->y_advance = metric->y_advance;
-//        curr_node->x_offset = 0;
-//        curr_node->y_offset = 0;
-//
-//        curr_node = curr_node->next;
-//    }
+    // apply the metrics to position the glyphs
+    hz_glyph_info_t *node;
+    size_t i;
+    for (i = 0; i < seg->num_nodes; ++i) {
+        node = &seg->nodes[i];
+        hz_index_t id = node->gid;
+        hz_metrics_t *metric = hz_face_get_glyph_metrics(face, id);
+
+        if (metric != NULL) {
+            node->x_advance = metric->x_advance;
+            node->y_advance = metric->y_advance;
+            node->x_offset = 0;
+            node->y_offset = 0;
+        }
+    }
 }
 
 HZ_STATIC void
 hz_segment_rtl_switch(hz_segment_t *seg)
 {
-//    hz_segment_node_t * node = hz_segment_last_node(seg->root);
-//    seg->root = node;
-//
-//    while (node != NULL) {
-//        hz_segment_node_t * prev, *next;
-//        prev = node->prev;
-//        next = node->next;
-//        node->next = prev;
-//        node->prev = next;
-//        node = prev;
-//    }
+    size_t copysize = sizeof(hz_glyph_info_t) * seg->num_nodes;
+    hz_glyph_info_t *tmp = hz_malloc(copysize);
+
+    for (int64_t i = 0; i < seg->num_nodes; ++i) {
+        tmp[i] = seg->nodes[seg->num_nodes - i - 1];
+    }
+
+    memcpy(seg->nodes, tmp, copysize);
+    hz_free(tmp);
 }
+*/
 
 HZ_STATIC hz_tag_t
 hz_script_to_ot_tag(hz_script_t script)
@@ -5547,66 +6878,25 @@ hz_script_to_ot_tag(hz_script_t script)
     }
 }
 
-/*
-    Function: hz_shape_impl_naive
-        Naive simple (slow) implementation of <hz_shape>.
-        This parses the OpenType lookups progressively from memory.
-*/
-HZ_STATIC void
-hz_shape_impl_naive(hz_font_t *font,
-                    hz_segment_t *seg,
-                    const hz_feature_t *features,
-                    unsigned int num_features)
+void
+hz_segment_setup_shaping_objects(hz_segment_t *seg, hz_face_t *face)
 {
-    hz_face_t *face;
-    hz_tag_t script_tag, language_tag;
-    const hz_face_ot_tables_t *tables;
-    int loaded_standards = 0;
+    seg->glyph_count = seg->num_codepoints;
 
-    if (!num_features || features == NULL) {
-        /* no features explicitly specified, load standard features for script */
-        hz_ot_script_load_features(seg->script, &features, &num_features);
-        loaded_standards = 1;
+    if (seg->num_codepoints > 0) {
+        if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
+            hz_unicode_mirror_punctuation(seg);
+
+        seg->glyph_indices = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
+        seg->glyph_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
+        seg->attachment_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
     }
 
-    face = hz_font_get_face(font);
-    tables = &face->ot_tables;
-    script_tag = hz_script_to_ot_tag(seg->script);
-    language_tag = hz_language_to_ot_tag(seg->language);
-
-    /* map unicode characters to nominal glyph indices */
+    // map unicode characters to nominal glyph indices
     hz_map_to_nominal_forms(face, seg);
 
-    /* sets glyph class information */
-//    hz_set_sequence_glyph_info(face, seg);
-
-    /* substitute glyphs */
-    if (tables->GSUB_table != NULL) {
-//        hz_ot_layout_apply_features(face,
-//                                    HZ_OT_TAG_GSUB,
-//                                    script_tag,
-//                                    language_tag,
-//                                    features,
-//                                    num_features,
-//                                    seg);
-    }
-
-    /* position glyphs */
-    hz_apply_tt1_metrics(face, seg);
-    if (tables->GPOS_table != NULL) {
-//        hz_ot_layout_apply_features(face,
-//                                    HZ_OT_TAG_GPOS,
-//                                    script_tag,
-//                                    language_tag,
-//                                    features,
-//                                    num_features,
-//                                    seg);
-    }
-
-    if (seg->direction == HZ_DIRECTION_RTL)
-        hz_segment_rtl_switch(seg);
-
-    if (loaded_standards) hz_free(features);
+    // sets glyph class information
+    hz_segment_set_glyph_info(seg, face);
 }
 
 typedef struct hz_lookup_subtable_t {
@@ -5614,9 +6904,13 @@ typedef struct hz_lookup_subtable_t {
 } hz_lookup_subtable_t;
 
 typedef struct hz_lookup_table_t {
-    uint16_t type, flags;
+    uint16_t lookup_type, lookup_flag;
     uint16_t subtable_count;
-    hz_lookup_subtable_t *subtables;
+    hz_lookup_subtable_t **subtables;
+    /* Index (base 0) into GDEF mark glyph sets structure.
+     * This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
+     */
+    uint16_t mark_filtering_set;
 } hz_lookup_table_t;
 
 typedef struct hz_gsub_table_t {
@@ -5624,16 +6918,16 @@ typedef struct hz_gsub_table_t {
     uint32_t num_lookups;
     hz_lookup_table_t *lookups;
     uint32_t num_features;
-    hz_feature_table_t *features;
-} hz_gsub_table_t;
+    hz_feature_list_item_t *features;
+} hz_ot_gsub_table_t;
 
 typedef struct hz_gpos_table_t {
     Version16Dot16 version;
     uint32_t num_lookups;
     hz_lookup_table_t *lookups;
     uint32_t num_features;
-    hz_feature_table_t *features;
-} hz_gpos_table_t;
+    hz_feature_list_item_t *features;
+} hz_ot_gpos_table_t;
 
 typedef struct hz_shape_plan_t {
     hz_font_t *font;
@@ -5642,18 +6936,339 @@ typedef struct hz_shape_plan_t {
     hz_language_t language;
     hz_feature_t *features;
     unsigned int num_features;
-
-    hz_gsub_table_t gsub_table;
-    hz_gpos_table_t gpos_table;
+    hz_ot_gsub_table_t gsub_table;
+    hz_ot_gpos_table_t gpos_table;
 } hz_shape_plan_t;
+
+HZ_STATIC void
+hz_load_feature_table(hz_stream_t *stream, hz_feature_table_t *table)
+{
+    unpackf(stream, "hh", &table->feature_params,
+            &table->lookup_index_count);
+
+    table->lookup_list_indices = hz_malloc(sizeof(uint16_t)
+            * table->lookup_index_count);
+
+    unpack16a(stream, table->lookup_index_count, table->lookup_list_indices);
+}
+
+typedef struct hz_single_substitution_format1_t {
+    uint16_t format;
+    hz_map_t *coverage;
+    int16_t delta_glyph_id;
+} hz_single_substitution_format1_t;
+
+typedef struct hz_single_substitution_format2_t {
+    uint16_t format;
+    hz_map_t *coverage;
+    uint16_t glyph_count;
+    uint16_t *substitute_glyph_ids;
+} hz_single_substitution_format2_t;
+
+HZ_STATIC hz_error_t
+hz_parse_gsub_single_substitution_subtable(hz_stream_t *stream,
+                                           hz_lookup_table_t *lookup,
+                                           uint16_t subtable_index,
+                                           uint16_t format,
+                                           uintptr_t baseptr)
+{
+    switch (format) {
+        case 1: {
+            hz_single_substitution_format1_t *subtable = hz_malloc(sizeof(*subtable));
+
+            subtable->format = format;
+            Offset16 coverage_offset = unpack16(stream);
+            subtable->coverage = hz_map_create();
+            hz_ot_read_coverage(stream->data + baseptr + coverage_offset, subtable->coverage, NULL);
+            subtable->delta_glyph_id = unpack16(stream);
+
+            lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
+            break;
+        }
+
+        case 2: {
+            hz_single_substitution_format2_t *subtable = hz_malloc(sizeof(*subtable));
+
+            subtable->format = format;
+            Offset16 coverage_offset = unpack16(stream);
+            subtable->coverage = hz_map_create();
+            hz_ot_read_coverage(stream->data + baseptr + coverage_offset, subtable->coverage, NULL);
+            subtable->glyph_count = unpack16(stream);
+
+            if (!subtable->glyph_count) {
+                /* error, no glyphs in lookup subtable */
+                subtable->substitute_glyph_ids = NULL;
+            } else {
+                subtable->substitute_glyph_ids = hz_malloc(sizeof(uint16_t) * subtable->glyph_count);
+                unpack16a(stream, subtable->glyph_count, subtable->substitute_glyph_ids);
+            }
+
+            lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
+            break;
+        }
+
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    }
+
+    return HZ_OK;
+}
+
+typedef struct hz_ligature_t {
+    uint16_t ligature_glyph;
+    uint16_t component_count;
+    uint16_t *component_glyph_ids;
+} hz_ligature_t;
+
+typedef struct hz_ligature_set_t {
+    uint16_t ligature_count;
+    hz_ligature_t *ligatures;
+} hz_ligature_set_table_t;
+
+typedef struct hz_ligature_substitution_format1_subtable_t {
+    uint16_t format;
+    hz_map_t *coverage;
+    uint16_t ligature_set_count;
+    hz_ligature_set_table_t *ligature_sets;
+} hz_ligature_substitution_format1_subtable_t;
+
+HZ_STATIC hz_error_t
+hz_parse_gsub_ligature_substitution_subtable(hz_stream_t *stream,
+                                             hz_lookup_table_t *lookup,
+                                             uint16_t subtable_index,
+                                             uint16_t format,
+                                             uintptr_t baseptr)
+{
+    switch (format) {
+        case 1: {
+            hz_ligature_substitution_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+
+            subtable->format = format;
+            Offset16 coverage_offset = unpack16(stream);
+            subtable->coverage = hz_map_create();
+            hz_ot_read_coverage(stream->data + baseptr + coverage_offset, subtable->coverage, NULL);
+            subtable->ligature_set_count = unpack16(stream);
+            subtable->ligature_sets = hz_malloc(sizeof(hz_ligature_set_table_t) * subtable->ligature_set_count);
+
+            Offset16 *ligature_set_offsets = hz_malloc(subtable->ligature_set_count * sizeof(Offset16));
+            unpack16a(stream, subtable->ligature_set_count, ligature_set_offsets);
+
+            for (uint16_t i = 0; i < subtable->ligature_set_count; ++i) {
+                hz_ligature_set_table_t *ligature_set = subtable->ligature_sets+i;
+
+                uintptr_t setptr = baseptr + ligature_set_offsets[i];
+                stream_seek(stream, setptr);
+                ligature_set->ligature_count = unpack16(stream);
+                ligature_set->ligatures = hz_malloc(sizeof(hz_ligature_t) * ligature_set->ligature_count);
+                Offset16 *ligature_offsets = hz_malloc(ligature_set->ligature_count * sizeof(Offset16));
+                unpack16a(stream, ligature_set->ligature_count, ligature_offsets);
+
+                for (uint16_t j = 0; j < ligature_set->ligature_count; ++j) {
+                    hz_ligature_t *ligature = ligature_set->ligatures + j;
+                    stream_seek(stream, setptr + ligature_offsets[j]);
+                    ligature->ligature_glyph = unpack16(stream);
+                    ligature->component_count = unpack16(stream);
+                    ligature->component_glyph_ids = hz_malloc((ligature->component_count-1) * sizeof(uint16_t));
+                    unpack16a(stream, ligature->component_count-1, ligature->component_glyph_ids);
+                }
+
+                hz_free(ligature_offsets);
+            }
+
+            hz_free(ligature_set_offsets);
+
+            lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
+            break;
+        }
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    }
+
+    return HZ_OK;
+}
+
+HZ_STATIC hz_error_t
+hz_load_gsub_lookup_subtable(hz_stream_t *stream,
+                             hz_lookup_table_t *lookup,
+                             uint16_t subtable_index)
+{
+    uintptr_t baseptr;
+    uint16_t format;
+
+    extension_label:
+    baseptr = stream_tell(stream);
+    format = unpack16(stream);
+
+    switch (lookup->lookup_type) {
+        case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION:
+            return hz_parse_gsub_single_substitution_subtable(stream, lookup, subtable_index, format, baseptr);
+
+        case HZ_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION: break;
+        case HZ_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION: break;
+        case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION:
+            return hz_parse_gsub_ligature_substitution_subtable(stream, lookup, subtable_index, format, baseptr);
+
+        case HZ_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION: break;
+        case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: break;
+        case HZ_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION: {
+            /* This is implemented inline as it's quite trivial and
+             * it's a special lookup type which doesn't allocate a structure.
+             */
+             if (format == 1) {
+                lookup->lookup_type = unpack16(stream);
+                Offset32 extension_offset = unpack32(stream);
+                stream_seek(stream, baseptr + extension_offset);
+                goto extension_label;
+            }
+
+            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+        }
+
+        case HZ_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION: break;
+
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_TYPE;
+    }
+}
+
+HZ_STATIC hz_error_t
+hz_unload_gsub_single_substitution_subtable(hz_lookup_subtable_t *base)
+{
+    switch (base->format) {
+        case 1: {
+            hz_single_substitution_format1_t *subtable = (hz_single_substitution_format1_t *)base;
+            hz_map_destroy(subtable->coverage);
+            hz_free(subtable);
+            break;
+        }
+
+        case 2: {
+            hz_single_substitution_format2_t *subtable = (hz_single_substitution_format2_t *)base;
+            hz_map_destroy(subtable->coverage);
+            if (subtable->glyph_count > 0) hz_free(subtable->substitute_glyph_ids);
+            hz_free(subtable);
+            break;
+        }
+
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    }
+
+    return HZ_OK;
+}
+
+HZ_STATIC hz_error_t
+hz_unload_gsub_ligature_substitution_subtable(hz_lookup_subtable_t *base)
+{
+    switch (base->format) {
+        case 1: {
+            uint16_t i, j;
+            hz_ligature_substitution_format1_subtable_t *subtable = (hz_ligature_substitution_format1_subtable_t *)base;
+            hz_map_destroy(subtable->coverage);
+            for (i = 0; i < subtable->ligature_set_count; ++i) {
+                hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + i;
+                for (j = 0; j < ligature_set->ligature_count; ++j) {
+                    hz_ligature_t *ligature = ligature_set->ligatures + j;
+                    hz_free(ligature->component_glyph_ids);
+                }
+                hz_free(ligature_set->ligatures);
+            }
+
+            hz_free(subtable->ligature_sets);
+            hz_free(subtable);
+            break;
+        }
+        default:
+            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    }
+
+    return HZ_OK;
+}
+
+HZ_STATIC void
+hz_unload_gsub_lookup_subtable(hz_lookup_table_t *table, uint16_t subtable_index)
+{
+    if (table->subtables[subtable_index] != NULL) {
+        hz_lookup_subtable_t *base = table->subtables[subtable_index];
+        switch (table->lookup_type) {
+            case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
+                hz_unload_gsub_single_substitution_subtable(base);
+                break;
+            }
+
+            case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
+                hz_unload_gsub_ligature_substitution_subtable(base);
+                break;
+            }
+        }
+    }
+}
+
+HZ_STATIC hz_error_t
+hz_load_gsub_lookup_table(hz_stream_t *stream, hz_lookup_table_t *table)
+{
+    uintptr_t baseptr = stream_tell(stream);
+
+    unpackf(stream, "hhh", &table->lookup_type,
+            &table->lookup_flag,
+            &table->subtable_count);
+
+    if (table->subtable_count == 0) {
+        table->subtables = NULL;
+    } else {
+        Offset16 *offsets = hz_malloc(sizeof(Offset16) * table->subtable_count);
+        unpack16a(stream, table->subtable_count, offsets);
+
+        // Set pointers to NULL by default
+        table->subtables = hz_calloc(sizeof(hz_lookup_subtable_t) * table->subtable_count);
+
+        // Load & parse subtables
+        for (uint16_t i = 0; i < table->subtable_count; ++i) {
+            uintptr_t lastptr = stream_tell(stream);
+            stream_seek(stream, baseptr + offsets[i]);
+            hz_load_gsub_lookup_subtable(stream, table, i);
+            stream_seek(stream, lastptr);
+        }
+
+        hz_free(offsets);
+    }
+
+    // Only include mark filtering set if flag USE_MARK_FILTERING_SET is enabled
+    if (table->lookup_flag & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET)
+        table->mark_filtering_set = unpack16(stream);
+
+    return HZ_OK;
+}
+
+
+HZ_STATIC void
+hz_unload_feature_table(hz_feature_table_t *table)
+{
+    if (table->lookup_index_count > 0)
+        hz_free(table->lookup_list_indices);
+}
+
+HZ_STATIC void
+hz_unload_gsub_lookup_table(hz_lookup_table_t *table)
+{
+    if (table->subtable_count > 0) {
+        for (uint16_t i = 0; i < table->subtable_count; ++i)
+            hz_unload_gsub_lookup_subtable(table, i);
+
+        hz_free(table->subtables);
+    }
+}
 
 HZ_STATIC hz_error_t
 hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 {
     hz_face_t *face;
     hz_stream_t table;
+    hz_ot_gsub_table_t *gsub_table;
+
     face = hz_font_get_face(plan->font);
-    table = hz_stream_create(face->ot_tables.GSUB_table, 0);
+    table = hz_stream_create(face->data+face->gsub, 0);
+    gsub_table = &plan->gsub_table;
 
     Version16Dot16 version;
     uint16_t script_list_offset;
@@ -5681,12 +7296,63 @@ hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
             return HZ_ERROR_INVALID_TABLE_VERSION;
             break;
     }
+
+    gsub_table->version = version;
+
+    {
+        // Load feature list table
+        hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
+        uint16_t num_features = unpack16(&stream);
+        gsub_table->num_features = num_features;
+        gsub_table->features = hz_malloc(sizeof(hz_feature_list_item_t) * num_features);
+
+        for (uint16_t i = 0; i < num_features; ++i) {
+            gsub_table->features[i].tag = unpack32(&stream);
+            Offset16 offset = unpack16(&stream);
+
+            uintptr_t lastptr = stream_tell(&stream);
+            stream_seek(&stream, offset);
+            hz_load_feature_table(&stream, &gsub_table->features[i].table);
+            stream_seek(&stream, lastptr);
+        }
+    }
+
+    {
+        // Load lookups
+        uint16_t i, num_lookups;
+        Offset16 *offsets;
+
+        hz_stream_t stream = hz_stream_create(table.data + lookup_list_offset, 0);
+        num_lookups = unpack16(&stream);
+        gsub_table->num_lookups = num_lookups;
+        gsub_table->lookups = hz_malloc(sizeof(hz_lookup_table_t) * num_lookups);
+
+        offsets = hz_malloc(sizeof(Offset16) * num_lookups);
+        unpack16a(&stream, num_lookups, offsets);
+
+        for (i = 0; i < num_lookups; ++i) {
+            uintptr_t lastptr = stream_tell(&stream);
+            stream_seek(&stream, offsets[i]);
+            hz_load_gsub_lookup_table(&stream, &gsub_table->lookups[i]);
+            stream_seek(&stream, lastptr);
+        }
+
+        hz_free(offsets);
+    }
+
+    return HZ_OK;
+}
+
+HZ_STATIC void
+hz_ot_load_gsub_table(hz_ot_gsub_table_t *gpos_table, hz_font_t *font)
+{
+
 }
 
 HZ_STATIC void
 hz_shape_plan_load_tables(hz_shape_plan_t *plan)
 {
-
+    hz_shape_plan_load_gsub_table(plan);
 }
 
 HZ_STATIC hz_shape_plan_t *
@@ -5716,52 +7382,382 @@ hz_shape_plan_create(hz_font_t *font,
 
 
 HZ_STATIC void
+hz_shape_plan_unload_gsub_table(hz_shape_plan_t *plan)
+{
+    hz_ot_gsub_table_t *gsub = &plan->gsub_table;
+
+    if (gsub->num_features > 0) {
+        for (uint16_t i = 0; i < gsub->num_features; ++i)
+            hz_unload_feature_table(&gsub->features[i].table);
+
+        hz_free(gsub->features);
+    }
+
+    if (gsub->num_lookups > 0) {
+        for (uint16_t i = 0; i < gsub->num_lookups; ++i)
+            hz_unload_gsub_lookup_table(&gsub->lookups[i]);
+
+        hz_free(gsub->lookups);
+    }
+}
+
+HZ_STATIC size_t
+hz_segment_next_valid_index(hz_segment_t *seg,
+                            size_t index,
+                            uint16_t lookup_flag)
+{
+
+}
+
+HZ_STATIC hz_bool
+hz_should_ignore_glyph(hz_segment_t *seg, size_t index, uint16_t flags) {
+    uint8_t attach_type = (flags & HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK) >> 8;
+    uint16_t ignored_classes = hz_ignored_classes_from_lookup_flags(flags);
+
+    return ((seg->glyph_classes[index] & HZ_GLYPH_CLASS_MARK) && (attach_type != seg->attachment_classes[index])
+        || (seg->glyph_classes[index] & ignored_classes));
+}
+
+HZ_STATIC int64_t
+hz_segment_next_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+{
+    do {
+        if (g + 1 >= seg->glyph_count)
+            return -1;
+
+        g ++;
+    } while (hz_should_ignore_glyph(seg,g,lookup_flag));
+
+    return g;
+}
+
+HZ_STATIC int64_t
+hz_segment_prev_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+{
+    do {
+        if (g - 1 < 0)
+            return -1;
+
+        g --;
+    } while (hz_should_ignore_glyph(seg, g, lookup_flag));
+
+    return g;
+}
+
+typedef struct hz_arabic_joining_triplet_t {
+    uint16_t prev_joining, curr_joining, next_joining;
+    int init,fina,medi;
+    int does_apply;
+} hz_arabic_joining_triplet_t;
+
+hz_arabic_joining_triplet_t
+hz_shape_complex_arabic_joining(hz_segment_t *seg,
+                                size_t index,
+                                uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet;
+
+    if (hz_shape_complex_arabic_char_joining(seg->codepoints[index], &triplet.curr_joining)) {
+        int64_t prev_index = hz_segment_prev_valid_glyph(seg, index, lookup_flag);
+        int64_t next_index = hz_segment_next_valid_glyph(seg, index, lookup_flag);
+
+        if (prev_index == -1) {
+            triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        } else {
+            if (!hz_shape_complex_arabic_char_joining(seg->codepoints[prev_index], &triplet.prev_joining))
+                triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        }
+
+        if (next_index == -1) {
+            triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        } else {
+            if (!hz_shape_complex_arabic_char_joining(seg->codepoints[next_index], &triplet.next_joining))
+                triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        }
+
+        triplet.init = triplet.curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
+                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        triplet.fina = triplet.curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
+                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        triplet.medi = triplet.curr_joining & JOINING_TYPE_D
+                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
+                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
+
+        triplet.does_apply = 1;
+    } else {
+        triplet.does_apply = 0;
+    }
+
+    return triplet;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_init(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.init && !(triplet.medi || triplet.fina) : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_medi(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.medi : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_fina(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.fina && !(triplet.medi || triplet.init) : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool
+hz_shape_complex_arabic_isol(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? !(triplet.fina || triplet.medi || triplet.init) : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool
+hz_should_apply_replacement(hz_segment_t *seg,
+                            hz_feature_t feature,
+                            uint16_t node_index,
+                            uint16_t lookup_flag)
+{
+    switch (feature) {
+        case HZ_FEATURE_INIT: return hz_shape_complex_arabic_init(seg, node_index, lookup_flag);
+        case HZ_FEATURE_MEDI: return hz_shape_complex_arabic_medi(seg, node_index, lookup_flag);
+        case HZ_FEATURE_FINA: return hz_shape_complex_arabic_fina(seg, node_index, lookup_flag);
+        case HZ_FEATURE_ISOL: return hz_shape_complex_arabic_isol(seg, node_index, lookup_flag);
+        default:
+            return HZ_TRUE;
+    }
+}
+
+HZ_STATIC unsigned int
+hz_next_unignored_rel_indices(hz_segment_t *seg,
+                              size_t index,
+                              short *offsets,
+                              unsigned short glyph_count,
+                              uint16_t lookup_flag)
+{
+    unsigned int n = 0;
+
+    for (size_t i = index; i < seg->glyph_count && n < glyph_count; ++i) {
+        if (!hz_should_ignore_glyph(seg, i, lookup_flag)) {
+            offsets[n] = (short)(i - index); // relative index
+            ++n;
+        }
+    }
+
+    for (size_t i = n; i < glyph_count; ++i) {
+        offsets[i] = -1; // unfound / invalid
+    }
+
+    return n;
+}
+
+HZ_STATIC void
+hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
+                                hz_segment_t *seg,
+                                hz_feature_t feature,
+                                uint16_t lookup_index)
+{
+    hz_ot_gsub_table_t *gsub_table = &plan->gsub_table;
+    hz_lookup_table_t *table = &gsub_table->lookups[lookup_index];
+    hz_face_t *face = hz_font_get_face(plan->font);
+
+    for (uint16_t i = 0; i < table->subtable_count; ++i) {
+        hz_lookup_subtable_t *base = table->subtables[i];
+
+        switch (table->lookup_type) {
+            case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
+                switch (base->format) {
+                    case 1: {
+                        hz_single_substitution_format1_t *subtable = (hz_single_substitution_format1_t *)base;
+                        for (size_t g = 0; g < seg->glyph_count; ++g) {
+                            if (!hz_should_ignore_glyph(seg, g, table->lookup_flag)) {
+                                if (hz_should_apply_replacement(seg, feature, g, table->lookup_flag)
+                                && hz_map_value_exists(subtable->coverage, seg->glyph_indices[g])) {
+                                    seg->glyph_indices[g] += subtable->delta_glyph_id;
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+
+                    case 2: {
+                        hz_single_substitution_format2_t *subtable = (hz_single_substitution_format2_t *)base;
+                        for (size_t g = 0; g < seg->glyph_count; ++g) {
+                            if (!hz_should_ignore_glyph(seg, g, table->lookup_flag)) {
+                                if (hz_should_apply_replacement(seg, feature, g, table->lookup_flag)
+                                    && hz_map_value_exists(subtable->coverage, seg->glyph_indices[g])) {
+                                    uint16_t index = hz_map_get_value(subtable->coverage, seg->glyph_indices[g]);
+                                    seg->glyph_indices[g] = subtable->substitute_glyph_ids[index];
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+            case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
+                hz_buffer_reserve(&seg->out_buffer, seg->glyph_count);
+
+                switch (base->format) {
+                    case 1: {
+                        char buffer[4096];
+                        hz_bump_allocator_t ma;
+                        hz_bump_allocator_init(&ma, buffer, sizeof buffer);
+
+                        hz_ligature_substitution_format1_subtable_t *subtable = (hz_ligature_substitution_format1_subtable_t*) base;
+                        for (size_t n = 0; n < seg->glyph_count; ++n) {
+                            int was_matched = 0;
+
+                            if (!hz_should_ignore_glyph(seg,n, table->lookup_flag)) {
+                                if (hz_should_apply_replacement(seg, feature, n, table->lookup_flag)
+                                && hz_map_value_exists(subtable->coverage, seg->glyph_indices[n])) {
+                                    uint16_t index = hz_map_get_value(subtable->coverage, seg->glyph_indices[n]);
+
+                                    HZ_ASSERT(index < subtable->ligature_set_count);
+                                    const hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + index;
+
+                                    // compare ligatures in ligature set to following unignored nodes for match
+                                    for (int j = 0; j < ligature_set->ligature_count; ++j) {
+                                        hz_bump_allocator_reset(&ma);
+                                        hz_ligature_t *ligature = &ligature_set->ligatures[j];
+                                        HZ_ASSERT(ligature->component_count >= 1);
+
+                                        size_t cmpcnt = ligature->component_count;
+
+                                        int16_t *a = hz_bump_allocator_alloc(&ma, cmpcnt * sizeof(*a));
+                                        uint16_t xnext = hz_next_unignored_rel_indices(seg, n, a, cmpcnt,
+                                                                                     table->lookup_flag);
+
+                                        if (xnext == cmpcnt) {
+                                            // there is a count and filter match, check if components themselves are matching
+                                            hz_index_t *gids = hz_bump_allocator_alloc(&ma, (cmpcnt-1) * sizeof(hz_index_t));
+                                            for (size_t k = 1; k < cmpcnt; ++k) {
+                                                gids[k-1] = seg->glyph_indices[n+a[k]];
+                                            }
+
+                                            if (!memcmp(ligature->component_glyph_ids, gids, (cmpcnt-1)*2)) {
+                                                // GID match found with ligature, push ligature glyph to buffer
+                                                hz_buffer_add_members(&seg->out_buffer, &ligature->ligature_glyph, 1);
+                                                was_matched = 1;
+                                                n += cmpcnt - 1;
+                                                break;
+                                            }
+
+                                            hz_bump_allocator_free(&ma, gids);
+                                        }
+
+                                        hz_bump_allocator_free(&ma, a);
+                                    }
+                                }
+                            }
+
+                            if (!was_matched) {
+                                hz_buffer_add_members(&seg->out_buffer, &seg->glyph_indices[n],1);
+                            }
+                        }
+
+                        hz_bump_allocator_release(&ma);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+
+                {
+                    // Update glyph info and clear the output buffer
+                    hz_free(seg->glyph_indices);
+                    hz_free(seg->glyph_classes);
+                    hz_free(seg->attachment_classes);
+
+                    seg->glyph_count = seg->out_buffer.pos;
+
+                    seg->glyph_indices = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+                    seg->glyph_classes = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+                    seg->attachment_classes = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+
+                    memcpy(seg->glyph_indices, seg->out_buffer.mem.u16, sizeof(uint16_t) * seg->out_buffer.pos);
+
+                    hz_buffer_clear(&seg->out_buffer);
+                    hz_segment_set_glyph_info(seg, face);
+                }
+
+                break;
+            }
+        }
+    }
+}
+
+HZ_STATIC void
+hz_shape_plan_apply_features(hz_shape_plan_t *plan, hz_segment_t *seg)
+{
+    hz_ot_gsub_table_t *gsub = &plan->gsub_table;
+    for (uint16_t i = 0; i < plan->num_features; ++i) {
+        int32_t feature_index;
+        hz_feature_t feature = plan->features[i];
+
+        const hz_feature_info_t *feature_info = hz_ot_get_feature_info(feature);
+
+        // TODO: Possibly improve find speed with a hash table
+        for (uint16_t j = 0; j < plan->gsub_table.num_features; ++j) {
+            if (gsub->features[j].tag == feature_info->tag) {
+                // Found feature, apply corresponding lookups
+                hz_feature_table_t *feature_table = &gsub->features[j].table;
+                for (unsigned int k = 0; k < feature_table->lookup_index_count; ++k)
+                    hz_shape_plan_apply_gsub_lookup(plan, seg, feature, feature_table->lookup_list_indices[k]);
+
+                break;
+            }
+        }
+    }
+}
+
+HZ_STATIC void
 hz_shape_plan_destroy(hz_shape_plan_t *plan)
 {
-    if (plan->features != NULL && plan->num_features != 0) {
+    if (plan->num_features > 0) {
         hz_free(plan->features);
         plan->num_features = 0;
     }
 
+    hz_shape_plan_unload_gsub_table(plan);
     hz_free(plan);
 }
 
-/* hz_buffer_t */
-/* hz_sequence_t */
-/* hz_segment_t */
-/* hz_chain_t */
-/* hz_clip_t */
-/* hz_clump_t */
-/* hz_lump_t */
+HZ_STATIC void
+hz_segment_setup_metrics(hz_segment_t *seg, hz_face_t *face)
+{
+    seg->glyph_metrics = hz_malloc(seg->glyph_count * sizeof(hz_glyph_metrics_t));
+    for (size_t i = 0; i < seg->glyph_count; ++i) {
+        seg->glyph_metrics[i].x_advance = face->metrics[i].x_advance;
+        seg->glyph_metrics[i].y_advance = face->metrics[i].y_advance;
+        seg->glyph_metrics[i].x_offset = 0;
+        seg->glyph_metrics[i].y_offset = 0;
+    }
+}
 
 HZ_STATIC void
 hz_shape_plan_execute(hz_shape_plan_t *plan,
                       hz_segment_t *seg)
 {
-    hz_face_t *face;
-    hz_tag_t script_tag, language_tag;
-    const hz_face_ot_tables_t *tables;
+    hz_face_t *face = hz_font_get_face(plan->font);
 
     if (!plan->num_features || plan->features == NULL) {
-        /* no features explicitly specified, load standard features for script */
+        // no features explicitly specified, load standard features for script
         hz_ot_script_load_features(seg->script, &plan->features, &plan->num_features);
     }
 
-    face = hz_font_get_face(plan->font);
-    tables = &face->ot_tables;
-    script_tag = hz_script_to_ot_tag(seg->script);
-    language_tag = hz_language_to_ot_tag(seg->language);
+    hz_segment_setup_shaping_objects(seg, face);
+    hz_shape_plan_apply_features(plan, seg);
 
-    /* map unicode characters to nominal glyph indices */
-    hz_map_to_nominal_forms(face, seg);
-
-    /* sets glyph class information */
-//    hz_set_sequence_glyph_info(face, seg);
-    hz_apply_tt1_metrics(face, seg);
-
-
-    if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
-        hz_segment_rtl_switch(seg);
+    hz_segment_setup_metrics(seg, face);
 }
 
 void
@@ -5812,7 +7808,7 @@ hz_lang(const char *tag) {
             while (*p != ':' && *p != '\0')
                 code[n++] = *p++;
 
-            if (len == n && !strncmp(code, tag, n)) {
+            if (unlikely(!memcmp(code, tag, 3))) {
                 foundlang = currlang;
                 goto done_searching;
             }
@@ -5823,9 +7819,325 @@ hz_lang(const char *tag) {
     }
 
     done_searching:
-    if (foundlang == NULL)
+    if (unlikely(foundlang == NULL))
         return HZ_LANGUAGE_DFLT;
 
     return foundlang->language;
 #endif
+}
+
+#define START 0
+
+HZ_STATIC void
+utf8_decoder_init(utf8_decoder_t *state)
+{
+    state->data = NULL;
+    state->ptr = 0;
+    state->size = 0;
+    state->code = 0;
+    state->step = START;
+}
+
+HZ_STATIC void
+utf8_decoder_reset(utf8_decoder_t *state)
+{
+    state->ptr = 0;
+    state->size = 0;
+    state->code = 0;
+    state->step = START;
+}
+
+HZ_STATIC void
+utf8_decoder_set_data(utf8_decoder_t *state, const char8_t *data, size_t size)
+{
+    state->data = data;
+    state->size = size;
+}
+
+typedef enum utf_decoder_flags_t {
+    UTF_BOUNDS_CHECK = 0x00000001,
+    UTF_ALIGN_CHUNK_BLOCKS = 0x00000002,
+    UTF_END_AT_NULL = 0x00000004
+} utf_decoder_flags_t;
+
+typedef struct utf8_range_t {
+    char8_t *start;
+    size_t size;
+} utf8_range_t;
+
+/*
+
+    Maximum characters loaded into chunk (in case of 7-bit ASCII) is
+    UTF_CHUNKSIZE
+    Otherwise, the least number of characters that would be loaded into the chunk is
+    UTF_CHUNKSIZE / 4
+    If all characters are 4-byte characters.
+
+*/
+typedef struct utf8_chunk_decoder_t {
+    const char8_t *data;
+    uintptr_t ptr;
+    size_t size;
+
+    /* loaded blocks into the chunk */
+    size_t readchars;
+
+    /* see utf_decoder_flags_t */
+    uint32_t flags;
+
+    /* stored in groups of 4-characters which are 16-byte aligned */
+    size_t chunksize;
+    uint8_t *chunk;
+
+    char32_t code;
+    int8_t step;
+} utf8_chunk_decoder_t;
+
+void
+utf8_chunk_decoder_init(utf8_chunk_decoder_t *state, size_t chunksize)
+{
+    state->data = NULL;
+    state->ptr = 0;
+    state->size = 0;
+    state->readchars = 0;
+    state->flags = 0;
+    state->chunksize = chunksize;
+    state->chunk = hz_malloc(chunksize);
+    state->step = START;
+    memset(state->chunk, 0, chunksize);
+}
+
+void
+utf8_chunk_decoder_set_flags(utf8_chunk_decoder_t *state, uint32_t flags)
+{
+    state->flags = flags;
+}
+
+void
+utf8_chunk_decoder_deinit(utf8_chunk_decoder_t *state)
+{
+    hz_free(state->chunk);
+}
+
+HZ_STATIC void
+utf8_chunk_decoder_load_data(utf8_chunk_decoder_t *state, const char8_t *data, size_t size)
+{
+    state->data = data;
+    state->size = size;
+
+    if (state->flags & UTF_END_AT_NULL)
+        state->size = strlen(state->data);
+}
+
+HZ_STATIC void
+decode_utf8_byte(utf8_chunk_decoder_t *state)
+{
+    char8_t byte;
+
+    retry:
+    byte = state->data[state->ptr++];
+    if (state->step == START) {
+        // decode the number of steps using the first byte
+        state->step = decode_byte_table[byte];
+        if (state->step < 0) goto error; // invalid starting byte
+        // extract the data from the first byte, using the proper mask
+        state->code = ((uint32_t)byte & decode_mask_table[state->step]) << (6*state->step);
+    } else {
+        if ((byte & 0xc0) != 0x80) { // invalid continuation byte
+            // retry as starting byte
+            state->step = START;
+            goto retry;
+        }
+
+        if (state->step == 0) goto error; // too many continuation bytes
+        state->step -= 1;
+        // extract the data from the continuation byte
+        state->code |= ((uint32_t)byte & 0x3f) << (6*state->step);
+    }
+    return;
+
+    error:
+    // return the unicode "unknown" character and start again
+    state->step = START;
+    state->code = 0xfffd;
+}
+
+HZ_STATIC char32_t
+decode_next_utf8_codepoint(utf8_chunk_decoder_t *state)
+{
+    do decode_utf8_byte(state); while (state->step != START);
+    return state->code;
+}
+
+/* Decodes UTF-8 data in blocks of 4 characters using lookup tables */
+HZ_STATIC int
+decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
+{
+    uintptr_t chunkptr = 0;
+    state->readchars = 0;
+
+#if 0
+    // decode with 4-wide 32-bit registers at a time
+    #pragma clang loop vectorize(enable) unroll(enable)
+    #pragma GCC ivdep
+    while (likely(state->ptr+16 <= state->size)) {
+        __m128i block, *outptr;
+
+        block = _mm_loadu_si128((__m128i *)(state->data + state->ptr));
+        outptr = (__m128i *)(state->chunk + chunkptr);
+
+        // Detect if the block has any non-ASCII characters by checking the highest bit.
+        // Here, 'likely' simply tells the compiler that it's likely (expected) that 'block' is ASCII-only.
+        if (likely(!_mm_movemask_epi8(block) && chunkptr + 64 <= state->chunksize)) {
+            // ASCII-only block... unpack to 4 x 4 UTF-32 characters and write to chunk
+            __m128i le, ri, z;
+            __m128i v0, v1, v2, v3;
+
+            // load low & high 8 bytes interleaved with zeros
+            z = _mm_setzero_si128();
+
+            // first level
+            le = _mm_unpacklo_epi8(block, z);
+            ri = _mm_unpackhi_epi8(block, z);
+
+            // second level
+            v0 = _mm_unpacklo_epi16(le, z);
+            v1 = _mm_unpackhi_epi16(le, z);
+            v2 = _mm_unpacklo_epi16(ri, z);
+            v3 = _mm_unpackhi_epi16(ri, z);
+
+            _mm_storeu_si128(outptr + 0, v0);
+            _mm_storeu_si128(outptr + 1, v1);
+            _mm_storeu_si128(outptr + 2, v2);
+            _mm_storeu_si128(outptr + 3, v3);
+
+            state->ptr += 16;
+            state->readchars += 16;
+            chunkptr += 64;
+        } else {
+            //            break;
+            unsigned int charidx;
+            int8_t length;
+            uint8_t bytecount, tablekey;
+            __m128i pattern, data_mask, mask1;
+            __m128i block_left, block_low, block_high, counts;
+
+            bytecount = 0;
+
+            // store data about next 4 multi-byte characters
+            #pragma GCC unroll 4
+            for (charidx = 0; charidx < 4; ++charidx) {
+                char8_t byte;
+                byte = state->data[state->ptr + bytecount];
+                length = prefix_to_length_table[byte >> 3];
+                bytecount += length + 1;
+                tablekey = (tablekey << 2) | length;
+            }
+
+            pattern = _mm_loadu_si128((__m128i *)(length_to_pattern1_table + tablekey));
+            data_mask = _mm_loadu_si128((__m128i *)(length_to_mask1_table + tablekey));
+            counts = _mm_loadu_si128((__m128i *)(length_to_counts_table + tablekey));
+
+            block = _mm_and_si128(_mm_shuffle_epi8(block, pattern), data_mask);
+
+            // mask for if first byte is zero
+            //            mask1 = _mm_cmpeq_epi8(_mm_and_si128(counts, _mm_set1_epi32(0xff)), _mm_setzero_si128());
+
+            __m128i b1 = _mm_and_si128(block, _mm_set1_epi32(0xff));
+            __m128i b2 = _mm_and_si128(_mm_srli_si128(block, 1), _mm_set1_epi32(0xff));
+            __m128i b3 = _mm_and_si128(_mm_srli_si128(block, 2), _mm_set1_epi32(0xff));
+            __m128i b4 = _mm_and_si128(_mm_srli_si128(block, 3), _mm_set1_epi32(0xff));
+
+            block = _mm_or_si128(_mm_or_si128(_mm_slli_epi32(b1,0), _mm_slli_epi32(b2,6)),
+                                 _mm_or_si128(_mm_slli_epi32(b3,12), _mm_slli_epi32(b4,18)));
+
+            _mm_storeu_si128(outptr, block);
+
+            state->ptr += bytecount;
+            state->readchars += 4;
+            chunkptr += 16;
+        }
+    }
+#endif
+
+    // Check for odd remaining bytes to decode, which is very likely.
+    // Finish rest of the chunk off through scalar method.
+    while (likely(chunkptr + 4 <= state->chunksize)) {
+        if (state->ptr >= state->size)
+            return UTF_END_OF_BUFFER;
+
+        state->step = START;
+        *(char32_t *)(state->chunk + chunkptr) = decode_next_utf8_codepoint(state);
+        ++state->readchars;
+        chunkptr += 4;
+    }
+
+    return UTF_OK;
+}
+
+HZ_STATIC int
+decode_utf8_to_utf32_unaligned_avx2(utf8_chunk_decoder_t *state)
+{
+
+}
+
+HZ_STATIC int
+decode_utf8_to_utf32_unaligned_avx512(utf8_chunk_decoder_t *state)
+{
+
+}
+
+HZ_STATIC void
+decode_utf8_to_ucs2_aligned_sse4()
+{
+    
+}
+
+HZ_STATIC void
+hz_segment_load_utf8_simd(hz_segment_t *seg, const char8_t *text)
+{
+    utf8_chunk_decoder_t state;
+    int ret;
+
+    utf8_chunk_decoder_init(&state, UTF_SMALL_CHUNK_SIZE);
+    utf8_chunk_decoder_set_flags(&state, UTF_END_AT_NULL);
+    utf8_chunk_decoder_load_data(&state, text, 0);
+
+    do {
+        size_t copysize, newsize;
+        ret = decode_utf8_to_utf32_unaligned_sse4(&state);
+        copysize = state.readchars << 2;
+        newsize = (seg->num_codepoints << 2) + copysize;
+        seg->codepoints = hz_realloc(seg->codepoints, newsize);
+        memcpy(seg->codepoints + seg->num_codepoints, state.chunk, copysize);
+        seg->num_codepoints += state.readchars;
+    } while (ret != UTF_END_OF_BUFFER);
+
+    utf8_chunk_decoder_deinit(&state);
+}
+
+void
+hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *text)
+{
+}
+
+void
+hz_segment_load_utf8(hz_segment_t *seg, const char *text)
+{
+    hz_segment_clear(seg);
+    hz_segment_load_utf8_simd(seg, text);
+}
+
+void
+hz_segment_load_latin1(hz_segment_t *seg, const char *text)
+{
+    hz_segment_clear(seg);
+
+    size_t len = strlen(text);
+    seg->num_codepoints = len;
+    seg->codepoints = hz_malloc(len * sizeof(hz_unicode_t));
+
+    for (size_t i = 0; i < len; ++i) {
+        seg->codepoints[i] = (hz_unicode_t) text[i];
+    }
 }

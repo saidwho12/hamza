@@ -1835,7 +1835,6 @@ typedef enum hz_arabic_joining_group_t {
     /* Rohingya */
     JOINING_GROUP_HANIFI_ROHINGYA_PA,
     JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA
-
 } hz_arabic_joining_group_t;
 
 typedef struct hz_arabic_joining_entry_t {
@@ -1843,7 +1842,6 @@ typedef struct hz_arabic_joining_entry_t {
     const char *name;
     uint16_t joining;
 } hz_arabic_joining_entry_t;
-
 
 static const hz_arabic_joining_entry_t hz_arabic_joining_list[] = {
     { 0x0600, "ARABIC NUMBER SIGN", JOINING_TYPE_U | NO_JOINING_GROUP },

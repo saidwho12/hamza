@@ -964,19 +964,18 @@ typedef struct hz_buffer_t {
         int64_t *i64;
     } mem;
     
-    
-    long cnt, cap, member_size;
+    size_t pos, cap, member_size;
 } hz_buffer_t;
 
-void hz_buffer_init(hz_buffer_t *buf, long isz)
+void hz_buffer_init(hz_buffer_t *buf, size_t isz)
 {
     buf->cap = 0;
     buf->mem.u8 = NULL;
-    buf->cnt = 0;
+    buf->pos = 0;
     buf->member_size = isz;
 }
 
-hz_buffer_t *hz_buffer_create(long isz)
+hz_buffer_t *hz_buffer_create(size_t isz)
 {
     hz_buffer_t *buf = hz_malloc(sizeof(*buf));
     hz_buffer_init(buf, isz);
@@ -994,6 +993,8 @@ void hz_buffer_clear(hz_buffer_t *buf)
     if (!hz_buffer_is_empty(buf)) {
         hz_free(buf->mem.u8);
         buf->mem.u8 = NULL;
+        buf->pos = 0;
+        buf->cap = 0;
     }
 }
 
@@ -1008,21 +1009,21 @@ void hz_buffer_deep_copy(hz_buffer_t *to, hz_buffer_t *from)
     hz_buffer_clear(to);
     if (!hz_buffer_is_empty(from)) {
         // From has data to be copied
-        to->cap = from->cap; to->cnt = from->cnt;
+        to->cap = from->cap; to->pos = from->pos;
         to->mem.u8 = hz_malloc(from->cap*from->member_size);
 
-        if (from->cnt > 0) {
-            memcpy(to->mem.u8, from->mem.u8, from->cnt*from->member_size);
+        if (from->pos > 0) {
+            memcpy(to->mem.u8, from->mem.u8, from->pos * from->member_size);
         }
     }
 }
 
-void hz_buffer_reserve(hz_buffer_t *buf, long new_cap)
+void hz_buffer_reserve(hz_buffer_t *buf, size_t new_cap)
 {
-    long sz = new_cap * buf->member_size;
+    size_t sz = new_cap * buf->member_size;
 
-    if (new_cap < buf->cnt) {
-        buf->cnt = new_cap;
+    if (new_cap < buf->pos) {
+        buf->pos = new_cap;
     }
 
     buf->cap = new_cap;
@@ -1032,28 +1033,28 @@ void hz_buffer_reserve(hz_buffer_t *buf, long new_cap)
 
 void hz_buffer_grow(hz_buffer_t *buf)
 {
-    long new_cap;
-    if (buf->cap != 0) {
+    size_t new_cap;
+    if (buf->cap >= 2) {
         new_cap = buf->cap + (buf->cap >> 1); // 1.5 factor
     } else {
         // constant growth otherwise
         new_cap = 64;
     }
 
-    hz_buffer_reserve(buf, new_cap * buf->member_size);
+    hz_buffer_reserve(buf, new_cap);
 }
 
-void hz_buffer_push_back(hz_buffer_t *buf, void *elems, long n)
+void hz_buffer_add_members(hz_buffer_t *buf, void *elems, size_t n)
 {
-    long offset = (buf->cnt-1)*buf->member_size;
-    long extra_sz = n * buf->member_size;
+    size_t offset = buf->pos * buf->member_size;
+    size_t extra_sz = n * buf->member_size;
 
-    if (buf->cnt+n >= buf->cap) {
+    if (buf->pos + n > buf->cap) {
         hz_buffer_grow(buf);
     }
 
     memcpy(buf->mem.u8 + offset, elems, extra_sz);
-    buf->cnt += n;
+    buf->pos += n;
 }
 
 typedef struct hz_glyph_metrics_t {
@@ -1076,7 +1077,7 @@ struct hz_segment_t {
     uint16_t *glyph_classes;
     uint16_t *attachment_classes;
     hz_glyph_metrics_t *glyph_metrics;
-    hz_buffer_t glyph_buffer;
+    hz_buffer_t out_buffer;
 };
 
 hz_segment_t *
@@ -1092,7 +1093,7 @@ hz_segment_create(void)
     seg->glyph_classes = NULL;
     seg->attachment_classes = NULL;
 
-    hz_buffer_init(&seg->glyph_buffer, sizeof(uint16_t));
+    hz_buffer_init(&seg->out_buffer, sizeof(uint16_t));
 
     seg->language = HZ_LANGUAGE_ENGLISH;
     seg->script = HZ_SCRIPT_LATIN;
@@ -1114,7 +1115,7 @@ hz_segment_clear_shaping_objects(hz_segment_t *seg)
         seg->attachment_classes = NULL;
     }
 
-    hz_buffer_clear(&seg->glyph_buffer);
+    hz_buffer_clear(&seg->out_buffer);
 }
 
 void
@@ -3159,7 +3160,7 @@ hz_ot_tag_from_feature(hz_feature_t feature) {
 //}
 //
 void
-hz_set_sequence_glyph_info(hz_face_t *face, hz_segment_t *seg) {
+hz_segment_set_glyph_info(hz_segment_t *seg, hz_face_t *face) {
     for (size_t i = 0; i < seg->glyph_count; ++i) {
         seg->glyph_classes[i] = hz_face_get_glyph_class(face, seg->glyph_indices[i]);
         if (seg->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
@@ -6885,6 +6886,27 @@ hz_script_to_ot_tag(hz_script_t script)
     }
 }
 
+void
+hz_segment_setup_shaping_objects(hz_face_t *face, hz_segment_t *seg)
+{
+    seg->glyph_count = seg->num_codepoints;
+
+    if (seg->num_codepoints > 0) {
+        if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
+            hz_unicode_mirror_punctuation(seg);
+
+        seg->glyph_indices = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
+        seg->glyph_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
+        seg->attachment_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
+    }
+
+    // map unicode characters to nominal glyph indices
+    hz_map_to_nominal_forms(face, seg);
+
+    // sets glyph class information
+    hz_segment_set_glyph_info(seg, face);
+}
+
 typedef struct hz_lookup_subtable_t {
     uint16_t format;
 } hz_lookup_subtable_t;
@@ -7642,6 +7664,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 {
     hz_ot_gsub_table_t *gsub_table = &plan->gsub_table;
     hz_lookup_table_t *table = &gsub_table->lookups[lookup_index];
+    hz_face_t *face = hz_font_get_face(plan->font);
 
     for (uint16_t i = 0; i < table->subtable_count; ++i) {
         hz_lookup_subtable_t *base = table->subtables[i];
@@ -7680,6 +7703,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                 break;
             }
             case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
+                hz_buffer_reserve(&seg->out_buffer, seg->glyph_count);
+
                 switch (base->format) {
                     case 1: {
                         char buffer[4096];
@@ -7688,6 +7713,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                         hz_ligature_substitution_format1_subtable_t *subtable = (hz_ligature_substitution_format1_subtable_t*) base;
                         for (size_t n = 0; n < seg->glyph_count; ++n) {
+                            int was_matched = 0;
+
                             if (!hz_should_ignore_glyph(seg,n, table->lookup_flag)) {
                                 if (hz_should_apply_replacement(seg, feature, n, table->lookup_flag)
                                 && hz_map_value_exists(subtable->coverage, seg->glyph_indices[n])) {
@@ -7697,19 +7724,16 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     const hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + index;
 
                                     // compare ligatures in ligature set to following unignored nodes for match
-                                    for (size_t j = 0; j < ligature_set->ligature_count; ++j) {
+                                    for (int j = 0; j < ligature_set->ligature_count; ++j) {
                                         hz_bump_allocator_reset(&ma);
-                                        hz_ligature_t *ligature = ligature_set->ligatures+j;
+                                        hz_ligature_t *ligature = &ligature_set->ligatures[j];
                                         HZ_ASSERT(ligature->component_count >= 1);
 
                                         size_t cmpcnt = ligature->component_count;
 
-                                        short *a = hz_bump_allocator_alloc(&ma, cmpcnt * sizeof(*a));
-                                        unsigned short xnext = hz_next_unignored_rel_indices(seg,
-                                                                                             n,
-                                                                                             a,
-                                                                                             cmpcnt,
-                                                                                             table->lookup_flag);
+                                        int16_t *a = hz_bump_allocator_alloc(&ma, cmpcnt * sizeof(*a));
+                                        uint16_t xnext = hz_next_unignored_rel_indices(seg, n, a, cmpcnt,
+                                                                                     table->lookup_flag);
 
                                         if (xnext == cmpcnt) {
                                             // there is a count and filter match, check if components themselves are matching
@@ -7719,8 +7743,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                             }
 
                                             if (!memcmp(ligature->component_glyph_ids, gids, (cmpcnt-1)*2)) {
-                                                // GID match found with ligature
-                                                seg->glyph_indices[n] = ligature->ligature_glyph;
+                                                // GID match found with ligature, push ligature glyph to buffer
+                                                hz_buffer_add_members(&seg->out_buffer, &ligature->ligature_glyph, 1);
+                                                was_matched = 1;
+                                                n += cmpcnt;
                                                 break;
                                             }
 
@@ -7731,6 +7757,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     }
                                 }
                             }
+
+                            if (!was_matched) {
+                                hz_buffer_add_members(&seg->out_buffer, &seg->glyph_indices[n],1);
+                            }
                         }
 
                         hz_bump_allocator_release(&ma);
@@ -7739,6 +7769,25 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     default:
                         break;
                 }
+
+                {
+                    // Update glyph info and clear the output buffer
+                    hz_free(seg->glyph_indices);
+                    hz_free(seg->glyph_classes);
+                    hz_free(seg->attachment_classes);
+
+                    seg->glyph_count = seg->out_buffer.pos;
+
+                    seg->glyph_indices = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+                    seg->glyph_classes = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+                    seg->attachment_classes = hz_malloc(sizeof(uint16_t) * seg->glyph_count);
+
+                    memcpy(seg->glyph_indices, seg->out_buffer.mem.u16, sizeof(uint16_t) * seg->out_buffer.pos);
+
+                    hz_buffer_clear(&seg->out_buffer);
+                    hz_segment_set_glyph_info(seg, face);
+                }
+
                 break;
             }
         }
@@ -7779,29 +7828,6 @@ hz_shape_plan_destroy(hz_shape_plan_t *plan)
 
     hz_shape_plan_unload_gsub_table(plan);
     hz_free(plan);
-}
-
-
-
-void
-hz_segment_setup_shaping_objects(hz_face_t *face, hz_segment_t *seg)
-{
-    seg->glyph_count = seg->num_codepoints;
-    
-    if (seg->num_codepoints > 0) {
-        if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
-            hz_unicode_mirror_punctuation(seg);
-
-        seg->glyph_indices = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
-        seg->glyph_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
-        seg->attachment_classes = hz_malloc(seg->num_codepoints * sizeof(uint16_t));
-    }
-
-    // map unicode characters to nominal glyph indices
-    hz_map_to_nominal_forms(face, seg);
-
-    // sets glyph class information
-    hz_set_sequence_glyph_info(face, seg);
 }
 
 HZ_STATIC void

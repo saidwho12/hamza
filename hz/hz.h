@@ -161,9 +161,9 @@
 #define HZ_INLINE inline
 
 #if defined(HZ_BUILD_SHARED) && defined(_WIN32)
-#define HZAPI HZ_DLLEXPORT
+#define HZ_API HZ_DLLEXPORT
 #else
-#define HZAPI
+#define HZ_API
 #endif
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
@@ -259,7 +259,7 @@ typedef struct hz_allocator_t {
  *  Arguments:
  *      a - Custom allocator.
  */
-HZAPI void
+HZ_API void
 hz_set_custom_allocator(hz_allocator_t a);
 
 /*
@@ -274,23 +274,23 @@ typedef struct hz_segment_t hz_segment_t;
 /*  Function: hz_segment_create
  *      Creates a new segment.
  */
-HZAPI hz_segment_t* hz_segment_create(void);
+HZ_API hz_segment_t* hz_segment_create(void);
 
 /*  Function: hz_segment_destroy
  *      Destroys a segment.
  *  Arguments:
  *      seg - The segment.
  */
-HZAPI void
+HZ_API void
 hz_segment_destroy(hz_segment_t *seg);
 
-HZAPI void
+HZ_API void
 hz_segment_set_script(hz_segment_t *seg, hz_script_t script);
 
-HZAPI void
+HZ_API void
 hz_segment_set_language(hz_segment_t *seg, hz_language_t language);
 
-HZAPI void
+HZ_API void
 hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction);
 
 
@@ -300,8 +300,11 @@ hz_segment_set_direction(hz_segment_t *seg, hz_direction_t direction);
  *      seg - The segment.
  *      str - UTF-8 encoded string.
  */
-HZAPI void
-hz_segment_load_utf8(hz_segment_t *seg, const char *str);
+HZ_API void
+hz_segment_load_utf8(hz_segment_t *seg, const char *text);
+
+HZ_API void
+hz_segment_load_latin1(hz_segment_t *seg, const char *text);
 
 /*  Function: hz_segment_load_utf32
  *      Loads a segment with a Unicode string.
@@ -309,7 +312,7 @@ hz_segment_load_utf8(hz_segment_t *seg, const char *str);
  *      seg - The segment.
  *      str - UTF-32 string.
  */
-HZAPI void
+HZ_API void
 hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
 
 /*  Struct: hz_shaped_glyph_t
@@ -327,7 +330,7 @@ typedef struct hz_shaped_glyph_t {
     uint16_t glyph_class;
 } hz_shaped_glyph_t;
 
-HZAPI void
+HZ_API void
 hz_segment_get_shaped_glyphs(hz_segment_t *seg,
                              hz_shaped_glyph_t *glyphs,
                              size_t *num_glyphs);
@@ -413,46 +416,46 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
-HZAPI int
+HZ_API int
 hz_setup (void);
 
-HZAPI int
+HZ_API int
 hz_cleanup (void);
 
 /*  Function: hz_lang
  *      Returns language from an ISO-639 tag.
  */
-HZAPI hz_language_t hz_lang(const char *tag);
+HZ_API hz_language_t hz_lang(const char *tag);
 
 /*  Function: hz_script
  *      Returns script from an ISO-15924 tag.
  */
-HZAPI hz_script_t hz_script(const char *tag);
+HZ_API hz_script_t hz_script(const char *tag);
 
 typedef struct hz_face_t hz_face_t;
 
-HZAPI hz_face_t* hz_face_create(void);
+HZ_API hz_face_t* hz_face_create(void);
 
-HZAPI void
+HZ_API void
 hz_face_destroy(hz_face_t *face);
 
-HZAPI uint16_t
+HZ_API uint16_t
 hz_face_get_upem(hz_face_t *face);
 
-HZAPI void
+HZ_API void
 hz_face_set_upem(hz_face_t *face, uint16_t upem);
 
-HZAPI uint16_t
+HZ_API uint16_t
 hz_face_get_num_of_h_metrics(hz_face_t *face);
 
-HZAPI uint16_t
+HZ_API uint16_t
 hz_face_get_num_of_v_metrics(hz_face_t *face);
 
-HZAPI hz_metrics_t *
+HZ_API hz_metrics_t *
 hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 
 
-HZAPI uint16_t
+HZ_API uint16_t
 hz_face_get_num_glyphs(hz_face_t *face);
 
 /* font functions, and loading font using FreeType */
@@ -461,7 +464,7 @@ typedef struct hz_font_t hz_font_t;
 /*  Function: hz_font_create
  *      Creates a font.
  */
-HZAPI hz_font_t* hz_font_create(void);
+HZ_API hz_font_t* hz_font_create(void);
 
 /*  Function: hz_font_destroy
  *     Destroys a font.
@@ -470,13 +473,13 @@ HZAPI hz_font_t* hz_font_create(void);
  *  See Also:
  *     <hz_font_create>
  */
-HZAPI void
+HZ_API void
 hz_font_destroy(hz_font_t *font);
 
-HZAPI hz_face_t *
+HZ_API hz_face_t *
 hz_font_get_face(hz_font_t *font);
 
-HZAPI void
+HZ_API void
 hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
 /*  Function: hz_stbtt_font_create
@@ -488,7 +491,7 @@ hz_font_set_face(hz_font_t *font, hz_face_t *face);
  *  See Also:
  *      <hz_font_destroy>
  */
-HZAPI hz_font_t *
+HZ_API hz_font_t *
 hz_stbtt_font_create(stbtt_fontinfo *info);
 
 /*  Function: hz_shape
@@ -496,11 +499,11 @@ hz_stbtt_font_create(stbtt_fontinfo *info);
  *      then default features are loaded for the segment's script.
  *  Arguments:
  *      font - Pointer to the font.
- *      seg - Pointer to seg with loaded text.
+ *      seg - Pointer to segment of text.
  *      features - Array of features to apply.
  *      num_features - Number of features.
  */
-HZAPI void
+HZ_API void
 hz_shape(hz_font_t *font,
          hz_segment_t *seg,
          const hz_feature_t *features,

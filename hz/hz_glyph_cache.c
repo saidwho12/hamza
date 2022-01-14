@@ -1,4 +1,1 @@
-//
-// Created by Said on 12/25/2021.
-//
-
+#include "hz_glyph_cache.h"

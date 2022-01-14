@@ -25,8 +25,11 @@ typedef struct hz_vulkan_renderer_t {
     VkExtent2D swapchainExtent;
     VkImageView *swapchainImageViews;
 
-    int enableDebug : 1;
-    int enableVSync : 1;
+    VkRenderPass renderPass;
+    VkPipelineLayout pipelineLayout;
+
+    int enableDebug;
+    int enableVSync;
 } hz_vulkan_renderer_t;
 
 hz_vulkan_renderer_t *

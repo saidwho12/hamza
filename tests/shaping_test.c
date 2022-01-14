@@ -77,36 +77,12 @@ static void mainLoop(App *app)
     }
 }
 
-
-typedef struct {
-    float x0,y0,x1,y1;
-} Extent2f;
-
-
-void
-blit_glyph_to_image(uint8_t *image, int dstw, int dsth,
-                    uint8_t *glyph, int xpos, int ypos, int w, int h)
-{
-    if (xpos >= 0 && ypos >= 0 && xpos+w <= dstw && ypos+h <= dsth) {
-        for (int y = 0; y < h; ++y) {
-            for (int x = 0; x < w; ++x) {
-                int x_target = xpos + x;
-                int y_target = ypos + y;
-
-                uintptr_t i0 = (y_target * dstw + x_target) * 4;
-                uintptr_t i1 = (y * w + x) * 4;
-                memcpy(image + i0, glyph + i1, 4);
-            }
-        }
-    }
-}
-
 void render_text_to_png(const char *filename,
                         stbtt_fontinfo *font,
                         hz_shaped_glyph_t *shaped_glyphs,
                         size_t shaped_glyph_count)
 {
-    float scale = stbtt_ScaleForPixelHeight(font, 64);
+    float scale = stbtt_ScaleForPixelHeight(font, 192);
     // Compute shaped glyphs axis-aligned bounding box
     int xmin = INT_MAX, ymin = INT_MAX, xmax = INT_MIN,ymax = INT_MIN;
 
@@ -131,10 +107,10 @@ void render_text_to_png(const char *filename,
         pen_x += roundf(ax * scale);
     }
 
-    xmin -= 35;
-    ymin -= 35;
-    xmax += 35;
-    ymax += 35;
+    xmin -= 32;
+    ymin -= 32;
+    xmax += 32;
+    ymax += 32;
 
     int w = xmax-xmin, h=ymax-ymin;
     uint8_t *buffer = malloc(w*h);
@@ -143,11 +119,12 @@ void render_text_to_png(const char *filename,
     printf("x0: %d, y0: %d, x1: %d, y1: %d, w: %d, h: %d\n", xmin, ymin, xmax, ymax,
            w,h);
 
-    pen_x = -xmin/2; pen_y = -ymin/2;
     int ascent, descent, lineGap;
     stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
     ascent = roundf(ascent * scale);
     descent = roundf(descent * scale);
+
+    pen_x = -xmin; pen_y = 0;
 
     for (size_t i = 0; i < shaped_glyph_count; ++i) {
         uint16_t glyph_index = shaped_glyphs[i].glyph_index;
@@ -184,22 +161,35 @@ int main(int argc, char *argv[]) {
 
 
     stbtt_fontinfo  fontinfo;
-    load_font_face(&fontinfo, "../data/fonts/ArnoPro-Regular.otf");
+//    load_font_face(&fontinfo, "../data/fonts/ArnoPro-Regular.otf");
+    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
-
-    const char *text = "ffi, tt, ct, ft, fi, fj";
+/*
+    const char *text = "ffi, tt, ct, ft, fi, fj, The quick brown fox jumped over the lazy dog";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
     hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
     hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
-    hz_segment_set_language(seg, hz_lang("eng"));
+    hz_segment_set_language(seg, hz_lang("eng"));*/
+
+    const char *text= "سبح اسم ربك الأعلى الذي خلق فسوى و الذي قدر فهدى والذي أخرج المرعى فجعله غثاء أحوى";
+    hz_segment_t *seg = hz_segment_create();
+    hz_segment_load_utf8(seg, text);
+    hz_segment_set_direction(seg, HZ_DIRECTION_RTL);
+    hz_segment_set_script(seg, HZ_SCRIPT_ARABIC);
+    hz_segment_set_language(seg, HZ_LANGUAGE_ARABIC);
 
     static const hz_feature_t features[] = {
+            HZ_FEATURE_INIT,
+            HZ_FEATURE_MEDI,
+            HZ_FEATURE_FINA,
+            HZ_FEATURE_ISOL,
             HZ_FEATURE_RLIG,
             HZ_FEATURE_CALT,
-            HZ_FEATURE_LIGA
+            HZ_FEATURE_LIGA,
+            HZ_FEATURE_DLIG
     };
 
     hz_shape(font, seg, features, ARRAYSIZE(features));

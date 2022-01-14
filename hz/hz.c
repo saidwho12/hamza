@@ -1300,17 +1300,18 @@ hz_segment_get_shaped_glyphs(hz_segment_t *seg,
         *num_glyphs = seg->glyph_count;
     } else {
         // Filling shaped glyph structures this time
-        for (size_t i = 0; i < seg->glyph_count; ++i) {
-            glyphs[i].x_offset = seg->glyph_metrics[i].x_offset;
-            glyphs[i].y_offset = seg->glyph_metrics[i].y_offset;
-            glyphs[i].x_advance = seg->glyph_metrics[i].x_advance;
-            glyphs[i].y_advance = seg->glyph_metrics[i].y_advance;
-//            glyphs[i].codepoint = node->codepoint;
-            glyphs[i].glyph_index = seg->glyph_indices[i];
-            glyphs[i].glyph_class = seg->glyph_classes[i];
+        for (long i = 0; i<seg->glyph_count; ++i) {
+            long j = (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT) ?
+                    seg->glyph_count - i - 1 : i;
+            glyphs[j].x_offset = seg->glyph_metrics[i].x_offset;
+            glyphs[j].y_offset = seg->glyph_metrics[i].y_offset;
+            glyphs[j].x_advance = seg->glyph_metrics[i].x_advance;
+            glyphs[j].y_advance = seg->glyph_metrics[i].y_advance;
+            //            glyphs[j].codepoint = node->codepoint;
+            glyphs[j].glyph_index = seg->glyph_indices[i];
+            glyphs[j].glyph_class = seg->glyph_classes[i];
         }
     }
-
 }
 
 typedef struct {
@@ -6493,14 +6494,14 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
         int16_t id_delta = st->id_delta[i];
         uint16_t id_range_offset = st->id_range_offsets[i];
 
-        if (end_code >= c && start_code <= c) {
+        if (c >= start_code && c <= end_code) {
             if (id_range_offset != 0) {
-                uint16_t raw_val = *(st->glyph_id_array + (id_range_offset/2 + (c - start_code) - (range_count - i)));
-//                uint16_t raw_val = *(&st->id_range_offsets[i] + id_range_offset/2 + (c - start_code));
-                id = bswap16( raw_val );
+                uint16_t offset = *(st->glyph_id_array + (id_range_offset/2 + (c - start_code) - (range_count - i)));
+                id = endianness_check() ? bswap16(offset) : offset;
                 if (id != 0) id += id_delta;
-            } else
+            } else {
                 id = c + id_delta;
+            }
 
             return id;
         }
@@ -6508,18 +6509,7 @@ hz_cmap_unicode_to_id(hz_cmap_subtable_format4_t *st, hz_unicode_t c) {
         ++i;
     }
 
-    return 0; //map to .notdef
-}
-
-void
-BinarySearch_Base()
-{
-
-}
-
-void BinarySearch_Int16_Unaligned_AVX2()
-{
-
+    return 0; // map to .notdef
 }
 
 void avx256_print_16bit(const char * prefix, const char *fmt, const __m256i *val)
@@ -7428,196 +7418,105 @@ hz_should_ignore_glyph(hz_segment_t *seg, size_t index, uint16_t flags) {
         || (seg->glyph_classes[index] & ignored_classes));
 }
 
-//HZ_STATIC int64_t
-//hz_segment_next_valid_node(hz_segment_t *seg, int64_t node_index, uint16_t lookup_flag)
-//{
-//    do {
-//        if (node_index + 1 >= seg->num_nodes)
-//            return -1;
-//
-//        node_index ++;
-//    } while (hz_should_ignore_glyph(&seg->nodes[node_index], lookup_flag));
-//
-//    return node_index;
-//}
-//
-//HZ_STATIC int64_t
-//hz_segment_prev_valid_node(hz_segment_t *seg, int64_t node_index, uint16_t lookup_flag)
-//{
-//    do {
-//        if (node_index - 1 < 0)
-//            return -1;
-//
-//        node_index --;
-//    } while (hz_should_ignore_glyph(&seg->nodes[node_index], lookup_flag));
-//
-//    return node_index;
-//}
-//
-//HZ_STATIC hz_bool
-//hz_shape_complex_arabic_init(hz_segment_t *seg, uint16_t node_index, uint16_t lookup_flag)
-//{
-//    uint16_t curr_joining, prev_joining, next_joining;
-//    hz_glyph_info_t *curr_node = &seg->nodes[node_index];
-//
-//    if (hz_shape_complex_arabic_char_joining(curr_node->codepoint, &curr_joining)) {
-//        int64_t prev_index = hz_segment_prev_valid_node(seg, node_index, lookup_flag);
-//        int64_t next_index = hz_segment_next_valid_node(seg, node_index, lookup_flag);
-//
-//        if (prev_index == -1) {
-//            prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *prev = &seg->nodes[prev_index];
-//            if (!hz_shape_complex_arabic_char_joining(prev->codepoint, &prev_joining))
-//                prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        if (next_index == -1) {
-//            next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *next = &seg->nodes[next_index];
-//            if (!hz_shape_complex_arabic_char_joining(next->codepoint, &next_joining))
-//                next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        hz_bool init = curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool fina = curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool medi = curr_joining & JOINING_TYPE_D
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
-//        return init && !(medi || fina);
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//HZ_STATIC hz_bool
-//hz_shape_complex_arabic_medi(hz_segment_t *seg, int64_t node_index, uint16_t lookup_flag)
-//{
-//    uint16_t curr_joining, prev_joining, next_joining;
-//    hz_glyph_info_t *curr_node = &seg->nodes[node_index];
-//
-//    if (hz_shape_complex_arabic_char_joining(curr_node->codepoint, &curr_joining)) {
-//        int64_t prev_index = hz_segment_prev_valid_node(seg, node_index, lookup_flag);
-//        int64_t next_index = hz_segment_next_valid_node(seg, node_index, lookup_flag);
-//
-//        if (prev_index == -1) {
-//            prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *prev = &seg->nodes[prev_index];
-//            if (!hz_shape_complex_arabic_char_joining(prev->codepoint, &prev_joining))
-//                prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        if (next_index == -1) {
-//            next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *next = &seg->nodes[next_index];
-//            if (!hz_shape_complex_arabic_char_joining(next->codepoint, &next_joining))
-//                next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        hz_bool init = curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool fina = curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool medi = curr_joining & JOINING_TYPE_D
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
-//        return medi;
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//HZ_STATIC hz_bool
-//hz_shape_complex_arabic_fina(hz_segment_t *seg, uint16_t node_index, uint16_t lookup_flag)
-//{
-//    uint16_t curr_joining, prev_joining, next_joining;
-//    hz_glyph_info_t *curr_node = &seg->nodes[node_index];
-//
-//    if (hz_shape_complex_arabic_char_joining(curr_node->codepoint, &curr_joining)) {
-//        int64_t prev_index = hz_segment_prev_valid_node(seg, node_index, lookup_flag);
-//        int64_t next_index = hz_segment_next_valid_node(seg, node_index, lookup_flag);
-//
-//        if (prev_index == -1) {
-//            prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *prev = &seg->nodes[prev_index];
-//            if (!hz_shape_complex_arabic_char_joining(prev->codepoint, &prev_joining))
-//                prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        if (next_index == -1) {
-//            next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *next = &seg->nodes[next_index];
-//            if (!hz_shape_complex_arabic_char_joining(next->codepoint, &next_joining))
-//                next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        hz_bool init = curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool fina = curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool medi = curr_joining & JOINING_TYPE_D
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
-//        return fina && !(medi || init);
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//HZ_STATIC hz_bool
-//hz_shape_complex_arabic_isol(hz_segment_t *seg, uint16_t node_index, uint16_t lookup_flag)
-//{
-//    uint16_t curr_joining, prev_joining, next_joining;
-//    hz_glyph_info_t *curr_node = &seg->nodes[node_index];
-//
-//    if (hz_shape_complex_arabic_char_joining(curr_node->codepoint, &curr_joining)) {
-//        int64_t prev_index = hz_segment_prev_valid_node(seg, node_index, lookup_flag);
-//        int64_t next_index = hz_segment_next_valid_node(seg, node_index, lookup_flag);
-//
-//        if (prev_index == -1) {
-//            prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *prev = &seg->nodes[prev_index];
-//            if (!hz_shape_complex_arabic_char_joining(prev->codepoint, &prev_joining))
-//                prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        if (next_index == -1) {
-//            next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        } else {
-//            hz_glyph_info_t *next = &seg->nodes[next_index];
-//            if (!hz_shape_complex_arabic_char_joining(next->codepoint, &next_joining))
-//                next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-//        }
-//
-//        hz_bool init = curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool fina = curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool medi = curr_joining & JOINING_TYPE_D
-//                       && prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
-//                       && next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
-//
-//        return !(fina || medi || init);
-//    }
-//
-//    return HZ_FALSE;
-//}
+HZ_STATIC int64_t
+hz_segment_next_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+{
+    do {
+        if (g + 1 >= seg->glyph_count)
+            return -1;
+
+        g ++;
+    } while (hz_should_ignore_glyph(seg,g,lookup_flag));
+
+    return g;
+}
+
+HZ_STATIC int64_t
+hz_segment_prev_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+{
+    do {
+        if (g - 1 < 0)
+            return -1;
+
+        g --;
+    } while (hz_should_ignore_glyph(seg, g, lookup_flag));
+
+    return g;
+}
+
+typedef struct hz_arabic_joining_triplet_t {
+    uint16_t prev_joining, curr_joining, next_joining;
+    int init,fina,medi;
+    int does_apply;
+} hz_arabic_joining_triplet_t;
+
+hz_arabic_joining_triplet_t
+hz_shape_complex_arabic_joining(hz_segment_t *seg,
+                                size_t index,
+                                uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet;
+
+    if (hz_shape_complex_arabic_char_joining(seg->codepoints[index], &triplet.curr_joining)) {
+        int64_t prev_index = hz_segment_prev_valid_glyph(seg, index, lookup_flag);
+        int64_t next_index = hz_segment_next_valid_glyph(seg, index, lookup_flag);
+
+        if (prev_index == -1) {
+            triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        } else {
+            if (!hz_shape_complex_arabic_char_joining(seg->codepoints[prev_index], &triplet.prev_joining))
+                triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        }
+
+        if (next_index == -1) {
+            triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        } else {
+            if (!hz_shape_complex_arabic_char_joining(seg->codepoints[next_index], &triplet.next_joining))
+                triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
+        }
+
+        triplet.init = triplet.curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
+                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        triplet.fina = triplet.curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
+                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
+
+        triplet.medi = triplet.curr_joining & JOINING_TYPE_D
+                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
+                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
+
+        triplet.does_apply = 1;
+    } else {
+        triplet.does_apply = 0;
+    }
+
+    return triplet;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_init(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.init && !(triplet.medi || triplet.fina) : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_medi(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.medi : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool hz_shape_complex_arabic_fina(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? triplet.fina && !(triplet.medi || triplet.init) : HZ_FALSE;
+}
+
+HZ_STATIC hz_bool
+hz_shape_complex_arabic_isol(hz_segment_t *seg, int64_t index, uint16_t lookup_flag)
+{
+    hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(seg,index,lookup_flag);
+    return triplet.does_apply ? !(triplet.fina || triplet.medi || triplet.init) : HZ_FALSE;
+}
 
 HZ_STATIC hz_bool
 hz_should_apply_replacement(hz_segment_t *seg,
@@ -7626,10 +7525,10 @@ hz_should_apply_replacement(hz_segment_t *seg,
                             uint16_t lookup_flag)
 {
     switch (feature) {
-//        case HZ_FEATURE_INIT: return hz_shape_complex_arabic_init(seg, node_index, lookup_flag);
-//        case HZ_FEATURE_MEDI: return hz_shape_complex_arabic_medi(seg, node_index, lookup_flag);
-//        case HZ_FEATURE_FINA: return hz_shape_complex_arabic_fina(seg, node_index, lookup_flag);
-//        case HZ_FEATURE_ISOL: return hz_shape_complex_arabic_isol(seg, node_index, lookup_flag);
+        case HZ_FEATURE_INIT: return hz_shape_complex_arabic_init(seg, node_index, lookup_flag);
+        case HZ_FEATURE_MEDI: return hz_shape_complex_arabic_medi(seg, node_index, lookup_flag);
+        case HZ_FEATURE_FINA: return hz_shape_complex_arabic_fina(seg, node_index, lookup_flag);
+        case HZ_FEATURE_ISOL: return hz_shape_complex_arabic_isol(seg, node_index, lookup_flag);
         default:
             return HZ_TRUE;
     }
@@ -7859,8 +7758,6 @@ hz_shape_plan_execute(hz_shape_plan_t *plan,
     hz_shape_plan_apply_features(plan, seg);
 
     hz_segment_setup_metrics(seg, face);
-//    if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
-//        hz_segment_rtl_switch(seg);
 }
 
 void
@@ -8079,6 +7976,7 @@ decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
     uintptr_t chunkptr = 0;
     state->readchars = 0;
 
+#if 0
     // decode with 4-wide 32-bit registers at a time
     #pragma clang loop vectorize(enable) unroll(enable)
     #pragma GCC ivdep
@@ -8160,6 +8058,7 @@ decode_utf8_to_utf32_unaligned_sse4(utf8_chunk_decoder_t *state)
             chunkptr += 16;
         }
     }
+#endif
 
     // Check for odd remaining bytes to decode, which is very likely.
     // Finish rest of the chunk off through scalar method.
@@ -8197,8 +8096,6 @@ decode_utf8_to_ucs2_aligned_sse4()
 HZ_STATIC void
 hz_segment_load_utf8_simd(hz_segment_t *seg, const char8_t *text)
 {
-    hz_segment_clear(seg);
-
     utf8_chunk_decoder_t state;
     int ret;
 
@@ -8227,6 +8124,7 @@ hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *text)
 void
 hz_segment_load_utf8(hz_segment_t *seg, const char *text)
 {
+    hz_segment_clear(seg);
     hz_segment_load_utf8_simd(seg, text);
 }
 

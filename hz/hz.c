@@ -172,11 +172,11 @@ bswap64(uint64_t x)
     Read this article for better solutions implementing 64-bit log2:
     http://graphics.stanford.edu/~seander/bithacks.html
 */
-int
+uint64_t
 fastlog2l(uint64_t n)
 {
     #if HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
-    return 64 - __builtin_clzl(n);
+    return 63 - __builtin_clzl(n);
     #else
     static const int multiply_de_bruijin_bit_position[64] = {
         63,  0, 58,  1, 59, 47, 53,  2,
@@ -198,6 +198,9 @@ fastlog2l(uint64_t n)
     #endif
 }
 
+#define BUMP_ALLOCATOR_MAX_ALIGNED_SIZE 512
+#define BUMP_ALLOCATOR_ALIGN_TO_POWER_OF_TWO_SIZE 1
+
 /*
     Struct: hz_bump_allocator_t
         A bump allocator, meant to be used on a
@@ -217,21 +220,19 @@ typedef struct hz_bump_allocator_t {
         Initializes a bump allocator on a block of memory.
 
     Arguments:
-        ma - Pointer to the allocator.
+        allocator - Pointer to the allocator.
         data - Pointer to the segment of memory.
         size - Size of the block to allocate.
 */
 HZ_STATIC void
-hz_bump_allocator_init(hz_bump_allocator_t *ma,
+hz_bump_allocator_init(hz_bump_allocator_t *allocator,
                        void *data,
                        size_t size)
 {
-    ma->data = data;
-    ma->size = size;
-    ma->ptr = 0;
+    allocator->data = data;
+    allocator->size = size;
+    allocator->ptr = 0;
 }
-
-#define HZ_BUMP_ALLOC_ALIGN_OPTIMALLY 0
 
 /*
     Function: hz_bump_allocator_alloc
@@ -240,49 +241,34 @@ hz_bump_allocator_init(hz_bump_allocator_t *ma,
         the next power of two.
 
     Arguments:
-        ma - Pointer to the allocator.
+        allocator - Pointer to the allocator.
         size - Size of the block to allocate.
 
     Returns:
         Pointer to the newly allocated block.
 */
 HZ_STATIC void *
-hz_bump_allocator_alloc(hz_bump_allocator_t *ma,
-                        size_t size)
+hz_bump_allocator_alloc(hz_bump_allocator_t *allocator, size_t size)
 {
-    uintptr_t startptr, endptr;
-#if HZ_BUMP_ALLOC_ALIGN_OPTIMALLY
-    size_t potsize, potmask;
+    if (size >= 1) {
+        uint64_t p = allocator->ptr; // Align on 1-byte border
 
-    potsize = fastlog2l(size);
-    potmask = potsize - 1;
-    startptr = ma->ptr + (~ma->ptr & potmask); /* adds offset to next block */
-    endptr = startptr + size;
-
-    if (endptr > ma->size) {
-        /* end address of block, and over-flow address */
-        void *ptraddr, *endaddr;
-        ptraddr = ma->data + endptr;
-        endaddr = ma->data + ma->size;
-        fprintf(stderr, "monotonic allocator overflowed (end address: %p, pointer address: %p)\n",endaddr,ptraddr);
-        return NULL;
-    }
-
-    ma->ptr = endptr;
-    return ma->data + startptr;
-#else
-    startptr = ma->ptr;
-    endptr = startptr + size;
-    if (endptr > ma->size) {
-        void *ptraddr, *endaddr;
-        ptraddr = ma->data + endptr;
-        endaddr = ma->data + ma->size;
-        fprintf(stderr, "monotonic allocator overflowed (end address: %p, pointer address: %p)\n",endaddr,ptraddr);
-        return NULL;
-    }
-
-    return ma->data + startptr;
+#if BUMP_ALLOCATOR_ALIGN_TO_POWER_OF_TWO_SIZE
+        if (size <= BUMP_ALLOCATOR_MAX_ALIGNED_SIZE) {
+            // Align allocations to multiple of the size's next second power
+            uint64_t v = 2 << fastlog2l(size - 1);
+            uint64_t mask = v - 1;
+            p += (~allocator->ptr & mask);
+        }
 #endif
+
+        if (p + size <= allocator->size) {
+            allocator->ptr = p + size;
+            return allocator->data + p;
+        }
+    }
+
+    return NULL;
 }
 
 /*
@@ -290,11 +276,11 @@ hz_bump_allocator_alloc(hz_bump_allocator_t *ma,
         Frees a previously allocated block. (currently a no-op)
 
     Arguments:
-        ma - Pointer to the allocator.
+        allocator - Pointer to the allocator.
         p - Pointer to a previously allocated block.
 */
 HZ_STATIC void
-hz_bump_allocator_free(hz_bump_allocator_t *ma,
+hz_bump_allocator_free(hz_bump_allocator_t *allocator,
                        void *p)
 {
     /* No-Op */
@@ -305,18 +291,18 @@ hz_bump_allocator_free(hz_bump_allocator_t *ma,
         Releases all resources held by the allocator. (currently a no-op)
 
     Arguments:
-        ma - A pointer to the allocator.
+        allocator - A pointer to the allocator.
 */
 HZ_STATIC void
-hz_bump_allocator_release(hz_bump_allocator_t *ma)
+hz_bump_allocator_release(hz_bump_allocator_t *allocator)
 {
     /* No-Op */
 }
 
 void
-hz_bump_allocator_reset(hz_bump_allocator_t *ma)
+hz_bump_allocator_reset(hz_bump_allocator_t *allocator)
 {
-    ma->ptr = 0;
+    allocator->ptr = 0;
 }
 
 /* no bound for buffer */

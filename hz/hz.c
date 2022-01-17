@@ -112,7 +112,7 @@ hz_realloc(void *ptr, size_t size)
     return realloc(ptr,size);
 }
 
-HZ_STATIC void
+void
 hz_free(void *ptr)
 {
     free(ptr);
@@ -544,21 +544,19 @@ unpackf(hz_stream_t *bs, const char *f,  ...)
 }
 
 typedef struct hz_array_t {
-    uint32_t *data;
     size_t size;
+    uint32_t *data;
 } hz_array_t;
 
-hz_array_t *
-hz_array_create(void)
+hz_array_t * hz_array_create(void)
 {
-    hz_array_t *array = hz_malloc(sizeof(hz_array_t));
+    hz_array_t *array = hz_malloc(sizeof(*array));
     array->data = NULL;
     array->size = 0;
     return array;
 }
 
-void
-hz_array_push_back(hz_array_t *array, uint32_t val)
+void hz_array_append(hz_array_t *array, uint32_t val)
 {
     size_t new_size = array->size + 1;
 
@@ -571,34 +569,53 @@ hz_array_push_back(hz_array_t *array, uint32_t val)
     array->size = new_size;
 }
 
-void
-hz_array_pop_back(hz_array_t *array)
-{
-
-}
-
-size_t
-hz_array_size(const hz_array_t *array)
+size_t hz_array_size(const hz_array_t *array)
 {
     return array->size;
 }
 
-hz_bool
-hz_array_is_empty(const hz_array_t *array)
+hz_bool hz_array_is_empty(const hz_array_t *array)
 {
-    return array->data == NULL || !array->size;
+    return array->size == 0;
+}
+
+void hz_array_clear(hz_array_t *array)
+{
+    if (!hz_array_is_empty(array)) {
+        hz_free(array->data);
+        array->data = NULL;
+        array->size = 0;
+    }
 }
 
 void
 hz_array_resize(hz_array_t *array, size_t new_size)
 {
-    if (hz_array_is_empty(array))
-        array->data = hz_malloc(new_size * sizeof(uint32_t));
-    else
-        array->data = hz_realloc(array->data, new_size * sizeof(uint32_t));
+    hz_bool is_empty = hz_array_is_empty(array);
+    if (new_size == 0 && !is_empty) {
+        hz_free(array->data);
+        array->data = NULL;
+    } else {
+        if (is_empty)
+            array->data = hz_malloc(new_size * sizeof(uint32_t));
+        else
+            array->data = hz_realloc(array->data, new_size * sizeof(uint32_t));
+    }
 
     array->size = new_size;
 }
+
+uint32_t hz_array_pop(hz_array_t *array)
+{
+    if (array->size >= 1 && !hz_array_is_empty(array))  {
+        uint32_t val = array->data[array->size-1];
+        hz_array_resize(array, array->size-1);
+        return val;
+    }
+
+    return 0;
+}
+
 
 void
 hz_array_pop_at(hz_array_t *array, size_t index)
@@ -628,7 +645,7 @@ hz_array_insert(hz_array_t *array, size_t index, uint32_t val)
     if (index > array->size) return;
 
     if (index == array->size) {
-        hz_array_push_back(array, val);
+        hz_array_append(array, val);
     } else {
         size_t new_size = array->size + 1;
 
@@ -753,6 +770,24 @@ hz_map_create(void)
         hz_map_bucket_init(&map->buckets[i]);
 
     return map;
+}
+
+// Counts the number of elements in the hash map
+HZ_STATIC uint32_t hz_map_size(hz_map_t *map)
+{
+    uint32_t result = 0;
+    for (uint32_t i = 0; i < map->bucket_count; ++i) {
+        hz_map_bucket_t *bucket = &map->buckets[i];
+        if (bucket != NULL) {
+            hz_map_bucket_node_t *node = bucket->root;
+            while (node != NULL) {
+                ++result;
+                node = node->next;
+            }
+        }
+    }
+
+    return result;
 }
 
 HZ_STATIC void
@@ -885,6 +920,223 @@ hz_map_set_value_for_keys(hz_map_t *map, uint32_t k0, uint32_t k1, uint32_t valu
 
     return any_set;
 }
+
+typedef struct hz_map_iterator_t {
+    uint32_t index;
+    hz_map_bucket_node_t *node;
+    uint32_t key, value;
+} hz_map_iterator_t;
+
+
+HZ_STATIC void hz_map_iterator_next(hz_map_t *map, hz_map_iterator_t *it)
+{
+    if (it->node == NULL) {
+        thing:
+        ++it->index;
+        while (it->index < map->bucket_count) {
+            if (map->buckets[it->index].root != NULL) {
+                // Found non-empty bucket
+                it->node = map->buckets[it->index].root;
+                it->key = it->node->key;
+                it->value = it->node->value;
+                return;
+            }
+
+            ++it->index;
+        }
+    } else {
+        it->node = it->node->next;
+
+        if (it->node != NULL) {
+            it->key = it->node->key;
+            it->value = it->node->value;
+        } else {
+            goto thing;
+        }
+    }
+}
+
+HZ_STATIC hz_map_iterator_t hz_map_begin(hz_map_t *map)
+{
+    hz_map_iterator_t it = {.node = NULL, .index = 0};
+
+    while (map->buckets[it.index].root == NULL && it.index < map->bucket_count) {
+        ++it.index;
+    }
+
+    if (it.index < map->bucket_count) {
+        // Found non-empty bucket
+        it.node = map->buckets[it.index].root;
+        it.key = it.node->key;
+        it.value = it.node->value;
+    }
+
+    return it;
+}
+
+
+// Section: Minimal Perfect Hash Table
+uint32_t Hash(uint32_t d, const unsigned char *key,
+              long size)
+{
+    if (d == 0) d = 0x01000193;
+
+    // Use the FNV algorithm from http://isthe.com/chongo/tech/comp/fnv/
+    for (long i = 0; i < size; ++i) {
+        unsigned char b = key[i];
+        d = ( (d * 0x01000193) ^ b ) & 0xffffffff;
+    }
+
+    return d;
+}
+
+uint32_t HashUInt32(uint32_t d, uint32_t x)
+{
+    return Hash(d, (const unsigned char *) &x, sizeof(uint32_t));
+}
+
+typedef struct hz_mph_map_t {
+    hz_array_t **buckets;
+    int32_t *G;
+    uint32_t *values;
+    uint32_t N;
+} hz_mph_map_t;
+
+HZ_STATIC int compare_arrays(const void *a, const void *b)
+{
+    const hz_array_t *p = *(const hz_array_t **)a;
+    const hz_array_t *q = *(const hz_array_t **)b;
+    int l = (int)(p->size);
+    int r = (int)(q->size);
+//    printf("%d\n", r-l);
+    return r-l;
+}
+
+HZ_STATIC hz_mph_map_t *hz_mph_map_create(hz_map_t *from)
+{
+    uint32_t size = hz_map_size(from);
+
+    hz_mph_map_t *map = hz_malloc(sizeof(*map));
+    map->N = size;
+    map->buckets = hz_malloc(sizeof(*map->buckets) * size);
+    map->G = hz_malloc(sizeof(*map->G) * size);
+    map->values = hz_malloc(sizeof(*map->values) * size);
+    hz_bool *value_set = hz_malloc(sizeof(*value_set) * size);
+
+    for (uint32_t i = 0; i < size; ++i) {
+        map->buckets[i] = hz_array_create();
+        map->G[i] = 0;
+        map->values[i] = 0;
+        value_set[i] = HZ_FALSE;
+    }
+
+    int x = 0;
+    for (hz_map_iterator_t it = hz_map_begin(from); it.node != NULL;
+            hz_map_iterator_next(from, &it))
+    {
+        uint32_t h = HashUInt32(0, it.key) % size;
+        hz_array_append(map->buckets[h], it.key);
+        ++x;
+    }
+
+    assert(x == size);
+    printf("%d\n", x);
+
+    // Sort the buckets and process in decreasing order (largest -> smallest)
+
+
+    size_t buckets_size = sizeof(*map->buckets) * size;
+    hz_array_t **sorted_buckets = hz_malloc(buckets_size);
+    memcpy(sorted_buckets, map->buckets, buckets_size);
+
+    qsort((void *)sorted_buckets, size, sizeof(void *),
+          compare_arrays);
+
+    printf("%lu\n", sorted_buckets[0]->size);
+
+    uint32_t b;
+    for (b = 0; b < size; ++b) {
+        hz_array_t *bucket = sorted_buckets[b];
+        if (bucket->size <= 1) break;
+
+        int32_t d = 1, item = 0;
+        hz_array_t *slots = hz_array_create();
+
+        // Repeatedly try different values of d until we find a hash function
+        // that places all items in the bucket into free slots
+        while (item < bucket->size) {
+            uint32_t slot = HashUInt32( d, bucket->data[item] ) % size;
+            if (value_set[slot] || hz_array_has(slots, slot, NULL)) {
+                ++d; item = 0;
+                hz_array_clear(slots);
+            } else {
+                hz_array_append(slots, slot);
+                ++item;
+            }
+        }
+
+        map->G[HashUInt32(0,bucket->data[0]) % size] = d;
+
+        // Set values for each of the slots
+        for (uint32_t i = 0; i < bucket->size; ++i) {
+            map->values[slots->data[i]] = hz_map_get_value(from, bucket->data[i]);
+            value_set[slots->data[i]] = HZ_TRUE;
+        }
+
+        hz_array_destroy(slots);
+    }
+
+    // Only buckets with 1 item remain. Process them more quickly by directly
+    // placing them into a free slot. Use a negative value fo d to indicate this.
+    hz_array_t *freelist = hz_array_create();
+    for (uint32_t i = 0; i < size; ++i) {
+        if (!value_set[i]) hz_array_append(freelist, i);
+    }
+
+    for (; b < size; ++b) {
+        hz_array_t *bucket = sorted_buckets[b];
+        if (bucket->size == 0) break;
+
+        assert(!hz_array_is_empty(freelist));
+        uint32_t slot = hz_array_pop(freelist);
+        assert(slot < size);
+
+        // We subtract one to ensure it's negative even if the zeroeth slot was
+        // used.
+        map->G[HashUInt32(0, bucket->data[0]) % size] = -(int32_t)slot-1;
+        map->values[slot] = hz_map_get_value(from, bucket->data[0]);
+        value_set[slot] = HZ_TRUE;
+    }
+
+    hz_array_destroy(freelist);
+    hz_free(value_set);
+    return map;
+}
+
+typedef struct hz_optimized_lib_t {
+    hz_mph_map_t *arabic_joining;
+} hz_optimized_lib_t;
+
+static int oz_lib_initialized = 0;
+static hz_optimized_lib_t oz_lib;
+
+void hz_optimize(void)
+{
+    {
+        hz_map_t *arabic_joining_tmp = hz_map_create();
+        for (int i = 0; i < HZ_ARRLEN(hz_arabic_joining_list); ++i) {
+            hz_map_set_value(arabic_joining_tmp, hz_arabic_joining_list[i].codepoint,
+                             hz_arabic_joining_list[i].joining);
+        }
+
+        oz_lib.arabic_joining = hz_mph_map_create(arabic_joining_tmp);
+
+        hz_map_destroy(arabic_joining_tmp);
+    }
+
+    oz_lib_initialized = 1;
+}
+
 
 /* Blob */
 typedef struct hz_blob_t {
@@ -2239,48 +2491,57 @@ hz_blob_to_stream(hz_blob_t *blob) {
     return hz_stream_create(blob->data, blob->size);
 }
 
-//typedef struct hz_face_table_node_t hz_face_table_node_t;
-//
-//struct hz_face_table_node_t {
-//    hz_tag_t tag;
-//    hz_blob_t *blob;
-//    hz_face_table_node_t *prev, *next;
-//};
-//
-//typedef struct hz_face_tables_t {
-//    hz_face_table_node_t *root;
-//} hz_face_tables_t;
-
 /* Group: Arabic joining */
 HZ_STATIC hz_bool
 hz_is_arabic_codepoint(hz_unicode_t c)
 {
     return (c >= 0x0600u && c <= 0x06FFu) || /* Arabic (0600–06FF) */
-           (c >= 0x0750u && c <= 0x077Fu) || /* Arabic Supplement (0750–077F) */
-           (c >= 0x08A0u && c <= 0x08FFu) || /* Arabic Extended-A (08A0–08FF) */
-           (c >= 0xFB50u && c <= 0xFDFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-           (c >= 0xFE70u && c <= 0xFEFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-           (c >= 0x1EE00u && c <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
+            (c >= 0x0750u && c <= 0x077Fu) || /* Arabic Supplement (0750–077F) */
+            (c >= 0x08A0u && c <= 0x08FFu) || /* Arabic Extended-A (08A0–08FF) */
+            (c >= 0xFB50u && c <= 0xFDFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
+            (c >= 0xFE70u && c <= 0xFEFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
+            (c >= 0x1EE00u && c <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
 }
 
 HZ_STATIC hz_bool
 hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
                                      uint16_t *joining)
 {
-    if (hz_is_arabic_codepoint(codepoint)) {
-        for (size_t index = 0; index < HZ_ARRLEN(hz_arabic_joining_list); ++index) {
-            const hz_arabic_joining_entry_t *curr_entry = &hz_arabic_joining_list[index];
+    if (oz_lib_initialized) {
+        hz_mph_map_t *lut = oz_lib.arabic_joining;
+        uint32_t key = codepoint;
 
-            if (curr_entry->codepoint == codepoint) {
-                // Found entry
-                *joining = curr_entry->joining;
-                return HZ_TRUE;
+        uint32_t h1 = HashUInt32(0,key) % lut->N;
+        if (hz_array_has(lut->buckets[h1], key, NULL))
+        {
+            int32_t d = lut->G[h1];
+            if (d < 0)
+                *joining = lut->values[-d-1];
+            else {
+                uint32_t h2 = HashUInt32(d, key) % lut->N;
+                *joining = lut->values[h2];
             }
+
+//            printf("%04x\n", *joining);
+            return HZ_TRUE;
         }
 
-        if (codepoint == 0x0640) { // Kashida
-            *joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
-            return HZ_TRUE;
+    } else {
+        if (hz_is_arabic_codepoint(codepoint)) {
+            for (size_t index = 0; index < HZ_ARRLEN(hz_arabic_joining_list); ++index) {
+                const hz_arabic_joining_entry_t *curr_entry = &hz_arabic_joining_list[index];
+
+                if (curr_entry->codepoint == codepoint) {
+                    // Found entry
+                    *joining = curr_entry->joining;
+                    return HZ_TRUE;
+                }
+            }
+
+//            if (codepoint == 0x0640) { // Kashida
+//                *joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
+//                return HZ_TRUE;
+//            }
         }
     }
 
@@ -2291,157 +2552,6 @@ typedef enum hz_joining_dir_t {
     JOINING_NEXT,
     JOINING_PREV
 } hz_joining_dir_t;
-
-//
-//hz_segment_node_t *
-//hz_ot_shape_complex_arabic_adjacent_char(const hz_segment_node_t *node, hz_bool_t do_reverse)
-//{
-//    hz_segment_node_t * curr_node = do_reverse ? node->prev : node->next;
-//    while (curr_node != NULL) {
-//        if (!is_arabic_codepoint(curr_node->codepoint)) {
-//            return NULL;
-//        }
-//
-//        if (curr_node->glyph_class & ~HZ_GLYPH_CLASS_MARK) {
-//            /* glyph is anything else than a mark, return NULL */
-//            break;
-//        }
-//
-//        curr_node = do_reverse ? curr_node->prev : curr_node->next;
-//    }
-//
-//    return curr_node;
-//}
-//
-//uint16_t
-//hz_ot_shape_complex_arabic_joining(const hz_segment_node_t *node, hz_bool_t do_reverse)
-//{
-//    uint16_t joining;
-//    hz_unicode_t codepoint;
-//    hz_segment_node_t * adj = hz_ot_shape_complex_arabic_adjacent_char(node, do_reverse);
-//
-//    if (adj == NULL)
-//        goto no_adjacent;
-//
-//    codepoint = adj->codepoint;
-//    if (hz_ot_shape_complex_arabic_char_joining(codepoint, &joining))
-//        return joining;
-//
-//    no_adjacent:
-//    /* No adjacent char, return non-joining */
-//    return NO_JOINING_GROUP | JOINING_TYPE_T;
-//}
-//
-//hz_bool_t
-//hz_ot_shape_complex_arabic_isol(const hz_segment_node_t *g)
-//{
-//    uint16_t curr;
-//
-//    if (hz_ot_shape_complex_arabic_char_joining(g->codepoint, &curr)) {
-//        uint16_t prev, next;
-//        prev = hz_ot_shape_complex_arabic_joining(g, HZ_TRUE);
-//        next = hz_ot_shape_complex_arabic_joining(g, HZ_FALSE);
-//
-//        /* Conditions for substitution */
-//        hz_bool_t fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t medi = curr & JOINING_TYPE_D
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        return !init && !fina && !medi;
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//hz_bool_t
-//hz_ot_shape_complex_arabic_init(const hz_segment_node_t *g)
-//{
-//    uint16_t curr;
-//
-//    if (hz_ot_shape_complex_arabic_char_joining(g->codepoint, &curr)) {
-//        uint16_t prev, next;
-//        prev = hz_ot_shape_complex_arabic_joining(g, HZ_TRUE);
-//        next = hz_ot_shape_complex_arabic_joining(g, HZ_FALSE);
-//
-//        /* Conditions for substitution */
-//        hz_bool_t fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t medi = curr & JOINING_TYPE_D
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        return init && !medi;//(fina || medi);
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//hz_bool_t
-//hz_ot_shape_complex_arabic_medi(const hz_segment_node_t *g)
-//{
-//    uint16_t curr;
-//
-//    if (hz_ot_shape_complex_arabic_char_joining(g->codepoint, &curr)) {
-//        uint16_t prev, next;
-//        prev = hz_ot_shape_complex_arabic_joining(g, HZ_TRUE);
-//        next = hz_ot_shape_complex_arabic_joining(g, HZ_FALSE);
-//
-//        /* Conditions for substitution */
-//        hz_bool_t medi = curr & JOINING_TYPE_D
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        return medi;
-//    }
-//
-//    return HZ_FALSE;
-//}
-//
-//hz_bool_t
-//hz_ot_shape_complex_arabic_fina(const hz_segment_node_t *g)
-//{
-//    uint16_t curr;
-//
-//    if (hz_ot_shape_complex_arabic_char_joining(g->codepoint, &curr)) {
-//        uint16_t prev, next;
-//        prev = hz_ot_shape_complex_arabic_joining(g, HZ_TRUE);
-//        next = hz_ot_shape_complex_arabic_joining(g, HZ_FALSE);
-//
-//        /* Conditions for substitution */
-//        hz_bool_t fina = curr & (JOINING_TYPE_R | JOINING_TYPE_D)
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t medi = curr & JOINING_TYPE_D
-//                         && prev & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        hz_bool_t init = curr & (JOINING_TYPE_L | JOINING_TYPE_D)
-//                         && next & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
-//
-//        return fina && !(medi || init);
-//    }
-//
-//    return HZ_FALSE;
-//}
-
-
-//typedef struct hz_face_ot_tables_t {
-//    uint8_t *BASE_table;
-//    uint8_t *GDEF_table;
-//    uint8_t *GSUB_table;
-//    uint8_t *GPOS_table;
-//    uint8_t *JSTF_table;
-//} hz_face_ot_tables_t;
 
 struct hz_face_t {
     unsigned char *data;
@@ -2611,7 +2721,7 @@ hz_face_load_num_glyphs(hz_face_t *face)
 void
 hz_face_load_class_maps(hz_face_t *face)
 {
-    if (!face->gdef) {
+    if (face->gdef) {
         hz_stream_t bs = hz_stream_create(face->data + face->gdef, 0);
         Version16Dot16 version;
 
@@ -2864,7 +2974,6 @@ hz_font_get_face(hz_font_t *font)
 HZ_API hz_font_t *
 hz_stbtt_font_create(stbtt_fontinfo *info)
 {
-    static float scale = 1.0f;
     int g;
     hz_font_t *font;
     hz_face_t *face;
@@ -2893,48 +3002,16 @@ hz_stbtt_font_create(stbtt_fontinfo *info)
         int ax;
         int lsb;
         stbtt_GetGlyphHMetrics(info, g, &ax, &lsb);
-        /* (Note that each Codepoint call has an alternative Glyph version which caches the work required to lookup the character word[i].) */
 
-        /* get bounding box for character (may be offset to account for chars that dip above or below the line */
         int c_x1, c_y1, c_x2, c_y2;
-        stbtt_GetGlyphBitmapBox(info, g, scale, scale, &c_x1, &c_y1, &c_x2, &c_y2);
-
-        /* compute y (different characters have different heights */
-        int y = ascent + c_y1;
+        stbtt_GetGlyphBox(info, g, &c_x1, &c_y1, &c_x2, &c_y2);
 
         face->metrics[g].w = c_x2 - c_x1;
         face->metrics[g].h = c_y2 - c_y1;
         face->metrics[g].x_advance = ax;
         face->metrics[g].y_advance = 0;
-
-        //        FT_GlyphSlot slot = ft_face->glyph;
-//        if (FT_Load_Glyph(ft_face, i, FT_LOAD_NO_BITMAP | FT_LOAD_NO_SCALE)  == FT_Err_Ok) {
-//            hz_metrics_t *mo;
-//            FT_Glyph_Metrics *mi;
-//            FT_BBox bbox;
-//            FT_Glyph glyph;
-//            mi = &ft_face->glyph->metrics;
-//
-//            /* Load glyph bounding box */
-//            FT_Get_Glyph(slot, &glyph);
-//            FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_SUBPIXELS, &bbox);
-//            FT_Done_Glyph(glyph);
-//
-//            mo = hz_face_get_glyph_metrics(face, i);
-//
-//            mo->x_advance = (hz_position_t)mi->horiAdvance;
-//            mo->y_advance = (hz_position_t)mi->vertAdvance;
-//            mo->x_bearing = (hz_position_t)mi->horiBearingX;
-//            mo->y_bearing = 0;//mi->horiBearingY;
-//            mo->w = (hz_position_t)mi->width;
-//            mo->h = (hz_position_t)mi->height;
-//            mo->bbox.x0 = (hz_position_t)bbox.xMin;
-//            mo->bbox.x1 = (hz_position_t)bbox.xMax;
-//            mo->bbox.y0 = (hz_position_t)bbox.yMin;
-//            mo->bbox.y1 = (hz_position_t)bbox.yMax;
-//        }
+        face->metrics[g].x_bearing = lsb;
     }
-
 
     hz_face_load_class_maps(face);
     hz_face_load_kerning_pairs(face);
@@ -3078,90 +3155,6 @@ hz_ot_tag_from_feature(hz_feature_t feature) {
     return 0;
 }
 
-//HZ_STATIC void
-//hz_ot_parse_gdef_table(hz_face_t *face, hz_segment_t *seg)
-//{
-//    hz_stream_t table = hz_stream_create(face->ot_tables.GDEF_table, 0);
-//    Version16Dot16 version;
-//
-//    Offset16 glyph_class_def_offset;
-//    Offset16 attach_list_offset;
-//    Offset16 lig_caret_list_offset;
-//    Offset16 mark_attach_class_def_offset;
-//    Offset16 mark_glyph_sets_def_offset;
-//
-//    version = unpack32(&table);
-//
-//    switch (version) {
-//        case 0x00010000: /* 1.0 */
-//            unpackf(&table, "hhhh",
-//                    &glyph_class_def_offset,
-//                    &attach_list_offset,
-//                    &lig_caret_list_offset,
-//                    &mark_attach_class_def_offset);
-//            break;
-//        case 0x00010002: /* 1.2 */
-//            unpackf(&table, "hhhhh",
-//                    &glyph_class_def_offset,
-//                    &attach_list_offset,
-//                    &lig_caret_list_offset,
-//                    &mark_attach_class_def_offset,
-//                    &mark_glyph_sets_def_offset);
-//            break;
-//        case 0x00010003: /* 1.3 */
-//            break;
-//        default: /* error */
-//            break;
-//    }
-//
-//    if (glyph_class_def_offset != 0) {
-//        /* glyph class def isn't nil */
-//        hz_stream_t subtable = hz_stream_create(table.data + glyph_class_def_offset, 0);
-//        hz_map_t *class_map = hz_map_create();
-//        hz_segment_node_t * curr_node = seg->root;
-//        uint16_t class_format;
-//        class_format = unpack16(&subtable);
-//        switch (class_format) {
-//            case 1:
-//                break;
-//            case 2: {
-//                uint16_t range_index = 0, class_range_count;
-//                class_range_count = unpack16(&subtable);
-//
-//                while (range_index < class_range_count) {
-//                    uint16_t start_glyph_id, end_glyph_id, glyph_class;
-//                    unpackf(&subtable, "hhh",
-//                            &start_glyph_id,
-//                            &end_glyph_id,
-//                            &glyph_class);
-//                    HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
-//                    hz_map_set_value_for_keys(class_map, start_glyph_id, end_glyph_id, HZ_BIT(glyph_class - 1));
-//
-//                    ++range_index;
-//                }
-//                break;
-//            }
-//            default:
-//                break;
-//        }
-//
-//        /* set glyph class values if in map */
-//        while (curr_node != NULL) {
-//            hz_index_t gid = curr_node->gid;
-//            if (hz_map_value_exists(class_map, gid)) {
-//                curr_node->glyph_class = hz_map_get_value(class_map, gid);
-//            } else {
-//                /* set default glyph class if current glyph id isn't found */
-//                curr_node->glyph_class = HZ_GLYPH_CLASS_ZERO;
-//            }
-//
-//            curr_node = curr_node->next;
-//        }
-//
-//        hz_map_destroy(class_map);
-//    }
-//}
-//
 void
 hz_segment_set_glyph_info(hz_segment_t *seg, hz_face_t *face) {
     for (size_t i = 0; i < seg->glyph_count; ++i) {
@@ -3439,7 +3432,7 @@ hz_ot_layout_feature_get_lookups(uint8_t *data,
             &feature_table.lookup_index_count);
 
     for (i=0; i<feature_table.lookup_index_count; ++i) {
-        hz_array_push_back(lookup_indices, unpack16(&table));
+        hz_array_append(lookup_indices, unpack16(&table));
     }
 }
 
@@ -3597,7 +3590,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
     while (loopIndex < lang_sys.feature_index_count) {
         uint16_t featureIndex;
         featureIndex = unpack16(&lsbuf);
-        hz_array_push_back(lang_feature_indices, featureIndex);
+        hz_array_append(lang_feature_indices, featureIndex);
         ++loopIndex;
     }
 
@@ -3610,7 +3603,7 @@ hz_ot_layout_apply_features(hz_face_t *face,
         uint16_t lookup_count = unpack16(&lookup_list);
         while (lookup_index < lookup_count) {
             uint16_t lookup_offset = unpack16(&lookup_list);
-            hz_array_push_back(lookup_offsets, lookup_offset);
+            hz_array_append(lookup_offsets, lookup_offset);
             ++lookup_index;
         }
     }
@@ -6566,23 +6559,22 @@ x86cpuid (long int a[4], long int fid)
 
 }
 
-HZ_STATIC int
-setup_x86cpu (void)
+HZ_STATIC int setup_x86cpu (void)
 {
     long int result[4];
     x86cpuid(result, 0);
 }
 
-int
-hz_setup (void)
+int hz_setup (void)
 {
 #if HZ_ARCH & HZ_ARCH_X86
     setup_x86cpu();
 #endif
+
+    hz_optimize();
 }
 
-int
-hz_cleanup (void)
+int hz_cleanup(void)
 {
 }
 
@@ -7387,14 +7379,14 @@ hz_shape_plan_unload_gsub_table(hz_shape_plan_t *plan)
     hz_ot_gsub_table_t *gsub = &plan->gsub_table;
 
     if (gsub->num_features > 0) {
-        for (uint16_t i = 0; i < gsub->num_features; ++i)
+        for (uint32_t i = 0; i < gsub->num_features; ++i)
             hz_unload_feature_table(&gsub->features[i].table);
 
         hz_free(gsub->features);
     }
 
     if (gsub->num_lookups > 0) {
-        for (uint16_t i = 0; i < gsub->num_lookups; ++i)
+        for (uint32_t i = 0; i < gsub->num_lookups; ++i)
             hz_unload_gsub_lookup_table(&gsub->lookups[i]);
 
         hz_free(gsub->lookups);
@@ -7418,27 +7410,23 @@ hz_should_ignore_glyph(hz_segment_t *seg, size_t index, uint16_t flags) {
         || (seg->glyph_classes[index] & ignored_classes));
 }
 
-HZ_STATIC int64_t
-hz_segment_next_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+HZ_STATIC int64_t next_joining_arabic_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
 {
     do {
-        if (g + 1 >= seg->glyph_count)
+        if (++g >= seg->glyph_count)
             return -1;
 
-        g ++;
-    } while (hz_should_ignore_glyph(seg,g,lookup_flag));
+    } while (hz_should_ignore_glyph(seg, g, lookup_flag));
 
     return g;
 }
 
-HZ_STATIC int64_t
-hz_segment_prev_valid_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
+HZ_STATIC int64_t prev_joining_arabic_glyph(hz_segment_t *seg, int64_t g, uint16_t lookup_flag)
 {
     do {
-        if (g - 1 < 0)
+        if (--g < 0)
             return -1;
 
-        g --;
     } while (hz_should_ignore_glyph(seg, g, lookup_flag));
 
     return g;
@@ -7452,14 +7440,16 @@ typedef struct hz_arabic_joining_triplet_t {
 
 hz_arabic_joining_triplet_t
 hz_shape_complex_arabic_joining(hz_segment_t *seg,
-                                size_t index,
+                                int64_t index,
                                 uint16_t lookup_flag)
 {
     hz_arabic_joining_triplet_t triplet;
 
     if (hz_shape_complex_arabic_char_joining(seg->codepoints[index], &triplet.curr_joining)) {
-        int64_t prev_index = hz_segment_prev_valid_glyph(seg, index, lookup_flag);
-        int64_t next_index = hz_segment_next_valid_glyph(seg, index, lookup_flag);
+        int64_t prev_index = prev_joining_arabic_glyph(seg, index,
+                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS | HZ_LOOKUP_FLAG_IGNORE_LIGATURES);
+        int64_t next_index = next_joining_arabic_glyph(seg, index,
+                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS | HZ_LOOKUP_FLAG_IGNORE_LIGATURES);
 
         if (prev_index == -1) {
             triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
@@ -7616,7 +7606,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                         for (size_t n = 0; n < seg->glyph_count; ++n) {
                             int was_matched = 0;
 
-                            if (!hz_should_ignore_glyph(seg,n, table->lookup_flag)) {
+                            if (!hz_should_ignore_glyph(seg, n, table->lookup_flag)) {
                                 if (hz_should_apply_replacement(seg, feature, n, table->lookup_flag)
                                 && hz_map_value_exists(subtable->coverage, seg->glyph_indices[n])) {
                                     uint16_t index = hz_map_get_value(subtable->coverage, seg->glyph_indices[n]);
@@ -7686,12 +7676,13 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     memcpy(seg->glyph_indices, seg->out_buffer.mem.u16, sizeof(uint16_t) * seg->out_buffer.pos);
 
                     hz_buffer_clear(&seg->out_buffer);
-                    hz_segment_set_glyph_info(seg, face);
                 }
 
                 break;
             }
         }
+
+        hz_segment_set_glyph_info(seg, face);
     }
 }
 
@@ -7736,8 +7727,20 @@ hz_segment_setup_metrics(hz_segment_t *seg, hz_face_t *face)
 {
     seg->glyph_metrics = hz_malloc(seg->glyph_count * sizeof(hz_glyph_metrics_t));
     for (size_t i = 0; i < seg->glyph_count; ++i) {
+        // Marks should not have advance, but this is a hack
+#if 1
+        if (seg->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
+            seg->glyph_metrics[i].x_advance = 0;
+            seg->glyph_metrics[i].y_advance = 0;
+        } else {
+            seg->glyph_metrics[i].x_advance = face->metrics[i].x_advance;
+            seg->glyph_metrics[i].y_advance = face->metrics[i].y_advance;
+        }
+#else
         seg->glyph_metrics[i].x_advance = face->metrics[i].x_advance;
         seg->glyph_metrics[i].y_advance = face->metrics[i].y_advance;
+#endif
+
         seg->glyph_metrics[i].x_offset = 0;
         seg->glyph_metrics[i].y_offset = 0;
     }

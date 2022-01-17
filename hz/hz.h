@@ -416,11 +416,9 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
-HZ_API int
-hz_setup (void);
+HZ_API int hz_setup (void);
 
-HZ_API int
-hz_cleanup (void);
+HZ_API int hz_cleanup (void);
 
 /*  Function: hz_lang
  *      Returns language from an ISO-639 tag.

@@ -107,10 +107,10 @@ void render_text_to_png(const char *filename,
         pen_x += roundf(ax * scale);
     }
 
-    xmin -= 32;
-    ymin -= 32;
-    xmax += 32;
-    ymax += 32;
+//    xmin -= 64;
+    ymin -= 64;
+//    xmax += 64;
+    ymax += 64;
 
     int w = xmax-xmin, h=ymax-ymin;
     uint8_t *buffer = malloc(w*h);
@@ -124,10 +124,11 @@ void render_text_to_png(const char *filename,
     ascent = roundf(ascent * scale);
     descent = roundf(descent * scale);
 
-    pen_x = -xmin; pen_y = 0;
+    pen_x = -xmin; pen_y = -ymin/2;
 
     for (size_t i = 0; i < shaped_glyph_count; ++i) {
-        uint16_t glyph_index = shaped_glyphs[i].glyph_index;
+        hz_shaped_glyph_t  *g = &shaped_glyphs[i];
+        uint16_t glyph_index = g->glyph_index;
         /* how wide is this character */
         int ax;
         int lsb;
@@ -159,10 +160,12 @@ int main(int argc, char *argv[]) {
 //    App app;
 //    initApp(&app);
 
+    hz_setup();
 
     stbtt_fontinfo  fontinfo;
 //    load_font_face(&fontinfo, "../data/fonts/ArnoPro-Regular.otf");
-    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
+//load_font_face(&fontinfo, "../data/fonts/NotoSansArabic-Regular.ttf");
+    load_font_face(&fontinfo, "../data/fonts/arial.ttf");
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 /*
@@ -174,7 +177,8 @@ int main(int argc, char *argv[]) {
     hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
     hz_segment_set_language(seg, hz_lang("eng"));*/
 
-    const char *text= "سبح اسم ربك الأعلى الذي خلق فسوى و الذي قدر فهدى والذي أخرج المرعى فجعله غثاء أحوى";
+//const char *text= "أَلَمْ تَرَ إِلَى الَّذِينَ يَزْعُمُونَ أَنَّهُمْ آمَنُوا بِمَا أُنْزِلَ إِلَيْكَ وَمَا أُنْزِلَ مِنْ قَبْلِكَ يُرِيدُونَ أَنْ يَتَحَاكَمُوا إِلَى الطَّاغُوتِ";
+const char *text= "فإن من رضي أن يعبده الناس من دون الله ، فإنه يكون طاغوتًا كما قال تعالى";
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
     hz_segment_set_direction(seg, HZ_DIRECTION_RTL);
@@ -182,17 +186,18 @@ int main(int argc, char *argv[]) {
     hz_segment_set_language(seg, HZ_LANGUAGE_ARABIC);
 
     static const hz_feature_t features[] = {
-            HZ_FEATURE_INIT,
-            HZ_FEATURE_MEDI,
-            HZ_FEATURE_FINA,
             HZ_FEATURE_ISOL,
+            HZ_FEATURE_FINA,
+            HZ_FEATURE_MEDI,
+            HZ_FEATURE_INIT,
             HZ_FEATURE_RLIG,
             HZ_FEATURE_CALT,
             HZ_FEATURE_LIGA,
             HZ_FEATURE_DLIG
     };
 
-    hz_shape(font, seg, features, ARRAYSIZE(features));
+    for (int i = 0; i < 1; ++i)
+        hz_shape(font, seg, features, ARRAYSIZE(features));
 //    hz_shape(font, seg, NULL, 0);
 
     size_t shaped_glyph_count;
@@ -200,16 +205,19 @@ int main(int argc, char *argv[]) {
     hz_shaped_glyph_t *shaped_glyphs = malloc(shaped_glyph_count * sizeof(hz_shaped_glyph_t));
     hz_segment_get_shaped_glyphs(seg, shaped_glyphs, &shaped_glyph_count);
 
-    for (size_t i = 0; i < shaped_glyph_count; ++i) {
-        printf("U+%04X ",shaped_glyphs[i].glyph_index);
-    }
-
-    printf("\n");
+//    for (size_t i = 0; i < shaped_glyph_count; ++i) {
+//        printf("{ U+%04X | %s } ",
+//               shaped_glyphs[i].glyph_index,
+//               shaped_glyphs[i].glyph_class & HZ_GLYPH_CLASS_MARK ? "mark" : "other"
+//               );
+//    }
+//
+//    printf("\n");
 
     render_text_to_png("out.png", &fontinfo, shaped_glyphs, shaped_glyph_count);
 
     free(shaped_glyphs);
-
+    hz_cleanup();
 //    mainLoop(&app);
 //    exitApp(&app);
 

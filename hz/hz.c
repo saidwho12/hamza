@@ -256,7 +256,7 @@ hz_bump_allocator_alloc(hz_bump_allocator_t *allocator, size_t size)
 #if BUMP_ALLOCATOR_ALIGN_TO_POWER_OF_TWO_SIZE
         if (size <= BUMP_ALLOCATOR_MAX_ALIGNED_SIZE) {
             // Align allocations to multiple of the size's next second power
-            uint64_t v = 2 << fastlog2l(size - 1);
+            uint64_t v = 1 << fastlog2l(size);
             uint64_t mask = v - 1;
             p += (~allocator->ptr & mask);
         }

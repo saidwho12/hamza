@@ -204,7 +204,7 @@ static LinearAllocator CreateLinearAllocator(void *mem, size_t size)
     la.data = mem;
     la.size = size;
     la.offset = 0;
-    la.alignment = 4;
+    la.alignment = 8;
     return la;
 }
 
@@ -216,6 +216,8 @@ static uint64_t Alignment(uint64_t x, uint64_t n)
     return !x ? 1 : min(tz, n);
 }
 
+// LinearAlloc is written in a way to optimize for allocation of integer
+// arrays since this is what it's used for realistically in the code
 static void *LinearAlloc(LinearAllocator *m, size_t size)
 {
     if (size > 0 && size < m->size) {

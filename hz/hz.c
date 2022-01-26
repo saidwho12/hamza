@@ -210,27 +210,32 @@ static LinearAllocator CreateLinearAllocator(void *mem, size_t size)
 
 static int IsPowerOfTwo(uint64_t v) { return v && ~(v & (v-1)); }
 
-static uint64_t Alignment(uint64_t x, uint64_t n)
+static int Ctzll(unsigned long long x)
 {
-    uint64_t tz = 1 << __builtin_ctzll(x);
+    return __builtin_ctzll(x);
+}
+
+static uint64_t Align(uint64_t x, uint64_t n)
+{
+    uint64_t tz = 1 << Ctzll(x);
     return !x ? 1 : min(tz, n);
 }
 
-// LinearAlloc is written in a way to optimize for allocation of integer
-// arrays since this is what it's used for realistically in the code
-static void *LinearAlloc(LinearAllocator *m, size_t size)
+// This linear allocator is written in a way to optimize for allocation of integers and integer arrays
+// since this is what it's used for realistically in the code.
+static void* LinearAlloc(LinearAllocator *la, size_t size)
 {
-    if (size > 0 && size < m->size) {
-        uint64_t p = m->offset;
+    if (size > 0 && size < la->size) {
+        uint64_t p = la->offset;
 
-        if (m->alignment > 1) {
-            uint64_t align = Alignment(size,m->alignment);
-            p = (p & ~(align-1)) + align;
+        if (la->alignment > 1) {
+            uint64_t align = Align(size,la->alignment);
+            p += (~p & (align-1)) + 1;
         }
 
-        if (p + size <= m->size) {
-            m->offset = p + size;
-            return m->data + p;
+        if (p + size <= la->size) {
+            la->offset = p + size;
+            return la->data + p;
         }
     }
 

@@ -230,7 +230,7 @@ static void* LinearAlloc(LinearAllocator *la, size_t size)
 
         if (la->alignment > 1) {
             uint64_t align = Align(size,la->alignment);
-            p += (~p & (align-1)) + 1;
+            p += ((~p+1) & (align-1));
         }
 
         if (p + size <= la->size) {

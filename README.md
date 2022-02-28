@@ -1,8 +1,10 @@
 # Hamza
-_Hamza_ is a light-weight, fast and portable C99 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping library.
-It's built alongside [stb](https://github.com/nothings/stb)'s TrueType library.
-### Dependencies:
+باسم الله الرحمن الرحيم
 
+_Hamza_ is a light-weight, fast and portable C99 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library.
+It's built alongside [stb](https://github.com/nothings/stb)'s TrueType library.
+
+![img](urdu-title.png)
 
 ### Feature Overview
 - [x] Joining script support and Right-To-Left writing

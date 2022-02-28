@@ -330,10 +330,25 @@ typedef struct hz_shaped_glyph_t {
     uint16_t glyph_class;
 } hz_shaped_glyph_t;
 
-HZ_API void
-hz_segment_get_shaped_glyphs(hz_segment_t *seg,
-                             hz_shaped_glyph_t *glyphs,
-                             size_t *num_glyphs);
+typedef struct hz_buffer_t {
+    size_t glyph_count;
+
+    // allocated internally using a vector-like generic data structure,
+    // has to be cleared in a special way.
+    hz_index_t *glyph_indices;
+
+    // the following arrays are allocated using a regular allocator as
+    // contiguous fixed size blocks.
+    hz_bool has_info;
+    uint16_t *glyph_classes;
+    uint16_t *attachment_classes;
+
+    hz_bool has_codepoints;
+    hz_unicode_t *codepoints;
+} hz_buffer_t;
+
+HZ_API const hz_buffer_t *
+hz_segment_get_buffer(hz_segment_t *seg);
 
 #define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')
 #define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')

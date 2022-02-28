@@ -7550,7 +7550,7 @@ hz_should_apply_replacement(hz_buffer_t *buffer,
 }
 
 
-// apply GSUB lookup table to glyph range [s1,s2] within the segment buffer.
+// apply GSUB lookup table to glyph range [i1,i2] within the segment buffer.
 // depth is the current nested lookup depth index, as this can be recursive.
 void
 hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,

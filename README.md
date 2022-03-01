@@ -16,6 +16,8 @@ It's built alongside [stb](https://github.com/nothings/stb)'s TrueType library.
 - [ ] Emojis
 - [ ] OpenMP / TinyCThread Multi-Threading
 - [ ] Justification
-- 
+- [ ] No C-runtime depencency mode for Embedded 
+
+
 ### Usage
 Make sure to read the [docs](https://saidwho13.github.io/hamza/).

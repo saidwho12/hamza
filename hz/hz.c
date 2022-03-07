@@ -6221,7 +6221,7 @@ hz_buffer_flip_direction(hz_buffer_t *buffer)
 {
     // NOTE (Said): this can easily be optimized with SIMD later
     size_t size = hz_vector_size(buffer->glyph_indices);
-    for (size_t i = 0; i <= size/2; ++i) {
+    for (size_t i = 0; i < size/2; ++i) {
         size_t i1 = i, i2 = size - (i+1);
 
         // swap values at i1 and i2

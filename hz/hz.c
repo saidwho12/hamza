@@ -7405,6 +7405,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     break;
                 }
 
+#if 1
                 case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: {
                     switch (base->format) {
                         case 1: {
@@ -7412,7 +7413,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 //                            printf("FOO: %d\n", subtable->rule_set_count);
 
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
-                                hz_bool match = HZ_FALSE;
                                 const hz_range_t *range = &range_list->ranges[r];
 
                                 if (range_list_index_ignored(range_list,r)) {
@@ -7423,9 +7423,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                            span*sizeof(hz_index_t));
                                 } else {
                                     for (short v = range->mn; v <= range->mx; ++v) {
+                                        hz_bool match = HZ_FALSE;
                                         if (hz_should_apply_replacement(b1, feature,  v, table->lookup_flag)
                                         && hz_map_value_exists(subtable->coverage, b1->glyph_indices[v]))  {
-                                            for (uint16_t m = 0; m < subtable->rule_set_count; m++) {
+                                            for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                                 hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
                                                 for (uint16_t n = 0; n < rs->count; ++n) {
                                                     // fill both context and sequence buffers, use memcmp to quickly check if they are matching
@@ -7469,7 +7470,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         }
 
                                                         // compare context with current glyph sequence
-                                                        if (!memcmp(context, sequence, context_len*2)) {
+                                                        if (HZ_FALSE) { //if (!memcmp(context, sequence, context_len*2)) {
                                                             // if match, apply nested lookups
                                                             int context_low = range_list->unignored_indices[u];
                                                             int context_high = range_list->unignored_indices[u+rule->input_count];
@@ -7615,7 +7616,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     match = HZ_TRUE;
 
-                                                    int skip_loc = u + subtable->input_count;
+                                                    int skip_loc = u + subtable->input_count - 1;
                                                     v = range_list->unignored_indices[skip_loc];
                                                     r = range_list_find_range(range_list, v);
 
@@ -7639,7 +7640,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     }
                     break;
                 }
-                
+#endif
                 default:{
                     hz_vector_resize(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
                     memcpy(b2->glyph_indices, b1->glyph_indices, hz_vector_size(b1->glyph_indices)*sizeof(hz_index_t));

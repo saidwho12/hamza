@@ -1,3 +1,14 @@
+# Web files
+*.html
+*.js
+*.css
+*.sass
+*.coffee
+*.xhtml
+
+# Docs folder
+./docs
+
 # Prerequisites
 *.d
 

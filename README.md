@@ -38,7 +38,7 @@ hz_feature_t features[] = {
     HZ_FEATURE_DIGA, // discretory ligatures
     HZ_FEATURE_KERN // kerning
 };
-    
+
 // shape
 hz_shape(font, seg, features, 4);
 ```  

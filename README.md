@@ -59,7 +59,7 @@ hz_shape(font, seg, features, 4);
 Of course, when are done with these objects you have to free them.
 
 Result:  
-![Result of Example](images/hello-world.png)
+![Result of Example](misc/hello-world.png)
 
 ## Features
 - [x] Joining script support and Right-To-Left writing

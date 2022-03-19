@@ -208,9 +208,9 @@ int main(int argc, char *argv[]) {
 //    load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
 //    load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Kasheeda.ttf");
-    load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
+//    load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Devnew.ttf");
-//    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
+    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeNew-Regular.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeRegOT.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/Literata-Regular.ttf");
@@ -226,9 +226,9 @@ int main(int argc, char *argv[]) {
     hz_segment_set_language(seg, hz_lang("eng"));
 #else
 
-//    const char *text = "هُوَ الَّذِي أَرْسَلَ رَسُولَهُ بِالْهُدَى وَدِينِ الْحَقِّ لِيُظْهِرَهُ عَلَى الدِّينِ كُلِّهِ وَكَفَى بِاللَّهِ شَهِيدًا";
+    const char *text = "هُوَ الَّذِي أَرْسَلَ رَسُولَهُ بِالْهُدَى وَدِينِ الْحَقِّ لِيُظْهِرَهُ عَلَى الدِّينِ كُلِّهِ وَكَفَى بِاللَّهِ شَهِيدًا";
 //    const char *text= "حمزہ ایک ہلکا پھلکا، تیز اور پورٹیبل اوپن ٹائپ کی شکل دینے والی لائبریری ہے۔";
-const char *text = "قرون الرجال الصبيان لا اله الا الله محمد رسول اللهﷺﷺﷺﷺ";
+//const char *text = "قرون الرجال الصبيان لا اله الا الله محمد رسول اللهﷺﷺﷺﷺ";
 
 //const char *text="Hamza — это легкая, быстрая и портативная библиотека форм C99 OpenType. Он построен вместе с библиотекой TrueType от stb.";
 //    const char *text = "Hamza ist eine leichtgewichtige, schnelle und portable C99 OpenType-Shaping-Bibliothek. Es wurde zusammen mit der TrueType-Bibliothek von stb erstellt.";

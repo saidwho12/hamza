@@ -6486,8 +6486,13 @@ hz_load_gsub_ligature_substitution_subtable(hz_stream_t *stream,
                     stream_seek(stream, setptr + ligature_offsets[j]);
                     ligature->ligature_glyph = Unpack16(stream);
                     ligature->component_count = Unpack16(stream);
-                    ligature->component_glyph_ids = Alloc((ligature->component_count - 1) * sizeof(uint16_t));
-                    UnpackArray16(stream, ligature->component_count - 1, ligature->component_glyph_ids);
+                    if (ligature->component_count > 1) {
+                        ligature->component_glyph_ids = Alloc((ligature->component_count - 1) * sizeof(uint16_t));
+                        UnpackArray16(stream, ligature->component_count - 1, ligature->component_glyph_ids);
+                    } else {
+                        ligature->component_glyph_ids = NULL;
+                    }
+
                 }
 
                 Free(ligature_offsets);
@@ -7218,7 +7223,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
             hz_vector_reserve(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
 
             hz_range_list_t *range_list = hz_compute_range_list(b1,table->lookup_flag);
-//            printf("B1: %llu, RANGES: %d\n",hz_vector_size(b1->glyph_indices), hz_vector_size(range_list->ranges));
 
             switch (table->lookup_type) {
                 case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
@@ -7354,12 +7358,12 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                 uint16_t component_count = ligature->component_count;
                                                 short u1 = range->base + (v - range->mn);
 
-                                                if (u1 + component_count < hz_vector_size(range_list->unignored_indices)) {
+                                                if (u1 + component_count <= hz_vector_size(range_list->unignored_indices)) {
                                                     // There are enough unignored glyphs until the end of the buffer
                                                     // to load component glyphs. This could be possibly optimized later with
                                                     // SSE/AVX2 (gather,cmp,shuffle)
                                                     ResetLinearAllocator(&la);
-                                                    hz_index_t *block = LinearAlloc(&la, (component_count-1)*sizeof(hz_index_t));
+                                                    hz_index_t *block = LinearAlloc(&la, (component_count-1)*2);
                                                     for (uint16_t k = 1; k <= component_count-1; ++k) {
                                                         block[k-1] = b1->glyph_indices[range_list->unignored_indices[u1+k]];
                                                     }
@@ -7531,7 +7535,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 const hz_range_t *range = &range_list->ranges[r];
 
                                 if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, simply memcpy glyphs from source to destination
+                                    // ignored, memcpy glyphs from source to destination
                                     size_t span = (range->mx-range->mn)+1;
                                     size_t ptr_dst = hz_vector_size(b2->glyph_indices);
                                     hz_vector_resize(b2->glyph_indices, ptr_dst+span);
@@ -7635,7 +7639,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     }
                     break;
                 }
-
+                
                 default:{
                     hz_vector_resize(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
                     memcpy(b2->glyph_indices, b1->glyph_indices, hz_vector_size(b1->glyph_indices)*sizeof(hz_index_t));
@@ -7654,7 +7658,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
     // write slices caused by range into the output buffer
     {
         // temporary code
-        for (short s = 0; s < i1; ++s) {
+        for (size_t s = 0; s < i1; ++s) {
             hz_vector_push_back(out->glyph_indices, in->glyph_indices[s]);
         }
 

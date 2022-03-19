@@ -1,50 +1,3 @@
-/* 
- *   About: License
- *       This file is licensed under MIT.
- *
- *   Topic: Usage
- *
- *   Shaping with font created from an FT_Face (requires Hamza to be built with Freetype)
- *
- *   ----------------------------- C --------------------------------
- *   #include <hz.h>
- *
- *   int main(int argc, char *argv[])
- *   {
- *       FT_Error err;
- *       FT_Library lib;
- *
- *       err = FT_Init_FreeType(&lib);
- *
- *       if (err != FT_Err_Ok) { ... }
- *
- *       FT_Face face;
- *       error = FT_New_Face(library, "Monospace.ttf", 0, &face);
- *
- *       if (err != FT_Err_Ok) { ... }
- *
- *       hz_font_t *font = hz_ft_font_create(face);
- *       hz_segment_t *seg = hz_segment_create();
- *
- *       const char *text = "The quick brown fox jumps over the lazy dog.";
- *
- *       hz_segment_load_utf8(seg, text);
- *       hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
- *       hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
- *       hz_segment_set_language(seg, hz_lang("eng"));
- *
- *       hz_shape(font, seg, NULL, 0);
- *
- *       hz_segment_destroy(seg);
- *       hz_font_destroy(font);
- *
- *       FT_Done_Face(face);
- *       FT_Done_Freetype(lib);
- *       return 0;
- *   }
- *   ---------------------------------------------------------------
- */
-
 #ifndef HZ_H
 #define HZ_H
 
@@ -330,10 +283,25 @@ typedef struct hz_shaped_glyph_t {
     uint16_t glyph_class;
 } hz_shaped_glyph_t;
 
-HZ_API void
-hz_segment_get_shaped_glyphs(hz_segment_t *seg,
-                             hz_shaped_glyph_t *glyphs,
-                             size_t *num_glyphs);
+typedef struct hz_buffer_t {
+    size_t glyph_count;
+
+    // allocated internally using a vector-like generic data structure,
+    // has to be cleared in a special way.
+    hz_index_t *glyph_indices;
+
+    // the following arrays are allocated using a regular allocator as
+    // contiguous fixed size blocks.
+    hz_bool has_info;
+    uint16_t *glyph_classes;
+    uint16_t *attachment_classes;
+
+    hz_bool has_codepoints;
+    hz_unicode_t *codepoints;
+} hz_buffer_t;
+
+HZ_API const hz_buffer_t *
+hz_segment_get_buffer(hz_segment_t *seg);
 
 #define HZ_OT_TAG_GPOS HZ_TAG('G','P','O','S')
 #define HZ_OT_TAG_GSUB HZ_TAG('G','S','U','B')
@@ -416,11 +384,9 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
-HZ_API int
-hz_setup (void);
+HZ_API int hz_setup (void);
 
-HZ_API int
-hz_cleanup (void);
+HZ_API int hz_cleanup (void);
 
 /*  Function: hz_lang
  *      Returns language from an ISO-639 tag.

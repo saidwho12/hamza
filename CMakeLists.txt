@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
 
-project(Hamza VERSION 0.2.0 LANGUAGES C CXX)
+project(Hamza VERSION 0.2.1 LANGUAGES C CXX)
 
 set(HAMZA_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(HAMZA_VERSION_MINOR ${PROJECT_VERSION_MINOR})
@@ -10,9 +10,9 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c99 -march=native -O0 -g3 -ggdb -pedantic")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=c99 -march=native -ftree-slp-vectorize -O3 -Ofast")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
+#    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
     set(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
 elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")

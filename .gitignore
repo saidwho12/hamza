@@ -8,6 +8,13 @@
 
 # Docs folder
 ./docs
+./ND
+./data
+
+# Folders
+./deps
+./unicode/
+./misc
 
 # Prerequisites
 *.d

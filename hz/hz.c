@@ -7470,7 +7470,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         }
 
                                                         // compare context with current glyph sequence
-                                                        if (HZ_FALSE) { //if (!memcmp(context, sequence, context_len*2)) {
+                                                        if (!memcmp(context, sequence, context_len*2)) {
                                                             // if match, apply nested lookups
                                                             int context_low = range_list->unignored_indices[u];
                                                             int context_high = range_list->unignored_indices[u+rule->input_count];

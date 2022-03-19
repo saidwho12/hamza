@@ -7,14 +7,14 @@
 *.xhtml
 
 # Docs folder
-./docs
-./ND
-./data
+./docs/
+./ND/
+./data/
 
 # Folders
-./deps
+./deps/
 ./unicode/
-./misc
+./misc/
 
 # Prerequisites
 *.d

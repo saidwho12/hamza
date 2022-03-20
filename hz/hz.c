@@ -7767,6 +7767,8 @@ hz_shape_plan_execute(hz_shape_plan_t *plan,
             hz_buffer_flip_direction(seg->in);
         }
 
+        seg->in->glyph_count = hz_vector_size(seg->in->glyph_indices);
+
 //        hz_segment_setup_metrics(seg, face);
     }
 }

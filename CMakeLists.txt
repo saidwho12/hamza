@@ -37,7 +37,7 @@ file(TO_CMAKE_PATH $ENV{VULKAN_SDK} LUNARG_SDK_ROOT)
 message("LunarG (Vulkan) SDK: ${LUNARG_SDK_ROOT}")
 set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
 
-add_executable(shaping_test "hz/backends/hz_vulkan.c" "hz/backends/hz_vulkan.h" "example/shaping_test.c")
+add_executable(shaping_test "hz/backends/hz_vulkan.c" "hz/backends/hz_vulkan.h" "example/shaping_test.c" example/stb_image_write.h)
 target_link_libraries(shaping_test PRIVATE gdi32 imm32 "${LUNARG_SDK_ROOT}/Lib/vulkan-1.lib" "${GLFW_ROOT_DIR}/lib-mingw-w64/libglfw3dll.a" hamza)
 target_include_directories(shaping_test PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}"

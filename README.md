@@ -52,14 +52,11 @@ Result:
 ## Goal
 Originally Hamza was a research project to learn about font shaping for an application I had in mind.    
 Later, with much research and work I have only developed more fascination with the shaping process and possible strategies of     
-optimization. In 2021, after a few months of working on Hamza, there was the [Refterm](https://github.com/cmuratori/refterm) controversy which resulted in a lot of discussion    
-about text shaping and rendering being slow, overcomplicated and just a mess. My philosophy with the project is based on [Casey Muratori's talk on Optimization](https://www.youtube.com/watch?v=pgoetgxecw8) and    
-inspired by minimalist libraries such as [Dear ImGui](https://github.com/ocornut/imgui).
-
+optimization.
 Hamza as of now only has 6 files and I intent to keep this number low. Similarly, the number of lines of code is low compared to other projects at ~12kloc.    
 It can easily be included in any project and built alongside other source files, or you can build Hamza as a module.    
 The goal is a non-pessimized, small and simple shaping library that can easily be included into any existing project.    
-The intent is to optimize lookup application slow paths using SIMD + multi-threading while keeping the code as simple and clear as possible.  A lot of people think that shaping is a linear process and very difficult to multi-thread, this couldn't be further from the case. GSUB table single substitution is a perfect use-case for multi-threading, Unicode parsing can be vectorized, things like ligature matching can be optimized with SSE. It turns out that shaping can be done cleanly and efficiently.
+The intent is to optimize lookup application slow paths using SIMD + multi-threading while keeping the code as simple and clear as possible.  A lot of people think that shaping is a linear process and very difficult to multi-thread, this couldn't be further from the truth. GSUB table single substitution as an example is a perfect use-case for multi-threading, Unicode parsing can be vectorized, things like ligature matching can be optimized with SSE. It turns out that shaping can be done cleanly and efficiently.
 
 ## Features
 - [x] Joining script support and Right-To-Left writing

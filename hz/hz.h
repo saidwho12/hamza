@@ -289,6 +289,7 @@ typedef struct hz_buffer_t {
     // allocated internally using a vector-like generic data structure,
     // has to be cleared in a special way.
     hz_index_t *glyph_indices;
+    hz_unicode_t *codepoints;
 
     // the following arrays are allocated using a regular allocator as
     // contiguous fixed size blocks.
@@ -296,8 +297,8 @@ typedef struct hz_buffer_t {
     uint16_t *glyph_classes;
     uint16_t *attachment_classes;
 
-    hz_bool has_codepoints;
-    hz_unicode_t *codepoints;
+//    hz_bool has_codepoints;
+//    hz_unicode_t *codepoints;
 } hz_buffer_t;
 
 HZ_API const hz_buffer_t *

@@ -234,8 +234,8 @@ static uint64_t Align(uint64_t x, uint64_t n)
 {
     // Aligns on largest power of two divisor of allocation size
     assert(CheckPowerOfTwo(n)); // n must be a power of two
-    uint64_t m = (x&&n) ? Ftzll(n) & 0x1f : 0;
-    return x + ((~x+1)&m);
+    uint64_t m = (x && n) ? Ftzll(n) & 0x1f : 0;
+    return x + ((~x + 1) & m);
 }
 
 // The following is a linear allocation function optimized for allocation of integers and integer arrays
@@ -1226,12 +1226,13 @@ void hz_vector_resize_impl(void **v, size_t new_size)
     hz_vector_header(*v)->size = new_size;
 }
 
-void hz_vector_grow(void **v)
+void hz_vector_grow(void **v, int extra)
 {
     hz_vector_hdr_t *hdr = hz_vector_header(*v);
-    size_t new_cap = 1;
-    if (hdr->capacity >= 1) {
-        new_cap = hdr->capacity << 1; // 2x factor
+    size_t new_cap = hdr->capacity ? hdr->capacity : 1;
+
+    while (hdr->size + extra > new_cap) {
+        new_cap <<= 1; // 2x factor
     }
 
     hz_vector_reserve_impl(v, new_cap);
@@ -1278,13 +1279,22 @@ void hz_vector_deep_copy(void **to, void *from)
 #define hz_vector_destroy(__ARR) hz_vector_destroy_impl((void**)&(__ARR))
 #define hz_vector_reserve(__ARR, __CAPACITY) do { hz_vector_init((void**)&(__ARR), sizeof(*(__ARR))); hz_vector_reserve_impl((void**)&(__ARR), __CAPACITY); } while(0)
 #define hz_vector_clear(__ARR) hz_vector_clear_impl((void**)&(__ARR))
-#define hz_vector_push_back(__ARR, __ARRVAL) do {\
+#define hz_vector_push(__ARR, __ARRVAL) do {\
     hz_vector_init((void **)&(__ARR), sizeof(*(__ARR)));\
     if (!(__ARR) || ((__ARR) && hz_vector_need_grow(__ARR, 1))) {\
-        hz_vector_grow((void **)&(__ARR));\
+        hz_vector_grow((void **)&(__ARR),1);\
     }\
     (__ARR)[hz_vector_size(__ARR)] = __ARRVAL;\
     hz_vector_header(__ARR)->size++;\
+} while(0)
+
+#define hz_vector_push_many(__ARR, __PTR, __LEN) do {\
+hz_vector_init((void **)&(__ARR), sizeof(*(__ARR)));\
+if (!(__ARR) || ((__ARR) && hz_vector_need_grow(__ARR, __LEN))) {\
+hz_vector_grow((void **)&(__ARR), __LEN);\
+}\
+memcpy((__ARR) + hz_vector_header(__ARR)->size, __PTR, (__LEN) * sizeof((__ARR)[0]));\
+hz_vector_header(__ARR)->size += (__LEN);\
 } while(0)
 
 
@@ -1293,11 +1303,10 @@ hz_buffer_t *hz_buffer_create(void)
     hz_buffer_t *buffer = Alloc(sizeof(*buffer));
     buffer->glyph_count = 0;
     buffer->glyph_indices = NULL;
+    buffer->codepoints = NULL;
     buffer->has_info = HZ_FALSE;
     buffer->glyph_classes = NULL;
     buffer->attachment_classes = NULL;
-    buffer->has_codepoints = HZ_FALSE;
-    buffer->codepoints = NULL;
     return buffer;
 }
 
@@ -1312,22 +1321,48 @@ void hz_buffer_clear_info(hz_buffer_t *buffer)
     }
 }
 
-void hz_buffer_clear_codepoints(hz_buffer_t *buffer)
-{
-    if (buffer->has_codepoints) {
-        Free(buffer->codepoints);
-        buffer->codepoints = NULL;
-        buffer->has_codepoints = HZ_FALSE;
-    }
-}
-
 void hz_buffer_clear(hz_buffer_t *buffer)
 {
     hz_vector_clear(buffer->glyph_indices);
+    hz_vector_clear(buffer->codepoints);
 
     hz_buffer_clear_info(buffer);
-    hz_buffer_clear_codepoints(buffer);
     buffer->glyph_count = 0;
+}
+
+typedef struct hz_buffer_glyph_t {
+    hz_index_t GID;
+    hz_unicode_t codepoint;
+} hz_buffer_glyph_t;
+
+void hz_buffer_reserve(hz_buffer_t *self, size_t capacity)
+{
+    hz_vector_reserve(self->glyph_indices, capacity);
+    hz_vector_reserve(self->codepoints, capacity);
+}
+
+void hz_buffer_add_glyph(hz_buffer_t *self, hz_buffer_glyph_t glyph)
+{
+    hz_vector_push(self->glyph_indices, glyph.GID);
+    hz_vector_push(self->codepoints, glyph.codepoint);
+}
+
+void hz_buffer_add_range(hz_buffer_t *self,
+                         const hz_buffer_t *other,
+                         int x1, int x2)
+{
+    if (x2 >= x1) {
+        int len = (x2-x1)+1;
+        hz_vector_push_many(self->glyph_indices, other->glyph_indices+x1, len);
+        hz_vector_push_many(self->codepoints, other->codepoints+x1, len);
+    }
+}
+
+void hz_buffer_add_other(hz_buffer_t *self, hz_buffer_t *other)
+{
+    size_t len = hz_vector_size(other->glyph_indices);
+    hz_vector_push_many(self->glyph_indices, other->glyph_indices, len);
+    hz_vector_push_many(self->codepoints, other->codepoints, len);
 }
 
 void hz_buffer_destroy(hz_buffer_t *buffer)
@@ -2396,11 +2431,6 @@ hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
                     return HZ_TRUE;
                 }
             }
-
-//            if (codepoint == 0x0640) { // Kashida
-//                *joining = NO_JOINING_GROUP | JOINING_TYPE_L | JOINING_TYPE_R;
-//                return HZ_TRUE;
-//            }
         }
     }
 
@@ -2970,14 +3000,14 @@ hz_stbtt_font_create(stbtt_fontinfo *info)
 //    return font;
 //}
 
-hz_glyph_class_t
+uint16_t
 hz_ignored_classes_from_lookup_flags(hz_lookup_flag_t flags)
 {
-    hz_glyph_class_t ignored_classes = HZ_GLYPH_CLASS_ZERO;
+    uint16_t ignored_classes = HZ_GLYPH_CLASS_ZERO;
 
-    if (flags & HZ_LOOKUP_FLAG_IGNORE_MARKS) ignored_classes |= HZ_GLYPH_CLASS_MARK;
     if (flags & HZ_LOOKUP_FLAG_IGNORE_BASE_GLYPHS) ignored_classes |= HZ_GLYPH_CLASS_BASE;
     if (flags & HZ_LOOKUP_FLAG_IGNORE_LIGATURES) ignored_classes |= HZ_GLYPH_CLASS_LIGATURE;
+    if (flags & HZ_LOOKUP_FLAG_IGNORE_MARKS) ignored_classes |= HZ_GLYPH_CLASS_MARK;
 
     return ignored_classes;
 }
@@ -3517,16 +3547,13 @@ hz_ot_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr
 
     switch (coverage_format) {
         case 1: {
-            uint16_t coverage_idx = 0;
             uint16_t coverage_glyph_count = Unpack16(&table);
-            while (coverage_idx < coverage_glyph_count) {
+            for (uint16_t coverage_idx = 0; coverage_idx < coverage_glyph_count; ++coverage_idx) {
                 uint16_t glyph_index = Unpack16(&table);
                 if (id_arr != NULL)
                     hz_map_set_value(map, glyph_index, hz_array_at(id_arr, coverage_idx));
                 else
                     hz_map_set_value(map, glyph_index, coverage_idx);
-
-                ++coverage_idx;
             }
 
             break;
@@ -3537,29 +3564,16 @@ hz_ot_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr
 
             /* Assuming ranges are ordered from 0 to glyph_count in order */
             while (range_index < range_count) {
-                hz_index_t from, to;
                 hz_range_rec_t range;
-                uint16_t range_offset;
-                uint32_t range_end;
 
                 Unpackv(&table, "hhh",
                         &range.start_glyph_id,
                         &range.end_glyph_id,
                         &range.start_coverage_index);
 
-                range_offset = 0;
-                range_end = (range.end_glyph_id - range.start_glyph_id);
-                while (range_offset <= range_end) {
-                    from = range.start_glyph_id + range_offset;
-
-                    if (id_arr != NULL)
-                        to = hz_array_at(id_arr, range.start_coverage_index + range_offset);
-                    else
-                        to = range.start_coverage_index + range_offset;
-
-                    hz_map_set_value(map, from, to);
-
-                    ++range_offset;
+                for (hz_index_t glyph_id = range.start_glyph_id; glyph_id <= range.end_glyph_id; ++glyph_id) {
+                    uint16_t coverage_index = range.start_coverage_index + glyph_id - range.start_glyph_id;
+                    hz_map_set_value(map, glyph_id, coverage_index);
                 }
 
                 ++range_index;
@@ -6108,22 +6122,22 @@ hz_map_to_nominal_forms(hz_face_t *face,
 }
 
 HZ_STATIC void
-hz_unicode_mirror_punctuation(hz_segment_t *seg)
+hz_mirror_uc_symbols(hz_vector(hz_unicode_t) v)
 {
-    for (size_t i = 0; i < seg->num_codepoints; ++i) {
-        switch (seg->codepoints[i]) {
-            case '(': seg->codepoints[i] = ')'; break;
-            case ')': seg->codepoints[i] = '('; break;
-            case '[': seg->codepoints[i] = ']'; break;
-            case ']': seg->codepoints[i] = '['; break;
-            case '{': seg->codepoints[i] = '}'; break;
-            case '}': seg->codepoints[i] = '{'; break;
-            case '<': seg->codepoints[i] = '>'; break;
-            case '>': seg->codepoints[i] = '<'; break;
-            case ',': seg->codepoints[i] = 0x2E41; break; // reversed comma
-//            case ',': seg->codepoints[i] = 0x060C; break; // arabic comma U+060C
-            case ';': seg->codepoints[i] = 0x204F; break; // reversed semicolon
-            case '?': seg->codepoints[i] = 0x2E2E; break; // reversed question mark
+    for (size_t i = 0; i < hz_array_size(v); ++i) {
+        switch (v[i]) {
+            case '(': v[i] = ')'; break;
+            case ')': v[i] = '('; break;
+            case '[': v[i] = ']'; break;
+            case ']': v[i] = '['; break;
+            case '{': v[i] = '}'; break;
+            case '}': v[i] = '{'; break;
+            case '<': v[i] = '>'; break;
+            case '>': v[i] = '<'; break;
+            case ',': v[i] = 0x2E41; break; // reversed comma
+//            case ',': v[i] = 0x060C; break; // arabic comma U+060C
+            case ';': v[i] = 0x204F; break; // reversed semicolon
+            case '?': v[i] = 0x2E2E; break; // reversed question mark
         }
     }
 }
@@ -6150,14 +6164,12 @@ hz_should_ignore_glyph(hz_buffer_t *buffer, size_t index, uint16_t flags) {
         uint8_t attach_type = (flags & HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK) >> 8;
         uint16_t ignored_classes = hz_ignored_classes_from_lookup_flags(flags);
 
-        return (attach_type && (buffer->glyph_classes[index] & HZ_GLYPH_CLASS_MARK) && buffer->attachment_classes[index] != attach_type)
-        || (buffer->glyph_classes[index] & ignored_classes);
+        return ((buffer->glyph_classes[index] & ignored_classes) ||
+        (buffer->glyph_classes[index] & HZ_GLYPH_CLASS_MARK) && attach_type && buffer->attachment_classes[index] != attach_type);
     }
 
-    // no glyphs ignored as slice has no specific info available for checking
     return HZ_FALSE;
 }
-
 
 void hz_buffer_compute_info(hz_buffer_t *buffer, hz_face_t *face)
 {
@@ -6189,29 +6201,13 @@ hz_swap_buffers(hz_buffer_t **b1, hz_buffer_t **b2, hz_face_t *face)
     HZ_ASSERT(b1 != NULL && b2 != NULL);
     HZ_ASSERT(*b1 != *b2);
 
-    size_t size = hz_vector_size((*b1)->glyph_indices);
-
     // swap
     hz_buffer_t *tmp = *b1;
     *b1 = *b2;
     *b2 = tmp;
 
-    // NOTE: See if this causes any issues later, maybe this is better done
-    // in hz_shape_plan_apply_gsub_lookup in the subtable loop, as that is where unicode
-    // codepoint needs are defined depending on the lookup type
-    if (hz_vector_size((*b1)->glyph_indices) == hz_vector_size((*b2)->glyph_indices))
-    {
-        hz_buffer_clear_codepoints(*b1);
-        if ((*b2)->has_codepoints) {
-            (*b1)->codepoints = Alloc(size * sizeof(hz_unicode_t));
-            memcpy((*b1)->codepoints, (*b2)->codepoints, size * sizeof(hz_unicode_t));
-            (*b1)->has_codepoints = HZ_TRUE;
-        }
-    }
-
     hz_buffer_clear(*b2);
     hz_buffer_compute_info(*b1, face);
-    (*b1)->glyph_count = size;
 }
 
 #define hz_swap(x,y) do { (x) ^= (y); (y) ^= (x); (x) ^= (y); } while(0)
@@ -6226,13 +6222,11 @@ hz_buffer_flip_direction(hz_buffer_t *buffer)
 
         // swap values at i1 and i2
         hz_swap(buffer->glyph_indices[i1], buffer->glyph_indices[i2]);
+        hz_swap(buffer->codepoints[i1], buffer->codepoints[i2]);
+
         if (buffer->has_info) {
             hz_swap(buffer->glyph_classes[i1], buffer->glyph_classes[i2]);
             hz_swap(buffer->attachment_classes[i1], buffer->attachment_classes[i2]);
-        }
-
-        if (buffer->has_codepoints) {
-            hz_swap(buffer->codepoints[i1], buffer->codepoints[i2]);
         }
     }
 }
@@ -6246,22 +6240,15 @@ hz_buffer_contains_range(const hz_buffer_t *buffer, ssize_t i1, ssize_t i2)
     && i2 >= i1;
 }
 
-hz_buffer_t *hz_buffer_copy_range(hz_buffer_t *from, ssize_t i1, ssize_t i2)
+hz_buffer_t *hz_buffer_copy_range(hz_buffer_t *from, int x1, int x2)
 {
-    if (hz_buffer_contains_range(from,i1,i2)) {
-        ssize_t len = (i2-i1)+1;
+    if (hz_buffer_contains_range(from,x1,x2)) {
+        int len = (x2-x1)+1;
         hz_buffer_t *to = hz_buffer_create();
         hz_vector_resize(to->glyph_indices, len);
-        memcpy(to->glyph_indices, from->glyph_indices + i1, sizeof(hz_index_t)*len);
-
-        if (from->has_codepoints) {
-            // should not forget codepoints!
-            size_t cpysize = len * sizeof(hz_unicode_t);
-            to->codepoints = Alloc(cpysize);
-            memcpy(to->codepoints, &from->codepoints[i1], cpysize);
-            to->has_codepoints = HZ_TRUE;
-        }
-
+        hz_vector_resize(to->codepoints, len);
+        memcpy(to->glyph_indices, from->glyph_indices + x1, sizeof(hz_index_t)*len);
+        memcpy(to->codepoints, from->codepoints + x1, sizeof(hz_unicode_t)*len);
         return to;
     }
 
@@ -6272,9 +6259,9 @@ int *hz_buffer_get_unignored_indices(hz_buffer_t *buffer, uint16_t lookup_flag)
 {
     int *index_list = NULL;
 
-    for (size_t i = 0; i < hz_vector_size(buffer->glyph_indices); ++i) {
+    for (int i = 0; i < hz_vector_size(buffer->glyph_indices); ++i) {
         if (!hz_should_ignore_glyph(buffer, i, lookup_flag)) {
-            hz_vector_push_back(index_list, i);
+            hz_vector_push(index_list, i);
         }
     }
 
@@ -6288,21 +6275,19 @@ hz_segment_setup_shaping_objects(hz_segment_t *seg, hz_face_t *face)
     hz_buffer_clear(seg->out);
 
     if (seg->num_codepoints > 0) {
-        if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT)
-            hz_unicode_mirror_punctuation(seg);
+        hz_vector_resize(seg->in->codepoints, seg->num_codepoints);
+        memcpy(seg->in->codepoints, seg->codepoints, seg->num_codepoints*sizeof(hz_unicode_t));
 
-        seg->in->codepoints = Alloc(seg->num_codepoints * sizeof(hz_unicode_t));
-        memcpy(seg->in->codepoints, seg->codepoints, seg->num_codepoints * sizeof(hz_unicode_t));
-        seg->in->has_codepoints = HZ_TRUE;
+        // map unicode characters to nominal glyph indices
+        hz_vector_resize(seg->in->glyph_indices, seg->num_codepoints);
+        hz_map_to_nominal_forms(face, seg->in->glyph_indices, seg->codepoints, seg->num_codepoints);
+
+        seg->in->glyph_count = seg->num_codepoints;
+
+        // sets glyph class information
+        hz_buffer_compute_info(seg->in, face);
     }
 
-    // map unicode characters to nominal glyph indices
-    hz_vector_resize(seg->in->glyph_indices, seg->num_codepoints);
-    hz_map_to_nominal_forms(face, seg->in->glyph_indices, seg->codepoints, seg->num_codepoints);
-    seg->in->glyph_count = seg->num_codepoints;
-
-    // sets glyph class information
-    hz_buffer_compute_info(seg->in, face);
 }
 
 // swaps in and out buffers, compute info for in buffer
@@ -6531,12 +6516,13 @@ hz_load_gsub_chained_contexts_substitution_subtable(hz_stream_t *stream,
             // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#61-chained-contexts-substitution-format-1-simple-glyph-contexts
             hz_chained_sequence_context_format1_subtable_t *subtable = Alloc(sizeof(*subtable));
             subtable->format = format;
+
             Offset16 coverage_offset = Unpack16(stream);
+            subtable->rule_set_count = Unpack16(stream);
             subtable->coverage =  hz_map_create();
             hz_ot_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
 
-            subtable->rule_set_count = Unpack16(stream);
-//            printf("%d\n", subtable->rule_set_count);
+            // printf("%d\n", subtable->rule_set_count);
             Offset16 *rule_set_offsets = Alloc(sizeof(Offset16) * subtable->rule_set_count);
             UnpackArray16(stream, subtable->rule_set_count, rule_set_offsets);
 
@@ -6612,17 +6598,16 @@ hz_load_gsub_multiple_substitution_subtable(hz_stream_t *stream,
 HZ_STATIC hz_error_t
 hz_load_gsub_lookup_subtable(uint8_t *data,
                              hz_lookup_table_t *lookup,
+                             uint16_t lookup_type,
                              uint16_t subtable_index)
 {
     uint16_t format;
     hz_stream_t stream = hz_stream_create(data,0);
 
-    extension_label:
+    gsub_lookup_extension_label:
     format = Unpack16(&stream);
 
-//    printf("parsing %d.%d subtable format\n", lookup->lookup_type, format);
-
-    switch (lookup->lookup_type) {
+    switch (lookup_type) {
         case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION:
             return hz_load_gsub_single_substitution_subtable(&stream, lookup, subtable_index, format);
 
@@ -6640,10 +6625,11 @@ hz_load_gsub_lookup_subtable(uint8_t *data,
              // it's a special lookup type which doesn't allocate a structure.
              if (format == 1) {
                 lookup->lookup_type = Unpack16(&stream);
+                lookup_type = lookup->lookup_type;
                 Offset32 extension_offset = Unpack32(&stream);
                 stream.data += extension_offset;
                 stream.ptr = 0;
-                goto extension_label;
+                goto gsub_lookup_extension_label;
             }
 
             return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
@@ -6730,17 +6716,17 @@ hz_unload_gsub_lookup_subtable(hz_lookup_table_t *table, uint16_t subtable_index
 }
 
 HZ_STATIC hz_error_t
-hz_load_gsub_lookup_table(hz_stream_t *stream, hz_lookup_table_t *table)
+hz_load_gsub_lookup_table(const uint8_t *data, hz_lookup_table_t *table)
 {
-    uintptr_t baseptr = stream_tell(stream);
+    hz_stream_t stream = hz_stream_create(data,0);
 
-    Unpackv(stream, "hhh", &table->lookup_type,
-            &table->lookup_flag,
-            &table->subtable_count);
+    table->lookup_type = Unpack16(&stream);
+    table->lookup_flag = Unpack16(&stream);
+    table->subtable_count = Unpack16(&stream);
 
     if (table->subtable_count > 0) {
         Offset16 *offsets = Alloc(sizeof(Offset16) * table->subtable_count);
-        UnpackArray16(stream, table->subtable_count, offsets);
+        UnpackArray16(&stream, table->subtable_count, offsets);
 
         // Set pointers to NULL by default
         table->subtables = Alloc(sizeof(*table->subtables) * table->subtable_count);
@@ -6749,8 +6735,9 @@ hz_load_gsub_lookup_table(hz_stream_t *stream, hz_lookup_table_t *table)
         }
 
         // Load & parse subtables
+        uint16_t original_lookup_type = table->lookup_type;
         for (uint16_t i = 0; i < table->subtable_count; ++i) {
-            hz_load_gsub_lookup_subtable(stream->data + baseptr + (uintptr_t)offsets[i], table, i);
+            hz_load_gsub_lookup_subtable(stream.data + offsets[i], table, original_lookup_type, i);
         }
 
         Free(offsets);
@@ -6758,7 +6745,7 @@ hz_load_gsub_lookup_table(hz_stream_t *stream, hz_lookup_table_t *table)
 
     // Only include mark filtering set if flag USE_MARK_FILTERING_SET is enabled
     if (table->lookup_flag & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET)
-        table->mark_filtering_set = Unpack16(stream);
+        table->mark_filtering_set = Unpack16(&stream);
 
     return HZ_OK;
 }
@@ -6855,10 +6842,7 @@ hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
         UnpackArray16(&stream, num_lookups, offsets);
 
         for (i = 0; i < num_lookups; ++i) {
-            uintptr_t lastptr = stream_tell(&stream);
-            stream_seek(&stream, offsets[i]);
-            hz_load_gsub_lookup_table(&stream, &gsub_table->lookups[i]);
-            stream_seek(&stream, lastptr);
+            hz_load_gsub_lookup_table(stream.data + offsets[i], &gsub_table->lookups[i]);
         }
 
         Free(offsets);
@@ -6934,25 +6918,25 @@ hz_segment_next_valid_index(hz_segment_t *seg,
 }
 
 
-HZ_STATIC int64_t next_joining_arabic_glyph(hz_buffer_t *slice, int64_t g, uint16_t lookup_flag)
+HZ_STATIC int64_t next_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag)
 {
-    size_t size = hz_vector_size(slice->glyph_indices);
+    size_t size = hz_vector_size(buffer->glyph_indices);
     do {
         if (++g >= size)
             return -1;
 
-    } while (hz_should_ignore_glyph(slice, g, lookup_flag));
+    } while (hz_should_ignore_glyph(buffer,g,lookup_flag));
 
     return g;
 }
 
-HZ_STATIC int64_t prev_joining_arabic_glyph(hz_buffer_t *slice, int64_t g, uint16_t lookup_flag)
+HZ_STATIC int64_t prev_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag)
 {
     do {
         if (--g < 0)
             return -1;
 
-    } while (hz_should_ignore_glyph(slice, g, lookup_flag));
+    } while (hz_should_ignore_glyph(buffer,g,lookup_flag));
 
     return g;
 }
@@ -6972,9 +6956,9 @@ hz_shape_complex_arabic_joining(hz_buffer_t *buffer,
 
     if (hz_shape_complex_arabic_char_joining(buffer->codepoints[index], &triplet.curr_joining)) {
         int64_t prev_index = prev_joining_arabic_glyph(buffer, index,
-                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS | HZ_LOOKUP_FLAG_IGNORE_LIGATURES);
+                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS);
         int64_t next_index = next_joining_arabic_glyph(buffer, index,
-                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS | HZ_LOOKUP_FLAG_IGNORE_LIGATURES);
+                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS);
 
         if (prev_index == -1) {
             triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
@@ -7038,33 +7022,29 @@ hz_should_apply_replacement(hz_buffer_t *buffer,
                             uint16_t node_index,
                             uint16_t lookup_flag)
 {
-    if (feature == HZ_FEATURE_INIT || feature == HZ_FEATURE_MEDI || feature == HZ_FEATURE_FINA || feature == HZ_FEATURE_ISOL) {
-        if (buffer->has_codepoints) {
-            switch (feature) {
-                case HZ_FEATURE_INIT: return hz_shape_complex_arabic_init(buffer, node_index, lookup_flag);
-                case HZ_FEATURE_MEDI: return hz_shape_complex_arabic_medi(buffer, node_index, lookup_flag);
-                case HZ_FEATURE_FINA: return hz_shape_complex_arabic_fina(buffer, node_index, lookup_flag);
-                case HZ_FEATURE_ISOL: return hz_shape_complex_arabic_isol(buffer, node_index, lookup_flag);
-                default:
-                    return HZ_FALSE;
-            }
-        }
-
-        return HZ_FALSE;
+    if (feature == HZ_FEATURE_INIT) {
+        return hz_shape_complex_arabic_init(buffer, node_index, lookup_flag);
+    } else if (feature == HZ_FEATURE_MEDI) {
+        return hz_shape_complex_arabic_medi(buffer, node_index, lookup_flag);
+    } else if (feature == HZ_FEATURE_FINA) {
+        return hz_shape_complex_arabic_fina(buffer, node_index, lookup_flag);
+    } else if (feature == HZ_FEATURE_ISOL) {
+        return hz_shape_complex_arabic_isol(buffer, node_index, lookup_flag);
     }
+
     return HZ_TRUE;
 }
 
 typedef struct hz_range_t {
-    short base; // base pointer into index list
     short mn, mx;
+    short base; // base pointer into index list
+    hz_bool is_ignored;
 } hz_range_t;
 
 typedef struct hz_range_list_t {
     hz_vector(hz_range_t) ranges; // alternating ignored -> unignored ranges
     hz_vector(short) ignored_indices;
     hz_vector(short) unignored_indices;
-    hz_bool zero_ign; // ranges[0] ignored or not
 } hz_range_list_t;
 
 hz_range_list_t *hz_range_list_create(void)
@@ -7090,7 +7070,6 @@ hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag)
 {
     hz_range_list_t *range_list = hz_range_list_create();
 
-    range_list->zero_ign = hz_should_ignore_glyph(buffer, 0, lookup_flag);
     short mn=0,mx=0;
     short ign_base = 0, nign_base = 0;
 
@@ -7098,16 +7077,17 @@ hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag)
         hz_bool curr_ign = hz_should_ignore_glyph(buffer, i, lookup_flag);
         // add current
         if (curr_ign) {
-            hz_vector_push_back(range_list->ignored_indices, (short)i);
+            hz_vector_push(range_list->ignored_indices, (short)i);
         } else {
-            hz_vector_push_back(range_list->unignored_indices, (short)i);
+            hz_vector_push(range_list->unignored_indices, (short)i);
         }
 
         if (i + 1 >= hz_vector_size(buffer->glyph_indices)) {
             hz_range_t range;
             range.mn = mn; range.mx = i;
             range.base = curr_ign ? ign_base : nign_base;
-            hz_vector_push_back(range_list->ranges, range);
+            range.is_ignored = curr_ign;
+            hz_vector_push(range_list->ranges, range);
             break;
         }
 
@@ -7118,9 +7098,11 @@ hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag)
             short span = (mx-mn)+1;
             hz_range_t range;
             range.mn = mn; range.mx = mx;
+            range.is_ignored = curr_ign;
             range.base = curr_ign ? ign_base : nign_base;
-            hz_vector_push_back(range_list->ranges, range);
+            hz_vector_push(range_list->ranges, range);
             mn = i+1;
+            mx = mn;
 
             if (curr_ign) {
                 ign_base += span;
@@ -7133,15 +7115,11 @@ hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag)
     return range_list;
 }
 
-hz_bool range_list_index_ignored(hz_range_list_t *range_list, size_t x)
-{
-    return (range_list->zero_ign?~x:x) & 1;
-}
-
 
 short
 range_list_find_range(hz_range_list_t *range_list, short i)
 {
+#if 0
     // find range for index x using binary search algorithm
     short low = 0;
     short high = hz_vector_size(range_list->ranges)-1;
@@ -7167,6 +7145,12 @@ range_list_find_range(hz_range_list_t *range_list, short i)
             }
         }
     }
+#else
+    for (int r = 0; r < hz_vector_size(range_list->ranges); ++r) {
+        if (i >= range_list->ranges[r].mn && i <= range_list->ranges[r].mx)
+            return r;
+    }
+#endif
 
     return -1; // NOT FOUND
 }
@@ -7179,14 +7163,14 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 hz_feature_t feature,
                                 uint16_t lookup_index,
                                 hz_buffer_t *in, hz_buffer_t *out,
-                                short i1, short i2, int depth)
+                                int x1, int x2, int depth)
 {
     uint8_t temp[4096];
     LinearAllocator la = CreateLinearAllocator(temp, sizeof temp);
 
     HZ_ASSERT(in != NULL && out != NULL);
     HZ_ASSERT(in != out);
-    HZ_ASSERT(hz_buffer_contains_range(in,i1,i2));
+    HZ_ASSERT(hz_buffer_contains_range(in,x1,x2));
 
     if (depth >= HZ_OT_MAX_RECURSE_DEPTH) {
         // hit max recurse depth, wind back up the call stack
@@ -7205,8 +7189,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
     // copy segment glyph ids and info into a read-only buffer
     hz_buffer_t *b1, *b2;
-    b1 = hz_buffer_copy_range(in, (ssize_t)i1, (ssize_t)i2);
+    b1 = hz_buffer_create();
     b2 = hz_buffer_create();
+    hz_buffer_add_range(b1, in, x1, x2);
+    printf("lookup index: %d {x1:%d, x2:%d, depth:%d}\n", lookup_index,x1,x2,depth);
 
     for (uint16_t i = 0; i < table->subtable_count; ++i) {
         hz_lookup_subtable_t *base = table->subtables[i];
@@ -7220,36 +7206,33 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
             hz_buffer_compute_info(b1, face);
             // reserve second buffer with size of first buffer as the result of the substitution is likely going to be
             // around the size of the first buffer in most cases.
-            hz_vector_reserve(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
+            hz_buffer_reserve(b2, hz_vector_size(b1->glyph_indices));
 
-            hz_range_list_t *range_list = hz_compute_range_list(b1,table->lookup_flag);
+            hz_range_list_t *range_list = hz_compute_range_list(b1, table->lookup_flag);
 
             switch (table->lookup_type) {
                 case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
-                    // resize to size of buffer 1 as it's guarenteed in this case that there will be no shrinking/growth
-                    hz_vector_resize(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
                     switch (base->format) {
                         case 1: {
                             hz_single_substitution_format1_t *subtable = (hz_single_substitution_format1_t *)base;
-                            size_t ptr_dst = 0;
 
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
-                                size_t span = (range->mx-range->mn)+1;
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, simply memcpy glyphs from source to destination
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                       span*sizeof(hz_index_t));
-                                    ptr_dst += span;
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     // unignored
                                     for (size_t v = range->mn; v <= range->mx; ++v) {
                                         if (hz_should_apply_replacement(b1, feature, v, table->lookup_flag)
                                         && hz_map_value_exists(subtable->coverage, b1->glyph_indices[v])) {
-                                            b2->glyph_indices[ptr_dst++] = b1->glyph_indices[v] + subtable->delta_glyph_id;
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v] + subtable->delta_glyph_id,
+                                                .codepoint = b1->codepoints[v]});
                                         } else {
-                                            b2->glyph_indices[ptr_dst++] = b1->glyph_indices[v];
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
                                 }
@@ -7258,26 +7241,25 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                         }
                         case 2: {
                             hz_single_substitution_format2_t *subtable = (hz_single_substitution_format2_t *)base;
-                            size_t ptr_dst = 0;
 
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
-                                size_t span = (range->mx-range->mn)+1;
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, simply memcpy glyphs from source to destination
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                        span*sizeof(hz_index_t));
-                                    ptr_dst += span;
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     // unignored
                                     for (size_t v = range->mn; v <= range->mx; ++v) {
                                         if (hz_should_apply_replacement(b1, feature, v, table->lookup_flag)
                                         && hz_map_value_exists(subtable->coverage, b1->glyph_indices[v])) {
                                             uint16_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[v]);
-                                            b2->glyph_indices[ptr_dst++] = subtable->substitute_glyph_ids[index];
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = subtable->substitute_glyph_ids[index],
+                                                .codepoint = b1->codepoints[v]});
                                         } else {
-                                            b2->glyph_indices[ptr_dst++] = b1->glyph_indices[v];
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
                                 }
@@ -7297,12 +7279,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 const hz_range_t *range = &range_list->ranges[r];
                                 size_t span = (range->mx-range->mn)+1;
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, simply memcpy glyphs from source to destination
-                                    size_t ptr_dst = hz_vector_size(b2->glyph_indices);
-                                    hz_vector_resize(b2->glyph_indices, ptr_dst+span);
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                           span*sizeof(hz_index_t));
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2,b1,range->mn,range->mx);
                                 } else {
                                     // unignored
                                     for (size_t v = range->mn; v <= range->mx; ++v) {
@@ -7312,10 +7290,14 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                             const hz_sequence_table_t *sequence = &subtable->sequences[index];
 
                                             for (uint16_t w = 0; w < sequence->glyph_count; ++w) {
-                                                hz_vector_push_back(b2->glyph_indices, sequence->glyphs[w]);
+                                                hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                    .GID = sequence->glyphs[w],
+                                                    .codepoint = b1->codepoints[v]});
                                             }
                                         } else {
-                                            hz_vector_push_back(b2->glyph_indices, b1->glyph_indices[v]);
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
                                 }
@@ -7335,13 +7317,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, simply memcpy glyphs from source to destination
-                                    size_t span = (range->mx-range->mn)+1;
-                                    size_t ptr_dst = hz_vector_size(b2->glyph_indices);
-                                    hz_vector_resize(b2->glyph_indices, ptr_dst+span);
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                           span*sizeof(hz_index_t));
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2,b1,range->mn,range->mx);
                                 } else {
                                     // unignored
                                     for (short v = range->mn; v <= range->mx; ++v) {
@@ -7356,29 +7333,42 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                             for (uint16_t w = 0; w < ligature_set->ligature_count; ++w) {
                                                 hz_ligature_t *ligature = &ligature_set->ligatures[w];
                                                 uint16_t component_count = ligature->component_count;
-                                                short u1 = range->base + (v - range->mn);
+                                                short s1 = range->base + (v - range->mn);
+                                                short s2 = s1 + component_count - 1;
+                                                if (s2 < hz_vector_size(range_list->unignored_indices)) {
+                                                    int test = 1;
+                                                    if (component_count >= 2) {
+                                                        // There are enough unignored glyphs until the end of the buffer
+                                                        // to load component glyphs. This could be possibly optimized later with
+                                                        // SSE/AVX2 (gather,cmp,shuffle)
+                                                        ResetLinearAllocator(&la);
+                                                        hz_index_t *block = LinearAlloc(&la, (component_count-1)*2);
+                                                        for (uint16_t k = 0; k < component_count-1; ++k) {
+                                                            block[k] = b1->glyph_indices[range_list->unignored_indices[s1+k+1]];
+                                                        }
 
-                                                if (u1 + component_count <= hz_vector_size(range_list->unignored_indices)) {
-                                                    // There are enough unignored glyphs until the end of the buffer
-                                                    // to load component glyphs. This could be possibly optimized later with
-                                                    // SSE/AVX2 (gather,cmp,shuffle)
-                                                    ResetLinearAllocator(&la);
-                                                    hz_index_t *block = LinearAlloc(&la, (component_count-1)*2);
-                                                    for (uint16_t k = 1; k <= component_count-1; ++k) {
-                                                        block[k-1] = b1->glyph_indices[range_list->unignored_indices[u1+k]];
+                                                        if (ligature->ligature_glyph == 738) {
+                                                            for (int z = 0; z < component_count-1; ++z) {
+                                                                printf("{%d,%d} ",block[z],ligature->component_glyph_ids[z]);
+                                                            }
+                                                            printf("\n\n");
+                                                        }
+
+                                                        test = !memcmp(ligature->component_glyph_ids, block, (component_count-1)*2);
                                                     }
 
-                                                    if (!memcmp(ligature->component_glyph_ids, block, (component_count-1)*2)) {
+                                                    if (test) {
                                                         // GID match found with ligature, push ligature glyph to buffer
-                                                        hz_vector_push_back(b2->glyph_indices, ligature->ligature_glyph);
+                                                        //hz_vector_push(b2->glyph_indices, ligature->ligature_glyph);
+                                                        hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                            .GID = ligature->ligature_glyph,
+                                                            .codepoint = 0});
 
                                                         // Push ignored glyphs found within the matched range
 
                                                         // Jump over context
-                                                        short u2 = u1 + component_count-1;
-                                                        v = range_list->unignored_indices[u2];
+                                                        v = range_list->unignored_indices[s2];
                                                         r = range_list_find_range(range_list, v);
-
                                                         range = &range_list->ranges[r];
 
                                                         matched = HZ_TRUE;
@@ -7390,7 +7380,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                         match_check:
                                         if (!matched) {
-                                            hz_vector_push_back(b2->glyph_indices, b1->glyph_indices[v]);
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
 
@@ -7405,26 +7397,20 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     break;
                 }
 
-#if 1
                 case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: {
                     switch (base->format) {
                         case 1: {
                             hz_chained_sequence_context_format1_subtable_t *subtable = (hz_chained_sequence_context_format1_subtable_t *)base;
-//                            printf("FOO: %d\n", subtable->rule_set_count);
 
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    size_t span = (range->mx-range->mn)+1;
-                                    size_t ptr_dst = hz_vector_size(b2->glyph_indices);
-                                    hz_vector_resize(b2->glyph_indices, ptr_dst+span);
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                           span*sizeof(hz_index_t));
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2,b1,range->mn,range->mx);
                                 } else {
                                     for (short v = range->mn; v <= range->mx; ++v) {
                                         hz_bool match = HZ_FALSE;
-                                        if (hz_should_apply_replacement(b1, feature,  v, table->lookup_flag)
+                                        if (hz_should_apply_replacement(b1, feature, v, table->lookup_flag)
                                         && hz_map_value_exists(subtable->coverage, b1->glyph_indices[v]))  {
                                             for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                                 hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
@@ -7494,15 +7480,14 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                             }
 
                                                             // add final result to b2
-                                                            for (size_t s = 0; s < hz_vector_size(ctx1->glyph_indices); ++s) {
-                                                                hz_vector_push_back(b2->glyph_indices, ctx1->glyph_indices[s]);
-                                                            }
+                                                            hz_buffer_add_range(b2, ctx1, 0, (int)hz_vector_size(ctx1->glyph_indices)-1);
 
                                                             match = HZ_TRUE;
                                                             // skip over input context
                                                             int skip_loc = u + rule->input_count;
                                                             v = range_list->unignored_indices[skip_loc];
                                                             r = range_list_find_range(range_list, v);
+                                                            range = &range_list->ranges[r];
 
                                                             hz_buffer_destroy(ctx1);
                                                             hz_buffer_destroy(ctx2);
@@ -7515,7 +7500,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                         check_match:
                                         if (!match) {
-                                            hz_vector_push_back(b2->glyph_indices, b1->glyph_indices[v]);
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
 
@@ -7525,6 +7512,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                             break;
                         }
+
                         case 2: {
                             break;
                         }
@@ -7532,16 +7520,22 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                         case 3: {
                             hz_chained_sequence_context_format3_subtable_t *subtable = (hz_chained_sequence_context_format3_subtable_t *)base;
 
+                            if (lookup_index == 50 || lookup_index == 48) {
+                                for (int t = 0; t < hz_vector_size(range_list->unignored_indices) - 1; ++t) {
+                                    int g1 = range_list->unignored_indices[t];
+                                    int g2 = range_list->unignored_indices[t+1];
+                                    if (b1->glyph_indices[g1] == 533 && b1->glyph_indices[g2] == 292) {
+                                        printf("LAM %d %d \n",g1,g2);
+                                    }
+                                }
+                            }
+
+
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
 
-                                if (range_list_index_ignored(range_list,r)) {
-                                    // ignored, memcpy glyphs from source to destination
-                                    size_t span = (range->mx-range->mn)+1;
-                                    size_t ptr_dst = hz_vector_size(b2->glyph_indices);
-                                    hz_vector_resize(b2->glyph_indices, ptr_dst+span);
-                                    memcpy(b2->glyph_indices+ptr_dst, b1->glyph_indices+range->mn,
-                                           span*sizeof(hz_index_t));
+                                if (range->is_ignored) {
+                                    hz_buffer_add_range(b2,b1,range->mn,range->mx);
                                 } else {
                                     // unignored
                                     for (short v = range->mn; v <= range->mx; ++v) {
@@ -7551,12 +7545,12 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                             // this context is impossible to match
                                             int u = range->base + (v - range->mn);
                                             int u1 = u - subtable->prefix_count;
-                                            int u2 = (u + subtable->input_count + subtable->suffix_count) - 1;
+                                            int u2 = (u + subtable->input_count + subtable->suffix_count)-1;
 
                                             if (u1 >= 0 && u2 <= hz_vector_size(range_list->unignored_indices)-1) {
                                                 // check prefix, input and suffix sequences for match
 
-                                                int prefix_match = 1,input_match=1, suffix_match = 1; // matches
+                                                int prefix_match = 1, input_match = 1, suffix_match = 1; // matches
 
                                                 // prefix (reverse order according to spec.)
                                                 for (int k = 0; k < subtable->prefix_count; ++k) {
@@ -7587,17 +7581,21 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                 if (input_match && suffix_match && prefix_match) {
                                                     // if match, apply nested lookups
+//                                                    printf("TEST!\n");
+//                                                    printf("PREFIX: %d INPUT: %d SUFFIX: %d\n", prefix_match, input_match, suffix_match);
+
                                                     int context_low = range_list->unignored_indices[u];
                                                     int context_high = range_list->unignored_indices[u+subtable->input_count-1];
 
                                                     // create context from input glyphs
                                                     hz_buffer_t *ctx1 = hz_buffer_copy_range(b1, context_low, context_high);
-                                                    hz_buffer_compute_info(ctx1, face);
                                                     hz_buffer_t *ctx2 = hz_buffer_create();
 
                                                     for (uint16_t z = 0; z < subtable->lookup_count; ++z) {
-                                                        int *context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flag);
+                                                        hz_buffer_compute_info(ctx1, face);
+                                                        hz_vector(int) context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flag);
                                                         int sequence_idx = context_index_list[subtable->lookup_records[z].sequence_index];
+                                                        hz_vector_destroy(context_index_list);
 
                                                         // recurse :^)
                                                         hz_shape_plan_apply_gsub_lookup(plan, feature,
@@ -7606,28 +7604,31 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                                                         sequence_idx, sequence_idx, depth+1);
 
                                                         hz_swap_buffers(&ctx1, &ctx2, face);
-                                                        hz_vector_destroy(context_index_list);
                                                     }
+                                                    printf("CONTEXT {v: %d, low: %d, high: %d}\n\n", v,context_low, context_high);
 
                                                     // add final result to b2
-                                                    for (size_t s = 0; s < hz_vector_size(ctx1->glyph_indices); ++s) {
-                                                        hz_vector_push_back(b2->glyph_indices, ctx1->glyph_indices[s]);
-                                                    }
+                                                    hz_buffer_add_other(b2, ctx1);
 
                                                     match = HZ_TRUE;
 
                                                     int skip_loc = u + subtable->input_count - 1;
                                                     v = range_list->unignored_indices[skip_loc];
                                                     r = range_list_find_range(range_list, v);
+                                                    range = &range_list->ranges[r];
 
                                                     hz_buffer_destroy(ctx1);
                                                     hz_buffer_destroy(ctx2);
+                                                    goto gsub_6_3_match;
                                                 }
                                             }
                                         }
 
+                                        gsub_6_3_match:
                                         if (!match) {
-                                            hz_vector_push_back(b2->glyph_indices, b1->glyph_indices[v]);
+                                            hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
+                                                .GID = b1->glyph_indices[v],
+                                                .codepoint = b1->codepoints[v]});
                                         }
                                     }
 
@@ -7640,10 +7641,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                     }
                     break;
                 }
-#endif
-                default:{
-                    hz_vector_resize(b2->glyph_indices, hz_vector_size(b1->glyph_indices));
-                    memcpy(b2->glyph_indices, b1->glyph_indices, hz_vector_size(b1->glyph_indices)*sizeof(hz_index_t));
+
+                default: {
+                    hz_buffer_clear(b2);
+                    hz_buffer_add_range(b2, b1, 0, (int) hz_vector_size(b1->glyph_indices) - 1);
                     break;
                 }
             }
@@ -7659,17 +7660,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
     // write slices caused by range into the output buffer
     {
         // temporary code
-        for (size_t s = 0; s < i1; ++s) {
-            hz_vector_push_back(out->glyph_indices, in->glyph_indices[s]);
-        }
-
-        for (size_t s = 0; s < hz_vector_size(b1->glyph_indices); ++s) {
-            hz_vector_push_back(out->glyph_indices, b1->glyph_indices[s]);
-        }
-
-        for (size_t s = i2+1; s < hz_vector_size(in->glyph_indices); ++s) {
-            hz_vector_push_back(out->glyph_indices, in->glyph_indices[s]);
-        }
+        hz_buffer_add_range(out, in, 0, x1 - 1);
+        hz_buffer_add_other(out, b1);
+        hz_buffer_add_range(out, in, x2 + 1, (int) hz_vector_size(in->glyph_indices) - 1);
     }
 
     // cleanup buffers

@@ -7171,12 +7171,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
     }
 
     hz_ot_gsub_table_t *gsub_table = &plan->gsub_table;
-    if (lookup_index >= gsub_table->num_lookups) {
-        // error, either user code or font requested for an unavailable lookup
-        fprintf(stderr, "warning, requested non-existant lookup %d\n", lookup_index);
-        return;
-    }
-
     hz_lookup_table_t *table = &gsub_table->lookups[lookup_index];
     hz_face_t *face = hz_font_get_face(plan->font);
 
@@ -7185,7 +7179,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
     b1 = hz_buffer_create();
     b2 = hz_buffer_create();
     hz_buffer_add_range(b1, in, x1, x2);
-    printf("lookup index: %d {x1:%d, x2:%d, depth:%d}\n", lookup_index,x1,x2,depth);
 
     for (uint16_t i = 0; i < table->subtable_count; ++i) {
         hz_lookup_subtable_t *base = table->subtables[i];
@@ -7193,7 +7186,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
         // it would be more efficient to use a single buffer if there is no cross-glyph interference.
         // Otherwise, a good alternative is to pre-allocate the second buffer
         // to be exactly the size of the first buffer in case where we know the size won't change.
-        if (base != NULL)  {
+        if (likely(base != NULL)) {
             // subtable requested is loaded
             ResetLinearAllocator(&la);
             hz_buffer_compute_info(b1, face);
@@ -7340,13 +7333,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                             block[k] = b1->glyph_indices[range_list->unignored_indices[s1+k+1]];
                                                         }
 
-                                                        if (ligature->ligature_glyph == 738) {
-                                                            for (int z = 0; z < component_count-1; ++z) {
-                                                                printf("{%d,%d} ",block[z],ligature->component_glyph_ids[z]);
-                                                            }
-                                                            printf("\n\n");
-                                                        }
-
                                                         test = !memcmp(ligature->component_glyph_ids, block, (component_count-1)*2);
                                                     }
 
@@ -7365,13 +7351,13 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         range = &range_list->ranges[r];
 
                                                         matched = HZ_TRUE;
-                                                        goto match_check;
+                                                        goto check_match_gsub_4_1;
                                                     }
                                                 }
                                             }
                                         }
 
-                                        match_check:
+                                        check_match_gsub_4_1:
                                         if (!matched) {
                                             hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
                                                 .GID = b1->glyph_indices[v],
@@ -7484,14 +7470,14 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                             hz_buffer_destroy(ctx1);
                                                             hz_buffer_destroy(ctx2);
-                                                            goto check_match;
+                                                            goto check_match_gsub_6_1;
                                                         }
                                                     }
                                                 }
                                             }
                                         }
 
-                                        check_match:
+                                        check_match_gsub_6_1:
                                         if (!match) {
                                             hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
                                                 .GID = b1->glyph_indices[v],
@@ -7512,17 +7498,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                         case 3: {
                             hz_chained_sequence_context_format3_subtable_t *subtable = (hz_chained_sequence_context_format3_subtable_t *)base;
-
-                            if (lookup_index == 50 || lookup_index == 48) {
-                                for (int t = 0; t < hz_vector_size(range_list->unignored_indices) - 1; ++t) {
-                                    int g1 = range_list->unignored_indices[t];
-                                    int g2 = range_list->unignored_indices[t+1];
-                                    if (b1->glyph_indices[g1] == 533 && b1->glyph_indices[g2] == 292) {
-                                        printf("LAM %d %d \n",g1,g2);
-                                    }
-                                }
-                            }
-
 
                             for (size_t r = 0; r < hz_vector_size(range_list->ranges); ++r) {
                                 const hz_range_t *range = &range_list->ranges[r];
@@ -7598,7 +7573,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                         hz_swap_buffers(&ctx1, &ctx2, face);
                                                     }
-                                                    printf("CONTEXT {v: %d, low: %d, high: %d}\n\n", v,context_low, context_high);
 
                                                     // add final result to b2
                                                     hz_buffer_add_other(b2, ctx1);
@@ -7612,12 +7586,12 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     hz_buffer_destroy(ctx1);
                                                     hz_buffer_destroy(ctx2);
-                                                    goto gsub_6_3_match;
+                                                    goto check_match_gsub_6_3;
                                                 }
                                             }
                                         }
 
-                                        gsub_6_3_match:
+                                        check_match_gsub_6_3:
                                         if (!match) {
                                             hz_buffer_add_glyph(b2, (hz_buffer_glyph_t){
                                                 .GID = b1->glyph_indices[v],
@@ -7648,15 +7622,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
         }
     }
 
-
-//    printf("lookup_type: %d, size of b1: %llu\n", table->lookup_type, hz_vector_size(b1->glyph_indices));
     // write slices caused by range into the output buffer
-    {
-        // temporary code
-        hz_buffer_add_range(out, in, 0, x1 - 1);
-        hz_buffer_add_other(out, b1);
-        hz_buffer_add_range(out, in, x2 + 1, (int) hz_vector_size(in->glyph_indices) - 1);
-    }
+    hz_buffer_add_range(out, in, 0, x1 - 1);
+    hz_buffer_add_other(out, b1);
+    hz_buffer_add_range(out, in, x2 + 1, (int) hz_vector_size(in->glyph_indices) - 1);
 
     // cleanup buffers
     hz_buffer_destroy(b1);

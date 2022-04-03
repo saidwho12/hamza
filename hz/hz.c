@@ -7119,7 +7119,6 @@ hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag)
 short
 range_list_find_range(hz_range_list_t *range_list, short i)
 {
-#if 0
     // find range for index x using binary search algorithm
     short low = 0;
     short high = hz_vector_size(range_list->ranges)-1;
@@ -7145,12 +7144,6 @@ range_list_find_range(hz_range_list_t *range_list, short i)
             }
         }
     }
-#else
-    for (int r = 0; r < hz_vector_size(range_list->ranges); ++r) {
-        if (i >= range_list->ranges[r].mn && i <= range_list->ranges[r].mx)
-            return r;
-    }
-#endif
 
     return -1; // NOT FOUND
 }

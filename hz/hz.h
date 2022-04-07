@@ -119,6 +119,14 @@
 #define HZ_API
 #endif
 
+#if HZ_COMPILER & HZ_COMPILER_VC
+#define HZ_DBGBRK __debugbreak();
+#elif HZ_COMPILER & HZ_COMPILER_GCC
+#define HZ_DBGBRK __builtin_trap();
+#else
+#define HZ_BDGBRK
+#endif
+
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
 #define HZ_ASSERT(cond) assert(cond)
@@ -268,37 +276,31 @@ hz_segment_load_latin1(hz_segment_t *seg, const char *text);
 HZ_API void
 hz_segment_load_utf32(hz_segment_t *seg, const uint32_t *str);
 
-/*  Struct: hz_shaped_glyph_t
- *    Shaped glyph structure with all necessary information for layout & drawing.
- */
-typedef struct hz_shaped_glyph_t {
-    hz_unicode_t codepoint;
-    hz_index_t glyph_index;
+typedef struct hz_glyph_metrics_t {
+    int32_t x_advance;
+    int32_t y_advance;
+    int32_t x_offset;
+    int32_t y_offset;
+} hz_glyph_metrics_t;
 
-    hz_position_t x_offset;
-    hz_position_t y_offset;
-    hz_position_t x_advance;
-    hz_position_t y_advance;
-
-    uint16_t glyph_class;
-} hz_shaped_glyph_t;
+typedef enum hz_glyph_attrib_flag_t {
+    HZ_GLYPH_ATTRIB_METRICS_BIT = 0x00000001,
+    HZ_GLYPH_ATTRIB_INDEX_BIT = 0x00000002,
+    HZ_GLYPH_ATTRIB_CODEPOINT_BIT = 0x00000004,
+    HZ_GLYPH_ATTRIB_GLYPH_CLASS_BIT = 0x00000008,
+    HZ_GLYPH_ATTRIB_ATTACHMENT_CLASS_BIT = 0x00000010,
+    HZ_GLYPH_ATTRIB_ATTACHMENT_INDEX_BIT = 0x00000020,
+} hz_glyph_attrib_flag_t;
 
 typedef struct hz_buffer_t {
     size_t glyph_count;
-
-    // allocated internally using a vector-like generic data structure,
-    // has to be cleared in a special way.
+    hz_glyph_metrics_t *glyph_metrics;
     hz_index_t *glyph_indices;
     hz_unicode_t *codepoints;
-
-    // the following arrays are allocated using a regular allocator as
-    // contiguous fixed size blocks.
-    hz_bool has_info;
     uint16_t *glyph_classes;
     uint16_t *attachment_classes;
-
-//    hz_bool has_codepoints;
-//    hz_unicode_t *codepoints;
+    uint16_t *attachment_indices;
+    hz_glyph_attrib_flag_t attrib_flags;
 } hz_buffer_t;
 
 HZ_API const hz_buffer_t *

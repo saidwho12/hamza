@@ -19,7 +19,10 @@ elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /arch:AVX2")
 endif()
 
-set(HAMZA_SOURCES hz/hz.h hz/hz.c hz/hz_defs.h
+set(HAMZA_SOURCES
+        hz/hz.h
+        hz/hz.c
+        hz/hz_defs.h
         hz/hz_glyph_cache.h
         hz/hz_glyph_cache.c)
 
@@ -37,16 +40,45 @@ file(TO_CMAKE_PATH $ENV{VULKAN_SDK} LUNARG_SDK_ROOT)
 message("LunarG (Vulkan) SDK: ${LUNARG_SDK_ROOT}")
 set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
 
-add_executable(shaping_test "hz/backends/hz_vulkan.c" "hz/backends/hz_vulkan.h" "example/shaping_test.c" example/stb_image_write.h)
-target_link_libraries(shaping_test PRIVATE gdi32 imm32 "${LUNARG_SDK_ROOT}/Lib/vulkan-1.lib" "${GLFW_ROOT_DIR}/lib-mingw-w64/libglfw3dll.a" hamza)
-target_include_directories(shaping_test PRIVATE
+add_executable(hamza_demo "hz/backends/hz_vulkan.c" "hz/backends/hz_vulkan.h" "example/shaping_test.c" example/stb_image_write.h)
+target_link_libraries(hamza_demo PRIVATE gdi32 imm32 "${LUNARG_SDK_ROOT}/Lib/vulkan-1.lib" "${GLFW_ROOT_DIR}/lib-mingw-w64/libglfw3dll.a" hamza)
+target_include_directories(hamza_demo PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}"
         "${LUNARG_SDK_ROOT}/Include"
         "${GLFW_ROOT_DIR}/include")
 
 if (MINGW)
-    add_custom_command(TARGET shaping_test POST_BUILD
+    add_custom_command(TARGET hamza_demo POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${GLFW_ROOT_DIR}/lib-mingw-w64/glfw3.dll"
-            $<TARGET_FILE_DIR:shaping_test>)
+            $<TARGET_FILE_DIR:hamza_demo>)
 endif()
+
+# Compile GLSL shaders to SPIR-V
+set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/Bin/glslc.exe")
+
+set(SHADER_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders/")
+
+add_custom_command(
+        COMMAND
+        ${CMAKE_COMMAND} -E make_directory ${SHADER_BINARY_DIR}
+        OUTPUT ${SHADER_BINARY_DIR}
+        COMMENT "Creating ${SHADER_BINARY_DIR}"
+        )
+
+set(GLSL_SHADERS ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier-to-sdf.comp)
+
+foreach(source IN LISTS GLSL_SHADERS)
+    get_filename_component(FILENAME ${source} NAME)
+    add_custom_command(
+            COMMAND
+            ${GLSL_COMPILER} -o ${SHADER_BINARY_DIR}/${FILENAME}.spv ${source}
+            OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
+            DEPENDS ${source} ${SHADER_BINARY_DIR}
+            COMMENT "Compiling ${FILENAME}"
+            )
+
+    list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
+endforeach()
+
+add_custom_target(spv_shaders ALL DEPENDS ${SPV_SHADERS})

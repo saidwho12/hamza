@@ -11,29 +11,36 @@ extern "C" {
 #endif
 
 typedef struct hz_vulkan_renderer_t {
-    GLFWwindow *window;
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-    VkSurfaceKHR surface;
-    VkSwapchainKHR swapchain;
-    VkQueue graphicsQueue, presentQueue;
-    uint32_t swapchainImageCount;
-    VkImage *swapchainImages;
-    VkFormat swapchainImageFormat;
-    VkExtent2D swapchainExtent;
-    VkImageView *swapchainImageViews;
+    GLFWwindow *                window;
+    VkInstance                  instance;
+    VkDebugUtilsMessengerEXT    debugMessenger;
+    VkPhysicalDevice            physicalDevice;
+    VkDevice                    device;
+    VkSurfaceKHR                surface;
+    VkSwapchainKHR              swapchain;
+    VkQueue                     graphicsQueue, presentQueue, computeQueue;
+    uint32_t                    swapchainImageCount;
+    VkImage *                   swapchainImages;
+    VkFormat                    swapchainImageFormat;
+    VkExtent2D                  swapchainExtent;
+    VkImageView *               swapchainImageViews;
 
-    VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
+    VkDescriptorPool            descriptorPool;
+    VkDescriptorSet             computeDescriptorSet;
+    VkDescriptorSetLayout       descriptorSetLayout;
+    VkImage                     glyphCacheImage;
 
-    int enableDebug;
-    int enableVSync;
+
+    VkRenderPass                renderPass;
+    VkPipelineLayout            pipelineLayout;
+
+    hz_bool_t                   enableDebug, enableVSync;
 } hz_vulkan_renderer_t;
 
 hz_vulkan_renderer_t *
 hz_vulkan_renderer_create(GLFWwindow *window, int enableDebug);
+
+void hz_vulkan_render_frame(hz_vulkan_renderer_t *renderer);
 
 void
 hz_vulkan_renderer_release(hz_vulkan_renderer_t *renderer);

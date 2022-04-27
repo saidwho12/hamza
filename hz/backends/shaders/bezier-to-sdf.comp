@@ -1,0 +1,23 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout (local_size_x = 256) in;
+
+struct Extents2i {
+    int x0, y0, x1, y1;
+};
+
+layout ( set = 0, binding = 0, rgba8 ) uniform writeonly image2D targetImage;
+
+
+float cross2(in vec2 a, in vec2 b)
+{
+    return a.x*b.y - a.y*b.x;
+}
+
+void main (void)
+{
+    uint invocationX = gl_GlobalInvocationID.x;
+
+
+}

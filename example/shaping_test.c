@@ -78,9 +78,23 @@ static void mainLoop(App *app)
     }
 }
 
+typedef struct {
+    float red,green,blue,alpha;
+} Color;
+
+Color BlendOver(Color b, Color a)
+{
+    Color o;
+    o.alpha = a.alpha + b.alpha * (1.0f - a.alpha);
+    o.red = (a.red * a.alpha + b.red * (1.0f - a.alpha));
+    o.green = (a.green * a.alpha + b.green * (1.0f - a.alpha));
+    o.blue = (a.blue * a.alpha + b.blue * (1.0f - a.alpha));
+    return o;
+}
+
 void blit_image(unsigned char *dstPixels, long dstW, long dstH, unsigned char *srcPixels,
                 long xpos, long ypos,
-                long srcW, long srcH)
+                long srcW, long srcH, Color color)
 {
     for (long y = 0; y < srcH; ++y) {
         for (long x = 0; x < srcW; ++x) {
@@ -90,7 +104,22 @@ void blit_image(unsigned char *dstPixels, long dstW, long dstH, unsigned char *s
             size_t j = y * srcW + x;
             if (dx >= 0 && dx <= dstW
             && dy >= 0 && dy <= dstH) {
-                dstPixels[i] = max(dstPixels[i],srcPixels[j]);
+                Color A,B;
+
+                A.red = (float)dstPixels[i*4] / 255.0f;
+                A.green = (float)dstPixels[i*4+1] / 255.0f;
+                A.blue = (float)dstPixels[i*4+2] / 255.0f;
+                A.alpha = (float)dstPixels[i*4+3] / 255.0f;
+
+                B = color;
+                B.alpha *= (float)srcPixels[j] / 255.0f;
+
+                Color result = BlendOver(A,B);
+
+                dstPixels[i*4] = (uint8_t)(result.red * 255.0f);
+                dstPixels[i*4+1] = (uint8_t)(result.green * 255.0f);
+                dstPixels[i*4+2] = (uint8_t)(result.blue * 255.0f);
+                dstPixels[i*4+3] = (uint8_t)(result.alpha * 255.0f);
             }
         }
     }
@@ -100,38 +129,36 @@ void render_text_to_png(const char *filename,
                         stbtt_fontinfo *font,
                         const hz_buffer_t *buffer)
 {
-    float scale = stbtt_ScaleForPixelHeight(font, 300);
+    float scale = stbtt_ScaleForPixelHeight(font, 400);
     // Compute shaped glyphs axis-aligned bounding box
     int xmin = INT_MAX, ymin = INT_MAX, xmax = INT_MIN, ymax = INT_MIN;
 
     int pen_x = 0, pen_y = 0;
     for (size_t i = 0; i < buffer->glyph_count; ++i) {
         uint16_t glyph_index = buffer->glyph_indices[i];
-        /* how wide is this character */
-        int ax;
-        int lsb;
-        stbtt_GetGlyphHMetrics(font, glyph_index, &ax, &lsb);
+        hz_glyph_metrics_t *glyph_metrics = &buffer->glyph_metrics[i];
+        int32_t x_advance = glyph_metrics->x_advance;
+        int32_t y_advance = glyph_metrics->y_advance;
+        int32_t x_offset = glyph_metrics->x_offset;
+        int32_t y_offset = glyph_metrics->y_offset;
 
         int ix0,iy0,ix1,iy1;
         stbtt_GetGlyphBitmapBox(font, glyph_index,
                                 scale, scale,
-                                &ix0,&iy0,&ix1,&iy1 );
+                                &ix0,&iy0,&ix1,&iy1);
 
-        xmin = fminf(xmin, pen_x + ix0);
-        ymin = fminf(ymin, iy0);
-        xmax = fmaxf(xmax, pen_x + ix1);
-        ymax = fmaxf(ymax, iy1);
+        float bx0 = pen_x + ix0 ;//+ pen_x + roundf(x_offset * scale);
+        float bx1 = pen_x + ix1 ;//+ pen_x + roundf(x_offset * scale);
+        float by0 = pen_y + iy0 ;//+ pen_y + roundf(y_offset * scale);
+        float by1 = pen_y + iy1 ;//+ pen_y + roundf(y_offset * scale);
 
-        pen_x += roundf(ax * scale);
+        xmin = fminf(xmin, bx0);
+        ymin = fminf(ymin, by0);
+        xmax = fmaxf(xmax, bx1);
+        ymax = fmaxf(ymax, by1);
+
+        pen_x += roundf(x_advance * scale);
     }
-
-//    int rw = xmax-xmin;
-//    int rh = ymax-ymin;
-
-//    xmin -= 64;
-//    ymin -= 100;
-//    xmax += 64;
-//    ymax += 100;
 
     int ascent, descent, lineGap;
     stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
@@ -139,13 +166,19 @@ void render_text_to_png(const char *filename,
     descent = roundf(descent * scale);
 
     int w = xmax-xmin, h=(ymax-ymin)*2;
-    uint8_t *pixels = malloc(w*h);
-    memset(pixels,0,w*h);
+    uint8_t *pixels = malloc(w*h*4);
+    memset(pixels,0,w*h*4);
 
-    printf("x0: %d, y0: %d, x1: %d, y1: %d, w: %d, h: %d\n", xmin, ymin, xmax, ymax,
-           w,h);
+    for (size_t i = 0; i < w*h; ++i) {
+        pixels[i*4] = 255;
+        pixels[i*4+1] = 255;
+        pixels[i*4+2] = 255;
+        pixels[i*4+3] = 0;
+    }
 
-    pen_x = -xmin; pen_y = 0;//ymin/2;
+    printf("x0: %d, y0: %d, x1: %d, y1: %d, w: %d, h: %d\n", xmin, ymin, xmax, ymax, w, h);
+
+    pen_x = 0; pen_y = 0;//ymin/2;
 
     for (size_t i = 0; i < buffer->glyph_count; ++i) {
         uint16_t glyph_index = buffer->glyph_indices[i];
@@ -155,84 +188,86 @@ void render_text_to_png(const char *filename,
         stbtt_GetGlyphHMetrics(font, glyph_index, &ax, &lsb);
 
         if (glyph_index != 0) {
-            /* (Note that each Codepoint call has an alternative Glyph version which caches the work required to lookup the character word[i].) */
+            hz_glyph_metrics_t *glyph_metrics = &buffer->glyph_metrics[i];
+            int32_t x_advance = glyph_metrics->x_advance;
+            int32_t y_advance = glyph_metrics->y_advance;
+            int32_t x_offset = glyph_metrics->x_offset;
+            int32_t y_offset = glyph_metrics->y_offset;
 
-            /* get bounding box for character (may be offset to account for chars that dip above or below the line */
-            int c_x1, c_y1, c_x2, c_y2;
-            stbtt_GetGlyphBitmapBox(font, glyph_index, scale, scale, &c_x1, &c_y1, &c_x2, &c_y2);
+            int ix0,iy0,ix1,iy1;
+            stbtt_GetGlyphBitmapBox(font, glyph_index,
+                                    scale, scale,
+                                    &ix0,&iy0,&ix1,&iy1);
+
+            ix0 += roundf(x_offset * scale);
+            ix1 += roundf(x_offset * scale);
+            iy0 += roundf(-y_offset * scale);
+            iy1 += roundf(-y_offset * scale);
 
             /* compute y (different characters have different heights */
-            int y = pen_y + ascent + c_y1;
+            int y = pen_y + ascent + iy0;
 
             /* render character (stride and offset is important here) */
-            int byteOffset = pen_x + roundf(lsb * scale) + (y * w);
-            int dstx = pen_x + roundf(lsb * scale);
+            int dstx = pen_x + roundf((x_offset + lsb) * scale);
             int dsty = y;
 
-            int c_w = c_x2 - c_x1;
-            int c_h = c_y2 - c_y1;
+            int c_w = ix1 - ix0;
+            int c_h = iy1 - iy0;
 
             unsigned char *glyph_buffer = malloc(c_w * c_h);
 
             stbtt_MakeGlyphBitmap(font, glyph_buffer, c_w,
                                   c_h, c_w, scale, scale, glyph_index);
 
-            blit_image(pixels, w, h, glyph_buffer, dstx, dsty, c_w, c_h);
+            Color col = {0.0f,0.0f,0.0f,1.0f};
+#if 0
+            col.red = (float)(rand() % 255) / 255.0f;
+            col.green = (float)(rand() % 255) / 255.0f;
+            col.blue = (float)(rand() % 255) / 255.0f;
+#endif
+            blit_image(pixels, w, h, glyph_buffer, dstx, dsty, c_w, c_h,col);
 
             free(glyph_buffer);
+            pen_x += roundf(x_advance * scale);
         }
 
-        pen_x += roundf(ax * scale);
     }
 
-    stbi_write_png(filename, w,h,1,pixels,w);
+    for (size_t i = 0; i < w*h; ++i) {
+        pixels[i*4+3] = 255;
+    }
+
+    stbi_write_png(filename, w,h,4,pixels,w*4);
 
     free(pixels);
 }
 
-struct hz_freelist_allocator_t {
-
-    uint8_t *data;
-    size_t size;
-};
-
-
-
 int main(int argc, char *argv[]) {
-//    App app;
-//    initApp(&app);
+    App app;
+    initApp(&app);
 
     hz_setup();
 
     stbtt_fontinfo  fontinfo;
-//    load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
-//    load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
-//    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Kasheeda.ttf");
-//    load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
+//        load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
+    //    load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
+//load_font_face(&fontinfo, "../data/fonts/UthmanTN1 Ver10.otf");
+//load_font_face(&fontinfo, "../data/fonts/Amiri-Regular.ttf");
+//    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
+load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
+//load_font_face(&fontinfo, "../data/fonts/AyeshaQuran-Regular.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Devnew.ttf");
-    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
+//load_font_face(&fontinfo, "../data/fonts/NotoKufiArabic-Bold.ttf");
+//    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeNew-Regular.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeRegOT.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/Literata-Regular.ttf");
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
-#if 0
-    const char *text = "ffi, tt, ct, ft, fi, fj, The quick brown fox jumped over the lazy dog";
 
-    hz_segment_t *seg = hz_segment_create();
-    hz_segment_load_utf8(seg, text);
-    hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
-    hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
-    hz_segment_set_language(seg, hz_lang("eng"));
-#else
-
-    const char *text = "هُوَ الَّذِي أَرْسَلَ رَسُولَهُ بِالْهُدَى وَدِينِ الْحَقِّ لِيُظْهِرَهُ عَلَى الدِّينِ كُلِّهِ وَكَفَى بِاللَّهِ شَهِيدًا";
-//    const char *text= "حمزہ ایک ہلکا پھلکا، تیز اور پورٹیبل اوپن ٹائپ کی شکل دینے والی لائبریری ہے۔";
-//const char *text = "قرون الرجال الصبيان لا اله الا الله محمد رسول اللهﷺﷺﷺﷺ";
-
-//const char *text="Hamza — это легкая, быстрая и портативная библиотека форм C99 OpenType. Он построен вместе с библиотекой TrueType от stb.";
-//    const char *text = "Hamza ist eine leichtgewichtige, schnelle und portable C99 OpenType-Shaping-Bibliothek. Es wurde zusammen mit der TrueType-Bibliothek von stb erstellt.";
-//    const char *text="Das Schriftzeichen ẞ (Großbuchstabe) bzw. ß (Kleinbuchstabe) ist ein Buchstabe des deutschen Alphabets. Er wird als Eszett [ɛsˈt͜sɛt] oder scharfes S bezeichnet,[1][2]";
+    const char *text = "وتُظهر الاختبارات أن المرأة أصيبت بمتحورين مختلفين - دلتا في أواخر ديسمبر/كانون الأول، ثم أوميكرون في يناير/كانون الثاني.\n"
+                       "\n"
+                       "يقول الباحثون إن هذا يدل على أنه حتى لو سبق وأصبت من قبل بفيروس كورونا، فلا يزال من الممكن أن تصاب بالعدوى مرة أخرى حتى لو حصلت على التطعيم بالكامل.\n";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
@@ -246,19 +281,37 @@ int main(int argc, char *argv[]) {
 //    hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
 //    hz_segment_set_script(seg, HZ_SCRIPT_DEVANAGARI);
 //    hz_segment_set_language(seg, HZ_LANGUAGE_HINDI);
-#endif
+
+//    hz_feature_t features[] = {
+//        HZ_FEATURE_LOCL,
+//        HZ_FEATURE_NUKT,
+//        HZ_FEATURE_AKHN,
+//        HZ_FEATURE_RPHF,
+//        HZ_FEATURE_RKRF,
+//        HZ_FEATURE_BLWF,
+//        HZ_FEATURE_HALF,
+//        HZ_FEATURE_VATU,
+//        HZ_FEATURE_CJCT
+//    };
 
     hz_feature_t features[] = {
-//            HZ_FEATURE_CCMP,
+            HZ_FEATURE_CCMP,
             HZ_FEATURE_ISOL,
             HZ_FEATURE_FINA,
             HZ_FEATURE_MEDI,
             HZ_FEATURE_INIT,
-            HZ_FEATURE_RLIG,
+            HZ_FEATURE_RCLT,
             HZ_FEATURE_CALT,
+            HZ_FEATURE_RLIG,
             HZ_FEATURE_LIGA,
             HZ_FEATURE_DLIG,
-            HZ_FEATURE_CSWH,
+//            HZ_FEATURE_SS05,
+//            HZ_FEATURE_SS11,
+//            HZ_FEATURE_SWSH,
+            HZ_FEATURE_MARK,
+            HZ_FEATURE_MKMK,
+            HZ_FEATURE_KERN,
+//            HZ_FEATURE_CSWH,
     };
 
     hz_shape(font, seg, features, ARRAYSIZE(features));
@@ -267,6 +320,8 @@ int main(int argc, char *argv[]) {
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
     printf("glyph count: %llu\n", buffer->glyph_count);
     render_text_to_png("out.png", &fontinfo, buffer);
+
+    mainLoop(&app);
 
     hz_segment_destroy(seg);
     hz_cleanup();

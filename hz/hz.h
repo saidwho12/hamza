@@ -143,12 +143,53 @@ typedef int32_t hz_coord_t;
 typedef uint32_t hz_unicode_t;
 typedef uint32_t hz_tag_t;
 
-typedef uint32_t hz_bool;
+typedef uint32_t hz_bool_t;
 #define HZ_TRUE 1
 #define HZ_FALSE 0
 
 typedef uint16_t hz_index_t;
 typedef int32_t hz_fixed32_t, hz_position_t, hz_fixed26dot6_t;
+
+// dynamic array header
+typedef struct hz_vector_hdr_t {
+    size_t size, capacity;
+    size_t member_size;
+} hz_vector_hdr_t;
+
+void hz_vector_init(void **v, size_t member_size);
+hz_vector_hdr_t *hz_vector_header(void *v);
+hz_bool_t hz_vector_is_empty(void *v);
+void hz_vector_clear_impl(void **v);
+void hz_vector_destroy_impl(void **v);
+void hz_vector_reserve_impl(void **v, size_t new_cap);
+size_t hz_vector_size_impl(void *v);
+void hz_vector_resize_impl(void **v, size_t new_size);
+void hz_vector_grow(void **v, int extra);
+hz_bool_t hz_vector_need_grow(void *v, size_t extra);
+#define hz_vector(__T) __T *
+#define hz_vector_size(__ARR) hz_vector_size_impl((void*)(__ARR))
+#define hz_vector_resize(__ARR, __SIZE) do { hz_vector_init((void**)&(__ARR), sizeof(*(__ARR))); hz_vector_resize_impl((void**)&(__ARR), __SIZE); } while(0)
+#define hz_vector_destroy(__ARR) hz_vector_destroy_impl((void**)&(__ARR))
+#define hz_vector_reserve(__ARR, __CAPACITY) do { hz_vector_init((void**)&(__ARR), sizeof(*(__ARR))); hz_vector_reserve_impl((void**)&(__ARR), __CAPACITY); } while(0)
+#define hz_vector_clear(__ARR) hz_vector_clear_impl((void**)&(__ARR))
+#define hz_vector_push_back(__ARR, __ARRVAL) do {\
+hz_vector_init((void **)&(__ARR), sizeof(*(__ARR)));\
+if (!(__ARR) || ((__ARR) && hz_vector_need_grow(__ARR, 1))) {\
+hz_vector_grow((void **)&(__ARR),1);\
+}\
+(__ARR)[hz_vector_size(__ARR)] = __ARRVAL;\
+hz_vector_header(__ARR)->size++;\
+} while(0)
+
+#define hz_vector_push_many(__ARR, __PTR, __LEN) do {\
+hz_vector_init((void **)&(__ARR), sizeof(*(__ARR)));\
+if (!(__ARR) || ((__ARR) && hz_vector_need_grow(__ARR, __LEN))) {\
+hz_vector_grow((void **)&(__ARR), __LEN);\
+}\
+memcpy((__ARR) + hz_vector_header(__ARR)->size, __PTR, (__LEN) * sizeof((__ARR)[0]));\
+hz_vector_header(__ARR)->size += (__LEN);\
+} while(0)
+
 
 typedef struct hz_bbox_t {
     hz_position_t x0, y0, x1, y1;
@@ -293,14 +334,14 @@ typedef enum hz_glyph_attrib_flag_t {
 } hz_glyph_attrib_flag_t;
 
 typedef struct hz_buffer_t {
-    size_t glyph_count;
-    hz_glyph_metrics_t *glyph_metrics;
-    hz_index_t *glyph_indices;
-    hz_unicode_t *codepoints;
-    uint16_t *glyph_classes;
-    uint16_t *attachment_classes;
-    uint16_t *attachment_indices;
-    hz_glyph_attrib_flag_t attrib_flags;
+    size_t                  glyph_count;
+    hz_glyph_metrics_t *    glyph_metrics;
+    hz_index_t *            glyph_indices;
+    hz_unicode_t *          codepoints;
+    uint16_t *              glyph_classes;
+    uint16_t *              attachment_classes;
+    uint16_t *              attachment_indices;
+    hz_glyph_attrib_flag_t  attrib_flags;
 } hz_buffer_t;
 
 HZ_API const hz_buffer_t *

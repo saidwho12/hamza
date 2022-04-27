@@ -6,7 +6,7 @@
 #define OFFSETOF(thing, member) ((void *)&((thing*)0)->member)
 #define HZ_STATIC_ASSERT(condition) __Static_assert(condition)
 
-#define EXIT_ERROR(msg) { fprintf(stderr, "%s\n", msg); exit(-1); }
+#define EXIT_ERROR(msg) do { fprintf(stderr, "%s\n", msg); exit(-1); } while(0)
 
 
 static const char *sValidationLayers[] = {
@@ -34,7 +34,7 @@ static void hz_string_list_destroy(hz_string_list_t *list)
     free(list);
 }
 
-static hz_bool hz_string_list_empty(hz_string_list_t *list)
+static hz_bool_t hz_string_list_empty(hz_string_list_t *list)
 {
     return !list->size || list->data == NULL;
 }
@@ -128,7 +128,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverity
                                                      void* user_data)
 {
     if (message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        fprintf_s(stderr, "VALIDATION: %s\n", callback_data->pMessage);
+        fprintf_s(stderr, "VALIDATION: %s\n\n", callback_data->pMessage);
     }
 
     return VK_FALSE;
@@ -222,15 +222,17 @@ static int create_debug_messenger(hz_vulkan_renderer_t *renderer)
 }
 
 typedef struct {
-    int hasGraphicsFamily;
-    int hasPresentFamily;
+    hz_bool_t hasGraphicsFamily;
+    hz_bool_t hasPresentFamily;
+    hz_bool_t hasComputeFamily;
     uint32_t graphicsFamily;
     uint32_t presentFamily;
+    uint32_t computeFamily;
 } QueueFamilyIndices;
 
 static QueueFamilyIndices find_queue_families(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
-    QueueFamilyIndices indices;
+    QueueFamilyIndices indices = {0};
 
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, NULL);
@@ -242,15 +244,20 @@ static QueueFamilyIndices find_queue_families(VkPhysicalDevice device, VkSurface
         VkQueueFamilyProperties queueFamily = queueFamilies[i];
 
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            indices.hasGraphicsFamily = 1;
+            indices.hasGraphicsFamily = HZ_TRUE;
             indices.graphicsFamily = i;
+        }
+
+        if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            indices.hasComputeFamily = HZ_TRUE;
+            indices.computeFamily = i;
         }
 
         VkBool32 presentSupport = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
         if (presentSupport) {
-            indices.hasPresentFamily = 1;
+            indices.hasPresentFamily = HZ_TRUE;
             indices.presentFamily = i;
         }
     }
@@ -292,7 +299,7 @@ static int check_device_extension_support(VkPhysicalDevice device)
 static inline int
 queue_families_complete(const QueueFamilyIndices *indices)
 {
-    return indices->hasGraphicsFamily && indices->hasPresentFamily;
+    return indices->hasGraphicsFamily && indices->hasPresentFamily && indices->hasComputeFamily;
 }
 
 typedef struct {
@@ -546,24 +553,6 @@ static VkShaderModule create_shader_module(VkDevice device, const uint8_t *code,
     return shaderModule;
 }
 
-
-static VkPipelineLayout create_pipeline_layout(VkDevice device)
-{
-    VkPipelineLayout pipelineLayout;
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {0};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0; // Optional
-    pipelineLayoutInfo.pSetLayouts = NULL; // Optional
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = NULL; // Optional
-
-    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS) {
-        fprintf(stderr, "%s\n", "Failed to create pipeline layout!");
-    }
-
-    return pipelineLayout;
-}
-
 typedef struct {
     VkPipeline pipeline;
     VkShaderModule modules[2];
@@ -686,6 +675,94 @@ static void create_graphics_pipeline(hz_vulkan_renderer_t *renderer, const char 
     destroy_file(fragmentShaderCode);
 }
 
+typedef struct hz_rect2f_t {
+    float x0, y0, x1, y1;
+} hz_rect2f_t;
+
+typedef struct hz_color32f_t {
+    float r,g,b,a;
+} hz_color32f_t;
+
+typedef struct hz_drawable_glyph2d_t {
+    hz_rect2f_t rect;
+    hz_index_t gid;
+    hz_color32f_t color;
+    float slant;
+    float weight;
+} hz_drawable_glyph2d_t;
+
+int hz_rect_overlap_test(const hz_rect2f_t *a, const hz_rect2f_t *b)
+{
+    int qx1 = a->x1 >= b->x0;
+    int qx2 = a->x0 <= b->x1;
+    int qy1 = a->y1 >= b->y0;
+    int qy2 = a->y0 <= b->y1;
+
+    if (qx1 || qx2 || qy1 || qy2) {
+        // two rectangles are overlapping
+        return 1;
+    }
+
+    // no overlap
+    return 0;
+}
+
+void hz_frustum2d_cull_glyphs(hz_rect2f_t screenRect, hz_vector(hz_drawable_glyph2d_t) glyphs)
+{
+    // NOTE: this can be improved using a quadtree, kd-tree or other spacial partitioning structure.
+    hz_vector(hz_drawable_glyph2d_t) result;
+
+    for (size_t i = 0; i < hz_vector_size(glyphs); ++i) {
+        if (hz_rect_overlap_test(&screenRect, &glyphs[i].rect)) {
+            hz_vector_push_back(result, glyphs[i]);
+        }
+    }
+}
+
+static VkPipeline create_compute_pipeline(hz_vulkan_renderer_t *renderer,
+                                          const char *filename)
+{
+    File *shaderBin = load_entire_file(filename);
+
+    if (shaderBin->was_loaded) {
+        VkShaderModule computeShaderModule = create_shader_module(renderer->device, shaderBin->data, shaderBin->size);
+
+        // Create pipeline stage
+        VkPipelineShaderStageCreateInfo computeShaderStageInfo = {0};
+        computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        computeShaderStageInfo.module = computeShaderModule;
+        computeShaderStageInfo.pName = "main";
+
+        // Create pipeline layout
+        VkPipelineLayout pipelineLayout;
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {0};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &renderer->descriptorSetLayout;
+        pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
+        pipelineLayoutInfo.pPushConstantRanges = NULL; // Optional
+
+        if (vkCreatePipelineLayout(renderer->device, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS) {
+            fprintf(stderr, "failed to create pipeline layout!\n");
+        }
+
+        // create pipeline
+        VkPipeline pipeline;
+        VkComputePipelineCreateInfo createInfo = {0};
+        createInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        createInfo.pNext = NULL;
+        createInfo.layout = pipelineLayout;
+        createInfo.stage = computeShaderStageInfo;
+
+        if (vkCreateComputePipelines(renderer->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
+            fprintf(stderr, "failed to create compute pipeline!\n");
+        }
+    }
+
+    destroy_file(shaderBin);
+}
+
 static void create_render_pass(hz_vulkan_renderer_t *renderer)
 {
     VkAttachmentDescription colorAttachment = {0};
@@ -721,6 +798,75 @@ static void create_render_pass(hz_vulkan_renderer_t *renderer)
 
     if (vkCreateRenderPass(renderer->device, &renderPassInfo, NULL, &renderer->renderPass) != VK_SUCCESS) {
         fprintf(stderr, "%s\n", "failed to create render pass!");
+    }
+}
+
+void create_descriptor_pool(hz_vulkan_renderer_t *renderer)
+{
+    VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 }
+    };
+
+    VkDescriptorPoolCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    createInfo.maxSets = 1000;
+    createInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT ;
+    createInfo.pPoolSizes = poolSizes;
+    createInfo.poolSizeCount = ARRAYSIZE(poolSizes);
+
+    if (vkCreateDescriptorPool(renderer->device, &createInfo, NULL, &renderer->descriptorPool) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create descriptor pool!\n");
+    }
+}
+
+void create_descriptor_set_layout(hz_vulkan_renderer_t *renderer)
+{
+    // information about the binding.
+    VkDescriptorSetLayoutBinding cacheTextureBinding = {0};
+    cacheTextureBinding.binding = 0;
+    cacheTextureBinding.descriptorCount = 1;
+    cacheTextureBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    cacheTextureBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    createInfo.bindingCount = 1;
+    createInfo.pBindings = &cacheTextureBinding;
+    createInfo.flags = 0;
+
+    if (vkCreateDescriptorSetLayout(renderer->device, &createInfo, NULL, &renderer->descriptorSetLayout) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create descriptor set layout!\n");
+    }
+}
+
+//void update_glyph_cache_descriptors(VkCommandBuffer cmd)
+//{
+//    VkWriteDescriptorSet write;
+//
+//
+//}
+
+HZ_STATIC void create_glyph_cache_texture(hz_vulkan_renderer_t *renderer, uint32_t width, uint32_t height)
+{
+    VkImageCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    createInfo.flags = 0;
+    createInfo.imageType = VK_IMAGE_TYPE_2D;
+    createInfo.extent.width = width;
+    createInfo.extent.height = height;
+    createInfo.extent.depth = 1;
+    createInfo.mipLevels = 1;
+    createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    createInfo.arrayLayers = 1;
+    createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    createInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+
+    if (vkCreateImage(renderer->device, &createInfo, NULL, &renderer->glyphCacheImage) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create target image!\n");
     }
 }
 
@@ -805,6 +951,7 @@ hz_vulkan_renderer_create(GLFWwindow *window, int enableDebug)
 
     vkGetDeviceQueue(renderer->device, indices.graphicsFamily, 0, &renderer->graphicsQueue);
     vkGetDeviceQueue(renderer->device, indices.presentFamily, 0, &renderer->presentQueue);
+    vkGetDeviceQueue(renderer->device, indices.computeFamily, 0, &renderer->computeQueue);
 
     // Create swapchain
     create_swapchain(window, renderer);
@@ -816,12 +963,19 @@ hz_vulkan_renderer_create(GLFWwindow *window, int enableDebug)
     // Create swapchain image views
     create_swapchain_image_views(renderer);
 
-
     // Create render pass
     create_render_pass(renderer);
 
     // Create graphics pipeline
-    create_graphics_pipeline(renderer, "data/shaders/vert-shader.glsl", "data/shaders/frag-shader.glsl");
+//    create_graphics_pipeline(renderer, "./data/shaders/vert-shader.spv", "./data/shaders/frag-shader.spv");
+
+
+    // Create compute pipeline
+    create_descriptor_pool(renderer);
+    create_descriptor_set_layout(renderer);
+    create_compute_pipeline(renderer, "./shaders/bezier-to-sdf.comp.spv");
+
+    create_glyph_cache_texture(renderer, 1024, 1024);
 
     return renderer;
 }

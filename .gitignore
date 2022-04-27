@@ -14,7 +14,6 @@
 # Folders
 ./deps/
 ./unicode/
-./misc/
 
 # Prerequisites
 *.d

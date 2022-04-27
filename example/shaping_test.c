@@ -169,10 +169,16 @@ void render_text_to_png(const char *filename,
     uint8_t *pixels = malloc(w*h*4);
     memset(pixels,0,w*h*4);
 
+
+    Color clearColor = {77.0f/255.0f,
+                        104.0f/255.0f,
+                        147.0f/255.0f,
+                        1.0f};
+
     for (size_t i = 0; i < w*h; ++i) {
-        pixels[i*4] = 255;
-        pixels[i*4+1] = 255;
-        pixels[i*4+2] = 255;
+        pixels[i*4] = clearColor.red * 255.0f;
+        pixels[i*4+1] = clearColor.green * 255.0f;
+        pixels[i*4+2] = clearColor.blue * 255.0f;
         pixels[i*4+3] = 0;
     }
 
@@ -219,7 +225,11 @@ void render_text_to_png(const char *filename,
             stbtt_MakeGlyphBitmap(font, glyph_buffer, c_w,
                                   c_h, c_w, scale, scale, glyph_index);
 
-            Color col = {0.0f,0.0f,0.0f,1.0f};
+            Color col = {138.0f/255.0f, 176.0f/255.0f, 238.0f/255.0f, 1.0f};
+
+//            if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
+//                col = (Color){42.0f/255.0f,52.0f/255.0f,99.0f/255.0f,1.0f};
+//            }
 #if 0
             col.red = (float)(rand() % 255) / 255.0f;
             col.green = (float)(rand() % 255) / 255.0f;
@@ -265,9 +275,10 @@ load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-    const char *text = "وتُظهر الاختبارات أن المرأة أصيبت بمتحورين مختلفين - دلتا في أواخر ديسمبر/كانون الأول، ثم أوميكرون في يناير/كانون الثاني.\n"
-                       "\n"
-                       "يقول الباحثون إن هذا يدل على أنه حتى لو سبق وأصبت من قبل بفيروس كورونا، فلا يزال من الممكن أن تصاب بالعدوى مرة أخرى حتى لو حصلت على التطعيم بالكامل.\n";
+//    const char *text = "وتُظهر الاختبارات أن المرأة أصيبت بمتحورين مختلفين - دلتا في أواخر ديسمبر/كانون الأول، ثم أوميكرون في يناير/كانون الثاني.\n"
+//                       "\n"
+//                       "يقول الباحثون إن هذا يدل على أنه حتى لو سبق وأصبت من قبل بفيروس كورونا، فلا يزال من الممكن أن تصاب بالعدوى مرة أخرى حتى لو حصلت على التطعيم بالكامل.\n";
+const char *text = "كان لابن الهيثم إسهامات جليلة في مجال البصريات والفيزياء والتجارب العلمية، كما كانت مساهماته في علوم الفيزياء بصفة عامة وعلم البصريات خاصةً، محل تقدير وأساس لبداية حقبة جديدة في مجال أبحاث البصريات نظريًا وعمليًا. تركزت أبحاثه في البصريات على دراسة النظم البصرية باستخدام المرايا وخاصة على المرايا الكروية والمقعرة والزيغ الكروي، كما أثبت أن النسبة بين زاوية السقوط وزاوية الانكسار ليست متساوية، كما قدم عددًا من الأبحاث حول قوى تكبير العدسات.";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
@@ -306,7 +317,7 @@ load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
             HZ_FEATURE_LIGA,
             HZ_FEATURE_DLIG,
 //            HZ_FEATURE_SS05,
-//            HZ_FEATURE_SS11,
+            HZ_FEATURE_SS12,
 //            HZ_FEATURE_SWSH,
             HZ_FEATURE_MARK,
             HZ_FEATURE_MKMK,

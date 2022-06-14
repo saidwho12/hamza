@@ -6163,11 +6163,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
     hz_lookup_table_t *table = &gsub_table->lookups[lookup_index];
     hz_face_t *face = hz_font_get_face(plan->font);
 
-    if (feature == HZ_FEATURE_CALT && depth ==1 ) {
-        printf("Hello\n");
-        printf("depth: %d type: %d flags: 0h%04x\n", depth, table->lookup_type, table->lookup_flag);
-    }
-
     // copy segment glyph ids and info into a read-only buffer
     hz_buffer_t *b1, *b2;
     b1 = hz_buffer_create();

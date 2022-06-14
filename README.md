@@ -5,7 +5,7 @@ portable and optimized shaper that's easy to integrate into an existing project.
 Originally Hamza was a research project to learn about font shaping for an Arabic calligraphy software I had in mind.
 Later, with much research and work I have only developed more fascination with the general shaping process and possible strategies of optimization.
 
-![rendering of some simple Arabic with "Omar-Naskh" font](misc/simple-arabic.png)
+![Arabic rendered with the complex font "Omar-Naskh"](misc/simple-arabic.png)     
 
 ## Objective
 * Keep the library as a whole excluding backends and auto-generated tables under 10k SLOC.

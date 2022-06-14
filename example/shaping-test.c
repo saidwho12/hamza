@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include <hz/hz.h>
-#include <hz/backends/hz_vulkan.h>
+#include <hz/backends/hz-vulkan.h>
 #include <minmax.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -12,7 +12,7 @@
 
 typedef struct {
     GLFWwindow *window;
-    hz_vulkan_renderer_t *renderer;
+    hz_vk_context_t *vkContext;
 } App;
 
 static void exitApp(App *app)
@@ -41,7 +41,7 @@ static void initApp(App *app)
 
     glfwSwapInterval(0);
 
-    app->renderer = hz_vulkan_renderer_create(app->window, 1);
+    app->vkContext = hz_vk_context_create(app->window, 1);
 }
 
 static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
@@ -74,6 +74,7 @@ static void mainLoop(App *app)
 {
     while (!glfwWindowShouldClose(app->window)) {
         glfwPollEvents();
+        hz_vk_render_frame(app->vkContext);
         glfwSwapBuffers(app->window);
     }
 }
@@ -129,7 +130,7 @@ void render_text_to_png(const char *filename,
                         stbtt_fontinfo *font,
                         const hz_buffer_t *buffer)
 {
-    float scale = stbtt_ScaleForPixelHeight(font, 400);
+    float scale = stbtt_ScaleForPixelHeight(font, 450);
     // Compute shaped glyphs axis-aligned bounding box
     int xmin = INT_MAX, ymin = INT_MAX, xmax = INT_MIN, ymax = INT_MIN;
 
@@ -145,17 +146,20 @@ void render_text_to_png(const char *filename,
         int ix0,iy0,ix1,iy1;
         stbtt_GetGlyphBitmapBox(font, glyph_index,
                                 scale, scale,
-                                &ix0,&iy0,&ix1,&iy1);
+                                &ix0, &iy0, &ix1, &iy1);
 
         float bx0 = pen_x + ix0 ;//+ pen_x + roundf(x_offset * scale);
         float bx1 = pen_x + ix1 ;//+ pen_x + roundf(x_offset * scale);
         float by0 = pen_y + iy0 ;//+ pen_y + roundf(y_offset * scale);
         float by1 = pen_y + iy1 ;//+ pen_y + roundf(y_offset * scale);
 
-        xmin = fminf(xmin, bx0);
-        ymin = fminf(ymin, by0);
-        xmax = fmaxf(xmax, bx1);
-        ymax = fmaxf(ymax, by1);
+        float xx = roundf(x_offset * scale);
+        float yy = roundf(y_offset * scale);
+
+        xmin = fminf(xmin, bx0+xx);
+        ymin = fminf(ymin, by0+yy);
+        xmax = fmaxf(xmax, bx1+xx);
+        ymax = fmaxf(ymax, by1+yy);
 
         pen_x += roundf(x_advance * scale);
     }
@@ -170,9 +174,9 @@ void render_text_to_png(const char *filename,
     memset(pixels,0,w*h*4);
 
 
-    Color clearColor = {77.0f/255.0f,
-                        104.0f/255.0f,
-                        147.0f/255.0f,
+    Color clearColor = {1.0f,//77.0f/255.0f,
+                        1.0f,//104.0f/255.0f,
+                        1.0f,//147.0f/255.0f,
                         1.0f};
 
     for (size_t i = 0; i < w*h; ++i) {
@@ -225,15 +229,26 @@ void render_text_to_png(const char *filename,
             stbtt_MakeGlyphBitmap(font, glyph_buffer, c_w,
                                   c_h, c_w, scale, scale, glyph_index);
 
-            Color col = {138.0f/255.0f, 176.0f/255.0f, 238.0f/255.0f, 1.0f};
+            Color col = {0.214f,//138.0f/255.0f,
+                         0.214f,//176.0f/255.0f,
+                         0.214f,//238.0f/255.0f,
+                         1.0f};
+#if 0
+            if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
+                col = (Color){0.53f,0.15f,.45f,1.0f};
+            }
 
+            if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_LIGATURE) {
+                col = (Color){0.95f,0.85f,.25f,1.0f};
+            }
+#endif
 //            if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
 //                col = (Color){42.0f/255.0f,52.0f/255.0f,99.0f/255.0f,1.0f};
 //            }
 #if 0
-            col.red = (float)(rand() % 255) / 255.0f;
-            col.green = (float)(rand() % 255) / 255.0f;
-            col.blue = (float)(rand() % 255) / 255.0f;
+            col.red = (float)(rand() % 255) / 255.0f * .7f;
+            col.green = (float)(rand() % 255) / 255.0f * .7f;
+            col.blue = (float)(rand() % 255) / 255.0f * .7f;
 #endif
             blit_image(pixels, w, h, glyph_buffer, dstx, dsty, c_w, c_h,col);
 
@@ -253,32 +268,38 @@ void render_text_to_png(const char *filename,
 }
 
 int main(int argc, char *argv[]) {
-    App app;
-    initApp(&app);
 
     hz_setup();
 
     stbtt_fontinfo  fontinfo;
-//        load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
-    //    load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
+//    load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
+//        load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
 //load_font_face(&fontinfo, "../data/fonts/UthmanTN1 Ver10.otf");
 //load_font_face(&fontinfo, "../data/fonts/Amiri-Regular.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
-load_font_face(&fontinfo, "../data/fonts/OmarNaskh-Regular.ttf");
+load_font_face(&fontinfo, "../data/fonts/Quran/OmarNaskh-Light.ttf");
+//load_font_face(&fontinfo, "../data/fonts/arabic-ejaza.ttf");
 //load_font_face(&fontinfo, "../data/fonts/AyeshaQuran-Regular.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Devnew.ttf");
 //load_font_face(&fontinfo, "../data/fonts/NotoKufiArabic-Bold.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
+//    load_font_face(&fontinfo,"../data/fonts/Quran/AyeshaNaskh-ExtraLight.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeNew-Regular.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeRegOT.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/Literata-Regular.ttf");
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-//    const char *text = "وتُظهر الاختبارات أن المرأة أصيبت بمتحورين مختلفين - دلتا في أواخر ديسمبر/كانون الأول، ثم أوميكرون في يناير/كانون الثاني.\n"
-//                       "\n"
-//                       "يقول الباحثون إن هذا يدل على أنه حتى لو سبق وأصبت من قبل بفيروس كورونا، فلا يزال من الممكن أن تصاب بالعدوى مرة أخرى حتى لو حصلت على التطعيم بالكامل.\n";
-const char *text = "كان لابن الهيثم إسهامات جليلة في مجال البصريات والفيزياء والتجارب العلمية، كما كانت مساهماته في علوم الفيزياء بصفة عامة وعلم البصريات خاصةً، محل تقدير وأساس لبداية حقبة جديدة في مجال أبحاث البصريات نظريًا وعمليًا. تركزت أبحاثه في البصريات على دراسة النظم البصرية باستخدام المرايا وخاصة على المرايا الكروية والمقعرة والزيغ الكروي، كما أثبت أن النسبة بين زاوية السقوط وزاوية الانكسار ليست متساوية، كما قدم عددًا من الأبحاث حول قوى تكبير العدسات.";
+//    const char *text = "الحَمْدُ لِلَّه رب العالمين";
+//const char *text = "AT AV AW AY Av Aw Ay \n"
+//                   "\n"
+//                   "Fa Fe Fo Kv Kw Ky LO \n"
+//                   "\n"
+//                   "LV LY PA Pa Pe Po TA \n"
+//                   "\n"
+//                   "Hello, World! How's it going today?";
+
+    const char *text = "وَدَّ كَثِيرٌ مِّنْ أَهْلِ ٱلْكِتَـٰبِ لَوْ يَرُدُّونَكُم مِّنۢ بَعْدِ إِيمَـٰنِكُمْ كُفَّارًا حَسَدًا مِّنْ عِندِ أَنفُسِهِم مِّنۢ بَعْدِ مَا تَبَيَّنَ لَهُمُ ٱلْحَقُّ ۖ فَٱعْفُوا۟ وَٱصْفَحُوا۟ حَتَّىٰ يَأْتِىَ ٱللَّهُ بِأَمْرِهِۦٓ ۗ إِنَّ ٱللَّهَ عَلَىٰ كُلِّ شَىْءٍ قَدِيرٌ";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
@@ -307,6 +328,8 @@ const char *text = "كان لابن الهيثم إسهامات جليلة في 
 
     hz_feature_t features[] = {
             HZ_FEATURE_CCMP,
+//            HZ_FEATURE_RVRN,
+//            HZ_FEATURE_LOCL,
             HZ_FEATURE_ISOL,
             HZ_FEATURE_FINA,
             HZ_FEATURE_MEDI,
@@ -314,25 +337,30 @@ const char *text = "كان لابن الهيثم إسهامات جليلة في 
             HZ_FEATURE_RCLT,
             HZ_FEATURE_CALT,
             HZ_FEATURE_RLIG,
-            HZ_FEATURE_LIGA,
-            HZ_FEATURE_DLIG,
-//            HZ_FEATURE_SS05,
-            HZ_FEATURE_SS12,
-//            HZ_FEATURE_SWSH,
+//            HZ_FEATURE_MSET,
+//            HZ_FEATURE_CLIG,
+//            HZ_FEATURE_LIGA,
+//            HZ_FEATURE_SS07,
+//            HZ_FEATURE_SS12,
+            HZ_FEATURE_KERN,
+            HZ_FEATURE_CURS,
             HZ_FEATURE_MARK,
             HZ_FEATURE_MKMK,
-            HZ_FEATURE_KERN,
 //            HZ_FEATURE_CSWH,
     };
 
-    hz_shape(font, seg, features, ARRAYSIZE(features));
-//    hz_shape(font, seg, NULL, 0);
+    hz_shape(font, seg, features, ARRAYSIZE(features), 0);
+//    hz_shape(font, seg, NULL, 0, HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES);
+//hz_shape(font, seg, NULL, 0, 0);
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
     printf("glyph count: %llu\n", buffer->glyph_count);
     render_text_to_png("out.png", &fontinfo, buffer);
 
-    mainLoop(&app);
+
+//    App app;
+//    initApp(&app);
+//    mainLoop(&app);
 
     hz_segment_destroy(seg);
     hz_cleanup();

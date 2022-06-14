@@ -1,6 +1,3 @@
-
-
-
 # Hamza
 
 Hamza is a light-weight, fast and portable C99 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's built alongside the [stb_truetype.h](https://github.com/nothings/stb) TrueType library. It's designed to be a small, 
@@ -53,6 +50,8 @@ Later, with much research and work I have only developed more fascination with t
 - [ ] Thaana
 - [ ] Thai
 - [ ] Tibetan
+
+
 
 ## Misc
 Developed and maintained by Saïd Metiche.

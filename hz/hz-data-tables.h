@@ -1,5 +1,5 @@
-#ifndef HZ_DEFS_H
-#define HZ_DEFS_H
+#ifndef HZ_DATA_TABLES_H
+#define HZ_DATA_TABLES_H
 
 
 typedef enum hz_language_t {
@@ -2621,4 +2621,4 @@ static const hz_arabic_joining_entry_t hz_arabic_joining_list[] = {
     { 0x1E94B, "ADLAM NASALIZATION MARK", JOINING_TYPE_T | NO_JOINING_GROUP },
 };
 
-#endif /* HZ_DEFS_H */
+#endif /* HZ_DATA_TABLES_H */

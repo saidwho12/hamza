@@ -29,8 +29,8 @@
 #pragma warning(disable:4068) /* disable #pragma related warnings */
 #define _CRT_SECURE_NO_WARNINGS
 #endif
-#include <stdio.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
@@ -233,7 +233,7 @@ typedef enum hz_glyph_class_t {
 } hz_glyph_class_t;
 
 /* include tables, types, and functions and other generated code */
-#include "hz_defs.h"
+#include "hz-data-tables.h"
 
 typedef void *(*HZMALLOCFN)(size_t);
 typedef void (*HZFREEFN)(void *);
@@ -428,6 +428,12 @@ typedef enum hz_gpos_lookup_type_t {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
+typedef enum hz_shape_flags_t {
+    HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES = 0x00000001,
+    HZ_SHAPE_FLAG_REMOVE_MARKS = 0x00000002,
+    HZ_SHAPE_FLAG_REMOVE_BASES = 0x00000004
+} hz_shape_flags_t;
+
 HZ_API int hz_setup (void);
 
 HZ_API int hz_cleanup (void);
@@ -512,12 +518,14 @@ hz_stbtt_font_create(stbtt_fontinfo *info);
  *      seg - Pointer to segment of text.
  *      features - Array of features to apply.
  *      num_features - Number of features.
+ *      shape_flags - Shaping flags.
  */
 HZ_API void
 hz_shape(hz_font_t *font,
          hz_segment_t *seg,
          const hz_feature_t *features,
-         unsigned int num_features);
+         unsigned int num_features,
+         hz_shape_flags_t shape_flags);
 
 #ifdef __cplusplus
 };

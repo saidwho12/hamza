@@ -21,5 +21,12 @@ hz_glyph_cache_create();
 HZ_API void
 hz_glyph_cache_destroy(hz_glyph_cache_t *glyph_cache);
 
+typedef struct hz_glyph_cache_config_t {
+    int width;
+    int height;
+    int grid_divisions;
+    float distance_scale;
+    float margin;
+} hz_glyph_cache_config_t;
 
 #endif /* HZ_GLYPH_CACHE_H */

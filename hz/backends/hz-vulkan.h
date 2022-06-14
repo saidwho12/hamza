@@ -5,12 +5,14 @@
 #include <GLFW/glfw3.h>
 
 #include <hz/hz.h>
+#include <hz/hz-glyph-cache.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct hz_vulkan_renderer_t {
+
+typedef struct hz_vk_context_t {
     GLFWwindow *                window;
     VkInstance                  instance;
     VkDebugUtilsMessengerEXT    debugMessenger;
@@ -26,24 +28,28 @@ typedef struct hz_vulkan_renderer_t {
     VkImageView *               swapchainImageViews;
 
     VkDescriptorPool            descriptorPool;
-    VkDescriptorSet             computeDescriptorSet;
-    VkDescriptorSetLayout       descriptorSetLayout;
+    VkDescriptorSet *           computeDescriptorSets;
+    size_t                      computeDescriptorSetCount;
+
+    VkDescriptorSetLayout       setLayout;
     VkImage                     glyphCacheImage;
 
+    VkCommandPool               computeCmdPool;
+    VkCommandBuffer             computeCmdBuffer;
 
     VkRenderPass                renderPass;
     VkPipelineLayout            pipelineLayout;
+    VkPipeline                  computePipeline;
 
     hz_bool_t                   enableDebug, enableVSync;
-} hz_vulkan_renderer_t;
+} hz_vk_context_t;
 
-hz_vulkan_renderer_t *
-hz_vulkan_renderer_create(GLFWwindow *window, int enableDebug);
+hz_vk_context_t *
+hz_vk_context_create(GLFWwindow *window, int enableDebug);
 
-void hz_vulkan_render_frame(hz_vulkan_renderer_t *renderer);
+void hz_vk_render_frame(hz_vk_context_t *ctx);
 
-void
-hz_vulkan_renderer_release(hz_vulkan_renderer_t *renderer);
+void hz_vk_context_destroy(hz_vk_context_t *ctx);
 
 #ifdef __cplusplus
 };

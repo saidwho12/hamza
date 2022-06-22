@@ -7,8 +7,6 @@
 *.xhtml
 
 # Docs folder
-./docs/
-./ND/
 ./data/
 
 # Folders

@@ -1,0 +1,1 @@
+﻿NDSearch.OnPrefixDataLoaded("hzs",["Function","Struct"],[["HzSegment",,[[,,,,0,"File:hz.h:HzSegment"]]],["hzShapePlanApplyGSUBLookup",,[["hz_segment_t",,,,0,"File:hz.c:hz_segment_t.hzShapePlanApplyGSUBLookup","CClass:hz_segment_t:hzShapePlanApplyGSUBLookup"]]],["HzStream",,[[,,,,1,"File:hz.c:HzStream","CClass:HzStream"]]]]);

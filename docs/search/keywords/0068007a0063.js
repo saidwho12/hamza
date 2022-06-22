@@ -1,0 +1,1 @@
+﻿NDSearch.OnPrefixDataLoaded("hzc",["Enumeration"],[["HzCmapPlatform",,[["hz_segment_t",,,,0,"File:hz.c:hz_segment_t.HzCmapPlatform","CClass:hz_segment_t:HzCmapPlatform"]]]]);

@@ -1,0 +1,64 @@
+#NDHeader {
+    background-color: #565656;
+}
+
+body.NDHomePage {
+    background-color: #E0E0E0;
+    background-image: -moz-linear-gradient(top,#565656,#E0E0E0);
+    background-image: -webkit-gradient(linear,left top,left bottom,from(#565656),to(#E0E0E0));
+    background-image: -o-linear-gradient(top,#565656,#E0E0E0);
+    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#565656',endColorstr='#E0E0E0',GradientType=0 );
+    background-image: -ms-linear-gradient(top,#565656 0%,#E0E0E0 100%);
+    background-image: linear-gradient(top,#565656,#E0E0E0);
+}
+
+/*.CTopic {
+    font: 10pt "Times New Roman";
+}
+*/
+
+#NDSearchField {
+    border-radius: 0;
+}
+
+#NDFooter {
+    font: 8pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
+}
+
+.CDLEntry {
+    font: bold 10pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
+}
+
+.CHeading {
+    font: bold 11pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
+    margin: 1.2em 0 .5em 0;
+}
+
+.CTitle {
+    font: bold 14pt "Trebuchet MS",Tahoma,Geneva,sans-serif;
+}
+
+
+/*.CStyle {
+    font:  10pt Monospace,"Noto Mono";
+}*/
+
+.NDPrototype {
+    font: 11pt "Courier New","Courier","Monospace","Consolas","Menlo-Regular";
+}
+
+/* Code block */
+.CTopic pre {
+    font: 11pt "Courier New","Courier","Monospace","Consolas","Menlo-Regular";
+}
+
+.CDLParameterType {
+    font: 8pt Monospace,"Noto Mono";
+    white-space: nowrap;
+}
+
+/*.SHKeyword {*/
+/*   color: #0000AF;*/
+/*   font-style: italic;*/
+/*}*/
+

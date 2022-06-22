@@ -3,23 +3,23 @@
 
 #include "hz.h"
 
-typedef enum hz_cache_replacement_policy_t {
+typedef enum {
     HZ_CACHE_REPLACEMENT_POLICY_2Q,
     HZ_CACHE_REPLACEMENT_POLICY_LRU,
     HZ_CACHE_REPLACEMENT_POLICY_PSEUDO_LRU,
     HZ_CACHE_REPLACEMENT_POLICY_LFU,
     HZ_CACHE_REPLACEMENT_POLICY_FIFO
-} hz_cache_replacement_policy_t;
+} HzCacheReplacementPolicy;
 
-typedef struct hz_glyph_cache_t {
-    hz_cache_replacement_policy_t policy;
-} hz_glyph_cache_t;
+typedef struct {
+    HzCacheReplacementPolicy policy;
+} HzGlyphCache;
 
-HZ_API hz_glyph_cache_t *
-hz_glyph_cache_create();
+HZDECL HzGlyphCache *
+hzGlyphCacheCreate();
 
-HZ_API void
-hz_glyph_cache_destroy(hz_glyph_cache_t *glyph_cache);
+HZDECL void
+hzGlyphCacheDestroy(HzGlyphCache *glyph_cache);
 
 typedef struct hz_glyph_cache_config_t {
     int width;

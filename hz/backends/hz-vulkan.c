@@ -914,10 +914,17 @@ static void create_render_pass(HzImplVulkan *ctx)
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
 
-
     // create subpass dependency
+    VkSubpassDependency dependency = {0};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     
-    
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
 
     if (vkCreateRenderPass(ctx->device, &renderPassInfo, NULL, &ctx->renderPass) != VK_SUCCESS) {
         fprintf(stderr, "%s\n", "failed to create render pass!");
@@ -1281,7 +1288,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
 
     if (!create_instance(impl)) {
         fprintf_s(stderr, "%s\n", "failed to create Instance.");
-        hz_impl_vulkan_terminate(impl);
+        hz_vk_terminate(impl);
         return NULL;
     }
 
@@ -1290,7 +1297,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     if (impl->enableDebug) {
         if (!create_debug_messenger(impl)) {
             fprintf_s(stderr, "%s\n", "failed to create debug messenger!");
-            hz_impl_vulkan_terminate(impl);
+            hz_vk_terminate(impl);
             return NULL;
         }
 
@@ -1300,7 +1307,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     // Create window surface
     if (glfwCreateWindowSurface(impl->instance, window, NULL, &impl->surface) != VK_SUCCESS) {
         fprintf_s(stderr, "%s\n", "failed to create vulkan surface!");
-        hz_impl_vulkan_terminate(impl);
+        hz_vk_terminate(impl);
         return NULL;
     }
 
@@ -1420,7 +1427,8 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     return impl;
 }
 
-#define WORKGROUP_SIZE 256
+#define WORKGROUP_SIZE_X 16
+#define WORKGROUP_SIZE_Y 16
 
 void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHeight)
 {
@@ -1442,8 +1450,8 @@ void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHe
     vkCmdBindDescriptorSets(impl->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl->pipelineLayout, 0,
                             1, impl->computeDescriptorSets, 0, NULL);
 
-    uint32_t groupCountX = ((textureWidth) / WORKGROUP_SIZE) + 1;
-    uint32_t groupCountY = ((textureHeight) / WORKGROUP_SIZE) + 1;
+    uint32_t groupCountX = ((textureWidth) / WORKGROUP_SIZE_X) + 1;
+    uint32_t groupCountY = ((textureHeight) / WORKGROUP_SIZE_Y) + 1;
 
     vkCmdDispatch(impl->computeCmdBuffer, groupCountX, groupCountY, 1);
     vkEndCommandBuffer(impl->computeCmdBuffer);
@@ -1451,8 +1459,6 @@ void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHe
 
 void record_graphics_command_buffer(HzImplVulkan *impl, VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
-    vkResetCommandBuffer(commandBuffer,0);
-
     VkCommandBufferBeginInfo beginInfo = {0};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.pInheritanceInfo = NULL;
@@ -1484,8 +1490,11 @@ void record_graphics_command_buffer(HzImplVulkan *impl, VkCommandBuffer commandB
 }
 
 void
-hz_impl_vulkan_render_frame(HzImplVulkan *impl)
+hz_vk_render_frame(HzImplVulkan *impl)
 {
+    vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(impl->device, 1, &impl->inFlightFence);
+        
     uint32_t imageIndex;
     vkAcquireNextImageKHR(impl->device, impl->swapchain, UINT64_MAX,
                           impl->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
@@ -1516,9 +1525,9 @@ hz_impl_vulkan_render_frame(HzImplVulkan *impl)
     }
 #endif
 
-    {
-        // DEBUG RENDER FULLSCREEN TRIANGLE TO DISPLAY GLYPH CACHE IMAGE
-        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, 0);
+    {   
+        vkResetCommandBuffer(impl->graphicsCmdBuffer, 0);
+        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, imageIndex);
 
         VkSubmitInfo submitInfo = {0};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1527,14 +1536,15 @@ hz_impl_vulkan_render_frame(HzImplVulkan *impl)
         submitInfo.waitSemaphoreCount = HZ_ARRLEN(waitSemaphores);
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
+
+        VkCommandBuffer commandBuffers[] = {impl->graphicsCmdBuffer};
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &impl->graphicsCmdBuffer;
+        submitInfo.pCommandBuffers = commandBuffers;
         VkSemaphore signalSemaphores[] = {impl->renderFinishedSemaphore};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
         vkQueueSubmit(impl->graphicsQueue, 1, &submitInfo, impl->inFlightFence);
-        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
 
         VkPresentInfoKHR presentInfo = {0};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1542,7 +1552,7 @@ hz_impl_vulkan_render_frame(HzImplVulkan *impl)
         presentInfo.pWaitSemaphores = signalSemaphores;
         VkSwapchainKHR swapChains[] = {impl->swapchain};
         presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapChains;
+        presentInfo.pSwapchains = swapChains; 
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = NULL; // Optional
 
@@ -1551,7 +1561,7 @@ hz_impl_vulkan_render_frame(HzImplVulkan *impl)
 }
 
 void
-hz_impl_vulkan_terminate(HzImplVulkan *impl)
+hz_vk_terminate(HzImplVulkan *impl)
 {
     vkDestroyPipelineLayout(impl->device, impl->pipelineLayout, NULL);
 

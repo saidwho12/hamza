@@ -1,8 +1,8 @@
 #ifndef HZ_DATA_TABLES_H
 #define HZ_DATA_TABLES_H
 
-
-typedef enum hz_language_t {
+/* enum: HzLanguage */
+typedef enum {
     HZ_LANGUAGE_DFLT,
     HZ_LANGUAGE_ABAZA, /* Abaza */ 
     HZ_LANGUAGE_ABKHAZIAN, /* Abkhazian */ 
@@ -616,14 +616,14 @@ typedef enum hz_language_t {
     HZ_LANGUAGE_ZAZAKI, /* Zazaki */ 
 } hz_language_t;
 
-typedef struct hz_language_map_t {
+typedef struct {
     hz_language_t language;
     const char *language_name;
     hz_tag_t tag;
     const char *codes;
-} hz_language_map_t;
+} HzLanguageMap;
 
-static const hz_language_map_t language_map_list[] = {
+static const HzLanguageMap language_map_list[] = {
     {HZ_LANGUAGE_ABAZA, "Abaza", HZ_TAG('A','B','A',' '), "abq"}, /* Abaza */
     {HZ_LANGUAGE_ABKHAZIAN, "Abkhazian", HZ_TAG('A','B','K',' '), "abk"}, /* Abkhazian */
     {HZ_LANGUAGE_ACHOLI, "Acholi", HZ_TAG('A','C','H',' '), "ach"}, /* Acholi */
@@ -1239,11 +1239,12 @@ static const hz_language_map_t language_map_list[] = {
 
 
 /*
- * Registered Features
- * https://docs.microsoft.com/en-us/typography/opentype/spec/featurelist
+ *  enum: HzFeature
+ *      Registered Features
+ *      https://docs.microsoft.com/en-us/typography/opentype/spec/featurelist
  *
  */
-typedef enum hz_feature_t {
+typedef enum {
     HZ_FEATURE_AALT = 0, /* Access All Alternates */
     HZ_FEATURE_ABVF = 1, /* Above-base forms */
     HZ_FEATURE_ABVM = 2, /* Above-base Mark Positioning */

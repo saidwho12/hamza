@@ -2,5 +2,5 @@
 
 import os
 
-# os.system("mono ~/Natural\ Docs/NaturalDocs.exe -p ./nd-config -i . -o HTML ./docs")
-os.system("mono ~/Natural\ Docs/NaturalDocs.exe ./nd-config")
+print(os.name)
+os.system("\"C:\\Program Files (x86)\\Natural Docs\\NaturalDocs.exe\" -p .\\nd-project -i .\\hz -o HTML .\\docs")

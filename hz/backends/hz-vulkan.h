@@ -16,9 +16,9 @@ typedef struct HzImplVulkan HzImplVulkan;
 
 HzImplVulkan *hz_vk_create_impl(GLFWwindow *window, int enableDebug);
 
-void hz_impl_vulkan_render_frame(HzImplVulkan *impl);
+void hz_vk_render_frame(HzImplVulkan *impl);
 
-void hz_impl_vulkan_terminate(HzImplVulkan *impl);
+void hz_vk_terminate(HzImplVulkan *impl);
 
 void hz_vk_wait_idle(HzImplVulkan *impl);
 

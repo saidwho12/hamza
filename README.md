@@ -51,7 +51,8 @@ Later, with much research and work I have only developed more fascination with t
 - [ ] Thai
 - [ ] Tibetan
 
-
+## Usage
+For usage of API functions, check `hz.h` and respective files. There is also documentation at <https://saidwho13.github.io/hamza/>.
 
 ## Misc
 Developed and maintained by Saïd Metiche.

@@ -9,6 +9,67 @@
 
 #define EXIT_ERROR(msg) do { fprintf(stderr, "%s\n", msg); exit(-1); } while(0)
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
+
+typedef struct {
+    VkImage image;
+    VkDeviceMemory deviceMemory;
+    VkDeviceSize deviceSize;
+    VkImageView imageView;
+    VkSampler sampler;
+    VkImageLayout imageLayout;
+} GlyphCacheImageData;
+
+struct HzImplVulkan {
+    GLFWwindow *                window;
+    VkInstance                  instance;
+    VkDebugUtilsMessengerEXT    debugMessenger;
+    VkPhysicalDevice            physicalDevice;
+    VkDevice                    device;
+    VkSurfaceKHR                surface;
+    VkSwapchainKHR              swapchain;
+    VkQueue                     graphicsQueue, presentQueue, computeQueue;
+    uint32_t                    swapchainImageCount;
+    VkImage *                   swapchainImages;
+    VkFormat                    swapchainImageFormat;
+    VkExtent2D                  swapchainExtent;
+    VkImageView *               swapchainImageViews;
+
+    VkDescriptorPool            descriptorPool;
+    VkDescriptorSet *           computeDescriptorSets;
+    size_t                      computeDescriptorSetCount;
+
+    VkDescriptorSetLayout       setLayout;
+
+    VkSemaphore                 imageAvailableSemaphore;
+    VkSemaphore                 renderFinishedSemaphore;
+    VkFence                     inFlightFence;
+    GlyphCacheImageData         glyphCacheImageData;
+
+    VkCommandPool               computeCmdPool;
+    VkCommandBuffer             computeCmdBuffer;
+
+    VkCommandPool               graphicsCmdPool;
+    VkCommandBuffer             graphicsCmdBuffer;
+
+    VkRenderPass                renderPass;
+
+    VkPipelineLayout            pipelineLayout;
+    VkPipeline                  computePipeline;
+
+    VkPipelineLayout            graphicsPipelineLayout;
+    VkPipeline                  graphicsPipeline;
+
+
+    hz_vector(VkFramebuffer)    framebuffers;
+
+
+    hz_bool_t                   enableDebug, enableVSync;
+};
 
 static const char *sValidationLayers[] = {
     "VK_LAYER_KHRONOS_validation",
@@ -152,7 +213,7 @@ void destroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 }
 
 static hz_string_list_t *
-get_required_vk_extensions(hz_vk_context_t *ctx)
+get_required_vk_extensions(HzImplVulkan *ctx)
 {
     hz_string_list_t *names = hz_string_list_create();
 
@@ -179,7 +240,7 @@ populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT *create_
     create_info->pUserData = NULL; // Optional
 }
 
-static int create_instance(hz_vk_context_t *ctx)
+static int create_instance(HzImplVulkan *ctx)
 {
     hz_string_list_t *required_extensions = get_required_vk_extensions(ctx);
 
@@ -215,7 +276,7 @@ static int create_instance(hz_vk_context_t *ctx)
     return vkCreateInstance(&create_info, NULL, &ctx->instance) == VK_SUCCESS;
 }
 
-static int create_debug_messenger(hz_vk_context_t *ctx)
+static int create_debug_messenger(HzImplVulkan *ctx)
 {
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {0};
     populate_debug_messenger_create_info(&createInfo);
@@ -377,7 +438,7 @@ static VkExtent2D choose_swapchain_extent(GLFWwindow *window, const VkSurfaceCap
     }
 }
 
-static void create_swapchain(GLFWwindow *window, hz_vk_context_t *ctx)
+static void create_swapchain(GLFWwindow *window, HzImplVulkan *ctx)
 {
     SwapchainSupportDetails swapchainSupport = query_swapchain_support(ctx->physicalDevice, ctx->surface);
 
@@ -444,6 +505,19 @@ static int is_device_suitable(VkPhysicalDevice device, VkSurfaceKHR surface)
         && queue_families_complete(&indices);
 }
 
+uint32_t find_memory_type(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    fprintf(stderr, "Failed to find suitable memory type.\n");
+}
+
 static int compute_device_suitability(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     int score = 0;
@@ -461,8 +535,10 @@ static int compute_device_suitability(VkPhysicalDevice device, VkSurfaceKHR surf
 
     // if device is not suitable, it can't be used
     if (!is_device_suitable(device, surface)) {
-        return 0;
+        score = 0;
     }
+
+    printf("deviceName: %s, score: %d\n", deviceProperties.deviceName, score);
 
     return score;
 }
@@ -495,8 +571,9 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
 
         qsort((void *)entries, physicalDeviceCount, sizeof(CandidateDevice), compare_devices);
 
-        if (entries[0].score > 0)
+        if (entries[0].score > 0) {
             device = entries[0].device;
+        }
 
         free(entries);
     }
@@ -505,7 +582,7 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
 }
 
 static void
-create_swapchain_image_views(hz_vk_context_t *ctx)
+create_swapchain_image_views(HzImplVulkan *ctx)
 {
     ctx->swapchainImageViews = malloc(sizeof(VkImageView) * ctx->swapchainImageCount);
 
@@ -553,32 +630,52 @@ typedef struct {
     VkShaderModule modules[2];
 } GraphicsPipeline;
 
-static void create_graphics_pipeline(hz_vk_context_t *ctx, const char *vertexShaderPath, const char *fragmentShaderPath)
+VkPipelineLayout create_graphics_pipeline_layout(VkDevice device, VkDescriptorSetLayout setLayout)
 {
+    VkPipelineLayout pipelineLayout;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {0};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 0;//1;
+    pipelineLayoutInfo.pSetLayouts = NULL;//&setLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
+    pipelineLayoutInfo.pPushConstantRanges = NULL; // Optional
+
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS) {
+        fprintf(stderr, "failed to create pipeline layout!\n");
+    }
+
+    return pipelineLayout;
+}
+
+static VkPipeline create_graphics_pipeline(HzImplVulkan *impl, const char *vertexShaderPath, const char *fragmentShaderPath)
+{
+    VkPipeline pipeline = VK_NULL_HANDLE;
     File *vertexShaderCode = load_entire_file(vertexShaderPath);
     File *fragmentShaderCode = load_entire_file(fragmentShaderPath);
 
     if (!vertexShaderCode->was_loaded) {
         fprintf(stderr, "%s\n", "Failed to load vertex shader.");
+        return pipeline;
     }
 
     if (!fragmentShaderCode->was_loaded) {
         fprintf(stderr, "%s\n", "Failed to load fragment shader.");
+        return pipeline;
     }
 
-    VkShaderModule vertexShaderModule = create_shader_module(ctx->device, vertexShaderCode->data, vertexShaderCode->size);
-    VkShaderModule fragmentShaderModule = create_shader_module(ctx->device, fragmentShaderCode->data, fragmentShaderCode->size);
+    VkShaderModule vertexShaderModule = create_shader_module(impl->device, vertexShaderCode->data, vertexShaderCode->size);
+    VkShaderModule fragmentShaderModule = create_shader_module(impl->device, fragmentShaderCode->data, fragmentShaderCode->size);
 
     // fill in details for the two stages
     VkPipelineShaderStageCreateInfo vertexShaderStageInfo = {0};
     vertexShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertexShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertexShaderStageInfo.module = fragmentShaderModule;
+    vertexShaderStageInfo.module = vertexShaderModule;
     vertexShaderStageInfo.pName = "main";
 
     VkPipelineShaderStageCreateInfo fragmentShaderStageInfo = {0};
     fragmentShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragmentShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    fragmentShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     fragmentShaderStageInfo.module = fragmentShaderModule;
     fragmentShaderStageInfo.pName = "main";
 
@@ -602,14 +699,14 @@ static void create_graphics_pipeline(hz_vk_context_t *ctx, const char *vertexSha
     VkViewport viewport = {0};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float) ctx->swapchainExtent.width;
-    viewport.height = (float) ctx->swapchainExtent.height;
+    viewport.width = (float) impl->swapchainExtent.width;
+    viewport.height = (float) impl->swapchainExtent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor = {0};
     scissor.offset = (VkOffset2D){0, 0};
-    scissor.extent = ctx->swapchainExtent;
+    scissor.extent = impl->swapchainExtent;
 
     // Viewport state
     VkPipelineViewportStateCreateInfo viewportState = {0};
@@ -664,10 +761,34 @@ static void create_graphics_pipeline(hz_vk_context_t *ctx, const char *vertexSha
     colorBlending.blendConstants[2] = 0.0f; // Optional
     colorBlending.blendConstants[3] = 0.0f; // Optional
 
+    VkGraphicsPipelineCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    createInfo.stageCount = 2;
+    createInfo.pStages = shaderStages;
+    createInfo.pVertexInputState = &vertexInputInfo;
+    createInfo.pInputAssemblyState = &inputAssembly;
+    createInfo.pViewportState = &viewportState;
+    createInfo.pRasterizationState = &rasterizer;
+    createInfo.pMultisampleState = &multisampling;
+    createInfo.pDepthStencilState = NULL; // Optional
+    createInfo.pColorBlendState = &colorBlending;
+    createInfo.pDynamicState = NULL; // Optional
+    createInfo.layout = impl->graphicsPipelineLayout;
 
+    createInfo.renderPass = impl->renderPass;
+    createInfo.subpass = 0;
+
+    createInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+    createInfo.basePipelineIndex = -1; // Optional
+
+    if (vkCreateGraphicsPipelines(impl->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create graphics pipeline!\n");
+    }
 
     destroy_file(vertexShaderCode);
     destroy_file(fragmentShaderCode);
+
+    return pipeline;
 }
 
 typedef struct hz_rect2f_t {
@@ -714,7 +835,7 @@ void hz_frustum2d_cull_glyphs(hz_rect2f_t screenRect, hz_vector(hz_drawable_glyp
     }
 }
 
-static VkPipeline create_compute_pipeline(hz_vk_context_t *ctx,
+static VkPipeline create_compute_pipeline(HzImplVulkan *ctx,
                                           const char *filename)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
@@ -731,7 +852,6 @@ static VkPipeline create_compute_pipeline(hz_vk_context_t *ctx,
         computeShaderStageInfo.pName = "main";
 
         // Create pipeline layout
-        VkPipelineLayout pipelineLayout;
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {0};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
@@ -739,7 +859,7 @@ static VkPipeline create_compute_pipeline(hz_vk_context_t *ctx,
         pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
         pipelineLayoutInfo.pPushConstantRanges = NULL; // Optional
 
-        if (vkCreatePipelineLayout(ctx->device, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS) {
+        if (vkCreatePipelineLayout(ctx->device, &pipelineLayoutInfo, NULL, &ctx->pipelineLayout) != VK_SUCCESS) {
             fprintf(stderr, "failed to create pipeline layout!\n");
         }
 
@@ -747,20 +867,21 @@ static VkPipeline create_compute_pipeline(hz_vk_context_t *ctx,
         VkComputePipelineCreateInfo createInfo = {0};
         createInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
         createInfo.pNext = NULL;
-        createInfo.layout = pipelineLayout;
+        createInfo.layout = ctx->pipelineLayout;
         createInfo.stage = computeShaderStageInfo;
 
         if (vkCreateComputePipelines(ctx->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
-            fprintf(stderr, "failed to create compute pipeline!\n");
+            fprintf(stderr, "Failed to create compute pipeline!\n");
         }
-
+    } else {
+        fprintf(stderr, "Failed to load compute shader!\n");
     }
 
     destroy_file(shaderBin);
     return pipeline;
 }
 
-static void create_render_pass(hz_vk_context_t *ctx)
+static void create_render_pass(HzImplVulkan *ctx)
 {
     VkAttachmentDescription colorAttachment = {0};
     colorAttachment.format = ctx->swapchainImageFormat;
@@ -793,12 +914,17 @@ static void create_render_pass(hz_vk_context_t *ctx)
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
 
+
+    // create subpass dependency
+    
+    
+
     if (vkCreateRenderPass(ctx->device, &renderPassInfo, NULL, &ctx->renderPass) != VK_SUCCESS) {
         fprintf(stderr, "%s\n", "failed to create render pass!");
     }
 }
 
-void create_descriptor_pool(hz_vk_context_t *ctx)
+void create_descriptor_pool(HzImplVulkan *ctx)
 {
     VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
@@ -821,6 +947,7 @@ void create_descriptor_pool(hz_vk_context_t *ctx)
 typedef struct { int32_t x, y; } Vec2i;
 typedef struct { uint32_t x, y; } Vec2u;
 typedef struct { float x, y; } Vec2f;
+typedef struct { float x, y, z; } Vec3f;
 
 typedef uint8_t Fixed8, Fixed8Norm, Fixed8UNorm;
 typedef uint16_t Fixed16;
@@ -859,7 +986,7 @@ typedef struct {
     VkImage glyph_cache_image;
 } Compute;
 
-static void allocate_compute_descriptor_sets(hz_vk_context_t *ctx)
+static void allocate_compute_descriptor_sets(HzImplVulkan *ctx)
 {
     ctx->computeDescriptorSets = (VkDescriptorSet *) malloc(sizeof(VkDescriptorSet));
 
@@ -880,7 +1007,61 @@ static void init_compute(Compute *compute)
 
 }
 
-void create_descriptor_set_layout(hz_vk_context_t *ctx)
+static VkSampler createGlyphCacheSampler(VkDevice device)
+{
+    VkSampler sampler = VK_NULL_HANDLE;
+    VkSamplerCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.pNext = NULL;
+    createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.anisotropyEnable = VK_FALSE;
+    createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    if (vkCreateSampler(device, &createInfo, NULL, &sampler) != VK_SUCCESS) {
+        fprintf(stderr, "Error: %s\n", "Failed to create glyph cache sampler");
+    }
+
+    return sampler;
+}
+
+typedef struct {
+    VkImage image;
+    VkImageView imageView;
+    VkSampler sampler;
+    VkImageLayout imageLayout;
+} Texture;
+
+static void update_compute_descriptor_sets(VkDevice device, VkDescriptorSet descriptorSet,
+                                           GlyphCacheImageData glyphCacheImageData)
+{
+    VkWriteDescriptorSet writeDescriptorSet;
+
+    // Target image
+    VkDescriptorImageInfo imageInfo = {0};
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageInfo.imageView = glyphCacheImageData.imageView;
+    imageInfo.sampler = glyphCacheImageData.sampler;
+
+    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet.pNext = NULL;
+    writeDescriptorSet.descriptorCount = 1;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    writeDescriptorSet.dstArrayElement = 0;
+    writeDescriptorSet.dstBinding = 0;
+    writeDescriptorSet.dstSet = descriptorSet;
+    writeDescriptorSet.pBufferInfo = NULL;
+    writeDescriptorSet.pTexelBufferView = NULL;
+    writeDescriptorSet.pImageInfo = &imageInfo;
+
+
+    // Uniform buffer
+
+
+    vkUpdateDescriptorSets(device,1,&writeDescriptorSet,0,NULL);
+}
+
+void create_descriptor_set_layout(HzImplVulkan *ctx)
 {
     // information about the binding.
     VkDescriptorSetLayoutBinding layoutBindings[2] = {0};
@@ -915,9 +1096,10 @@ void create_descriptor_set_layout(hz_vk_context_t *ctx)
 //
 //}
 
-HZ_STATIC void create_glyph_cache_texture(hz_vk_context_t *ctx, uint32_t width, uint32_t height)
+void createGlyphCacheImage(VkDevice device, GlyphCacheImageData *imageData, uint32_t width, uint32_t height)
 {
     VkImageCreateInfo createInfo = {0};
+
     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     createInfo.flags = 0;
     createInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -929,31 +1111,63 @@ HZ_STATIC void create_glyph_cache_texture(hz_vk_context_t *ctx, uint32_t width, 
     createInfo.arrayLayers = 1;
     createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
     createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    createInfo.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
     createInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
 
-    if (vkCreateImage(ctx->device, &createInfo, NULL, &ctx->glyphCacheImage) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create target image!\n");
+    VkResult vr;
+    if ((vr = vkCreateImage(device, &createInfo, NULL, &imageData->image)) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create target image! (%d)\n", vr);
+    } else {
+        VkMemoryRequirements memoryRequirements;
+        vkGetImageMemoryRequirements(device, imageData->image, &memoryRequirements);
+
+        VkMemoryAllocateInfo allocateInfo = {0};
+        allocateInfo.pNext = NULL;
+        allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocateInfo.allocationSize = memoryRequirements.size;
+        allocateInfo.memoryTypeIndex = 0;
+        imageData->deviceSize = memoryRequirements.size;
+
+        if ((vr = vkAllocateMemory(device,&allocateInfo,NULL,
+                                   &imageData->deviceMemory)) != VK_SUCCESS) {
+            fprintf(stderr, "Failed to allocate device memory! (%d)\n", vr);
+        } else {
+            vkBindImageMemory(device,
+                              imageData->image,
+                              imageData->deviceMemory,0);
+        }
+
     }
 }
 
-
-VkCommandPool create_command_pool(VkDevice device, uint32_t queueFamilyIndex)
+VkImageView createGlyphCacheImageView(VkDevice device, VkImage image)
 {
-    VkCommandPoolCreateInfo createInfo = {0};
-    createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    createInfo.queueFamilyIndex = queueFamilyIndex;
+    VkImageViewCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     createInfo.pNext = NULL;
+    createInfo.image = image;
+    createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    createInfo.flags = 0;
+    createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 
+    createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    createInfo.subresourceRange.baseArrayLayer = 0;
+    createInfo.subresourceRange.baseMipLevel = 0;
+    createInfo.subresourceRange.layerCount = 1;
+    createInfo.subresourceRange.levelCount = 1;
+
+    createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    VkImageView imageView = VK_NULL_HANDLE;
     VkResult vr;
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-
-    if (VR_FAILED(vr = vkCreateCommandPool(device, &createInfo, NULL, &commandPool))) {
-        fprintf(stderr, "Failed to create command pool! (%d)\n", vr);
+    if ((vr = vkCreateImageView(device, &createInfo, NULL, &imageView)) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create image view for glyph cache! (%d)\n", vr);
     }
 
-    return commandPool;
+    return imageView;
 }
 
 VkCommandBuffer create_command_buffer(VkDevice device, VkCommandPool commandPool)
@@ -966,7 +1180,7 @@ VkCommandBuffer create_command_buffer(VkDevice device, VkCommandPool commandPool
     allocateInfo.commandBufferCount = 1;
 
     VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
-    VkResult result ;
+    VkResult result;
     if ((result = vkAllocateCommandBuffers(device, &allocateInfo, &cmdBuffer)) != VK_SUCCESS) {
         fprintf(stderr, "Failed to allocate command buffers! (%d)\n", result);
     }
@@ -996,55 +1210,87 @@ create_uniform_buffer(VkDevice device, void *mem, size_t size)
     return buffer;
 }
 
-#define WORKGROUP_SIZE 256
-
-void dispatch_compute(hz_vk_context_t *ctx, int textureWidth, int textureHeight)
+VkFence create_fence(VkDevice device, VkBool32 isSignaled)
 {
-    // Begin the command buffer
-    VkCommandBufferBeginInfo beginInfo = {0};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.pNext = NULL;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = NULL;
-
-    GlyphCacheInfo glyphCacheInfo;
-    glyphCacheInfo.size = (Vec2i){textureWidth, textureHeight};
-    glyphCacheInfo.distanceScale = 1.0f;
-    glyphCacheInfo.gridDivisions = 64;
-    glyphCacheInfo.margin = 0.05f;
-
-
-
-    vkBeginCommandBuffer(ctx->computeCmdBuffer, &beginInfo);
-    vkCmdBindPipeline(ctx->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, ctx->computePipeline);
-    vkCmdBindDescriptorSets(ctx->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, ctx->pipelineLayout, 0,
-                            1, ctx->computeDescriptorSets, 0, NULL);
-
-    uint32_t groupCountX = ((textureWidth) / WORKGROUP_SIZE) + 1;
-    uint32_t groupCountY = ((textureHeight) / WORKGROUP_SIZE) + 1;
-
-    vkCmdDispatch(ctx->computeCmdBuffer, groupCountX, groupCountY, 1);
-    vkEndCommandBuffer(ctx->computeCmdBuffer);
+    VkFence fence;
+    VkFenceCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    if (isSignaled) createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    vkCreateFence(device,&createInfo,NULL,&fence);
+    return fence;
 }
 
-hz_vk_context_t *
-hz_vk_context_create(GLFWwindow *window, int enableDebug)
+VkSemaphore create_semaphore(VkDevice device)
 {
-    hz_vk_context_t *ctx = malloc(sizeof(*ctx));
-    ctx->enableDebug = enableDebug;
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+    VkSemaphoreCreateInfo createInfo;
+    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    createInfo.pNext = NULL;
+    createInfo.flags = 0;
+    if (vkCreateSemaphore(device, &createInfo, NULL, &semaphore) != VK_SUCCESS) {
+        fprintf(stderr, "%s\n", "Failed to create semaphore!");
+    }
+    return semaphore;
+}
 
-    if (!create_instance(ctx)) {
+void create_framebuffers(HzImplVulkan *impl)
+{
+    hz_vector_resize(impl->framebuffers, impl->swapchainImageCount);
+
+    for (size_t i = 0; i < impl->swapchainImageCount; ++i) {
+        VkImageView attachments[] = { impl->swapchainImageViews[i] };
+
+        VkFramebufferCreateInfo framebufferInfo = {0};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = impl->renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = impl->swapchainExtent.width;
+        framebufferInfo.height = impl->swapchainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(impl->device, &framebufferInfo, NULL, &impl->framebuffers[i]) != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create framebuffers!\n");
+        }
+    }
+}
+
+VkCommandPool create_command_pool(VkDevice device, uint32_t queueFamilyIndex)
+{
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandPoolCreateInfo createInfo = {0};
+    createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    createInfo.queueFamilyIndex = queueFamilyIndex;
+    createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    VkResult vr;
+    if ((vr = vkCreateCommandPool(device, &createInfo, NULL, &commandPool)) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create command pool (%d)\n", vr);
+    }
+
+    return commandPool;
+}
+
+HzImplVulkan *
+hz_vk_create_impl(GLFWwindow *window, int enableDebug)
+{
+    HzImplVulkan *impl = malloc(sizeof(*impl));
+    impl->framebuffers = NULL;
+
+    impl->enableDebug = enableDebug;
+
+    if (!create_instance(impl)) {
         fprintf_s(stderr, "%s\n", "failed to create Instance.");
-        hz_vk_context_destroy(ctx);
+        hz_impl_vulkan_terminate(impl);
         return NULL;
     }
 
     fprintf_s(stdout, "%s\n", "created vulkan instance.");
 
-    if (ctx->enableDebug) {
-        if (!create_debug_messenger(ctx)) {
+    if (impl->enableDebug) {
+        if (!create_debug_messenger(impl)) {
             fprintf_s(stderr, "%s\n", "failed to create debug messenger!");
-            hz_vk_context_destroy(ctx);
+            hz_impl_vulkan_terminate(impl);
             return NULL;
         }
 
@@ -1052,40 +1298,39 @@ hz_vk_context_create(GLFWwindow *window, int enableDebug)
     }
 
     // Create window surface
-    if (glfwCreateWindowSurface(ctx->instance, window, NULL, &ctx->surface) != VK_SUCCESS) {
+    if (glfwCreateWindowSurface(impl->instance, window, NULL, &impl->surface) != VK_SUCCESS) {
         fprintf_s(stderr, "%s\n", "failed to create vulkan surface!");
-        hz_vk_context_destroy(ctx);
+        hz_impl_vulkan_terminate(impl);
         return NULL;
     }
 
     fprintf_s(stdout, "%s\n", "created vulkan surface.");
 
-    ctx->physicalDevice = choose_physical_device(ctx->instance, ctx->surface);
-    if (ctx->physicalDevice == VK_NULL_HANDLE) {
+    impl->physicalDevice = choose_physical_device(impl->instance, impl->surface);
+    if (impl->physicalDevice == VK_NULL_HANDLE) {
         fprintf_s(stderr, "%s\n", "could not find any suitable vulkan device.");
     }
 
     // Create logical device
-    QueueFamilyIndices indices = find_queue_families(ctx->physicalDevice, ctx->surface);
+    QueueFamilyIndices indices = find_queue_families(impl->physicalDevice, impl->surface);
 
     if (!queue_families_complete(&indices)) {
         fprintf(stderr, "%s\n", "Queue family indices are not complete.");
     }
 
     // Create device queues
-    uint32_t queueFamilyIndices[1] = {indices.computeFamily};
+    uint32_t queueFamilyIndices[3] = {indices.graphicsFamily, indices.presentFamily, indices.computeFamily};
 
-    printf("graphics queue family: %d\npresent queue family: %d\ncompute queue family: %d\n",
-           indices.graphicsFamily, indices.presentFamily, indices.computeFamily);
+//    printf("graphics queue family: %d\npresent queue family: %d\ncompute queue family: %d\n",
+//           indices.graphicsFamily, indices.presentFamily, indices.computeFamily);
 
-    VkDeviceQueueCreateInfo queueCreateInfos[1] = {0};
+    VkDeviceQueueCreateInfo queueCreateInfos[3] = {0};
 
     float queuePriority = 1.0f;
     for (int i = 0; i < ARRAYSIZE(queueCreateInfos); ++i) {
         queueCreateInfos[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueCreateInfos[i].queueFamilyIndex = queueFamilyIndices[i];
         queueCreateInfos[i].queueCount = 1;
-//        queueCreateInfos[i].flags = VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT;
         queueCreateInfos[i].pQueuePriorities = &queuePriority;
     }
 
@@ -1100,7 +1345,7 @@ hz_vk_context_create(GLFWwindow *window, int enableDebug)
     createInfo.enabledExtensionCount = ARRAYSIZE(sDeviceExtensions);
     createInfo.ppEnabledExtensionNames = sDeviceExtensions;
 
-    if (ctx->enableDebug) {
+    if (impl->enableDebug) {
         createInfo.enabledLayerCount = ARRAYSIZE(sValidationLayers);
         createInfo.ppEnabledLayerNames = sValidationLayers;
     } else {
@@ -1108,77 +1353,229 @@ hz_vk_context_create(GLFWwindow *window, int enableDebug)
     }
 
     VkResult result;
-    if ((result = vkCreateDevice(ctx->physicalDevice, &createInfo, NULL, &ctx->device)) != VK_SUCCESS) {
+    if ((result = vkCreateDevice(impl->physicalDevice, &createInfo, NULL, &impl->device)) != VK_SUCCESS) {
         printf("Create device error: %d\n", result);
         EXIT_ERROR("Failed to create logical device!");
     }
 
-    vkGetDeviceQueue(ctx->device, indices.graphicsFamily, 0, &ctx->graphicsQueue);
-    vkGetDeviceQueue(ctx->device, indices.presentFamily, 0, &ctx->presentQueue);
-    vkGetDeviceQueue(ctx->device, indices.computeFamily, 0, &ctx->computeQueue);
+    vkGetDeviceQueue(impl->device, indices.graphicsFamily, 0, &impl->graphicsQueue);
+    vkGetDeviceQueue(impl->device, indices.presentFamily, 0, &impl->presentQueue);
+    vkGetDeviceQueue(impl->device, indices.computeFamily, 0, &impl->computeQueue);
 
     // Create swapchain
-    create_swapchain(window, ctx);
+    create_swapchain(window, impl);
 
-    vkGetSwapchainImagesKHR(ctx->device, ctx->swapchain, &ctx->swapchainImageCount, NULL);
-    ctx->swapchainImages = malloc(sizeof(VkImage) * ctx->swapchainImageCount);
-    vkGetSwapchainImagesKHR(ctx->device, ctx->swapchain, &ctx->swapchainImageCount, ctx->swapchainImages);
+    vkGetSwapchainImagesKHR(impl->device, impl->swapchain, &impl->swapchainImageCount, NULL);
+    impl->swapchainImages = malloc(sizeof(VkImage) * impl->swapchainImageCount);
+    vkGetSwapchainImagesKHR(impl->device, impl->swapchain, &impl->swapchainImageCount, impl->swapchainImages);
+
+    printf("Created swapchain with %d images\n", impl->swapchainImageCount);
 
     // Create swapchain image views
-    create_swapchain_image_views(ctx);
+    create_swapchain_image_views(impl);
 
     // Create render pass
-    create_render_pass(ctx);
-
-    // Create graphics pipeline
-//    create_graphics_pipeline(ctx, "./data/shaders/vert-shader.spv", "./data/shaders/frag-shader.spv");
-
+    create_render_pass(impl);
 
     // Setup descriptor pool, set and layout (must be done before creating the pipelines)
-    create_descriptor_pool(ctx);
-    create_descriptor_set_layout(ctx);
-    allocate_compute_descriptor_sets(ctx);
+    create_descriptor_pool(impl);
+    create_descriptor_set_layout(impl);
+    allocate_compute_descriptor_sets(impl);
 
     // Create compute pipeline
-    ctx->computePipeline = create_compute_pipeline(ctx, "./shaders/bezier-to-sdf.comp.spv");
+    impl->computePipeline = create_compute_pipeline(impl, "./shaders/bezier-to-sdf.comp.spv");
     // Create compute command pool
-    ctx->computeCmdPool = create_command_pool(ctx->device, indices.computeFamily);
+    impl->computeCmdPool = create_command_pool(impl->device, indices.computeFamily);
     // Create compute command buffer
-    ctx->computeCmdBuffer = create_command_buffer(ctx->device, ctx->computeCmdPool);
+    impl->computeCmdBuffer = create_command_buffer(impl->device, impl->computeCmdPool);
 
-    create_glyph_cache_texture(ctx, 1024, 1024);
+    // Create graphics pipeline layout
+    impl->graphicsPipelineLayout = create_graphics_pipeline_layout(impl->device, VK_NULL_HANDLE);
 
-    return ctx;
+    // Create graphics pipeline
+    impl->graphicsPipeline = create_graphics_pipeline(impl, "./shaders/render-glyph-sdf.vert.spv", "./shaders/render-glyph-sdf.frag.spv");
+
+    {
+        GlyphCacheImageData cacheTexture;
+        createGlyphCacheImage(impl->device, &impl->glyphCacheImageData, 1024, 1024);
+        impl->glyphCacheImageData.imageView = createGlyphCacheImageView(impl->device, impl->glyphCacheImageData.image);
+        impl->glyphCacheImageData.sampler = createGlyphCacheSampler(impl->device);
+    }
+
+    {
+        impl->glyphCacheImageData.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        update_compute_descriptor_sets(impl->device, impl->computeDescriptorSets[0], impl->glyphCacheImageData);
+    }
+
+    impl->inFlightFence = create_fence(impl->device, VK_TRUE);
+
+    impl->graphicsCmdPool = create_command_pool(impl->device, indices.graphicsFamily);
+    impl->graphicsCmdBuffer = create_command_buffer(impl->device, impl->graphicsCmdPool);
+
+    create_framebuffers(impl);
+
+    impl->imageAvailableSemaphore = create_semaphore(impl->device);
+    impl->renderFinishedSemaphore = create_semaphore(impl->device);
+
+    return impl;
+}
+
+#define WORKGROUP_SIZE 256
+
+void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHeight)
+{
+    // Begin the command buffer
+    VkCommandBufferBeginInfo beginInfo = {0};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.pNext = NULL;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = NULL;
+
+    GlyphCacheInfo glyphCacheInfo;
+    glyphCacheInfo.size = (Vec2i){textureWidth, textureHeight};
+    glyphCacheInfo.distanceScale = 1.0f;
+    glyphCacheInfo.gridDivisions = 64;
+    glyphCacheInfo.margin = 0.05f;
+
+    vkBeginCommandBuffer(impl->computeCmdBuffer, &beginInfo);
+    vkCmdBindPipeline(impl->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl->computePipeline);
+    vkCmdBindDescriptorSets(impl->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl->pipelineLayout, 0,
+                            1, impl->computeDescriptorSets, 0, NULL);
+
+    uint32_t groupCountX = ((textureWidth) / WORKGROUP_SIZE) + 1;
+    uint32_t groupCountY = ((textureHeight) / WORKGROUP_SIZE) + 1;
+
+    vkCmdDispatch(impl->computeCmdBuffer, groupCountX, groupCountY, 1);
+    vkEndCommandBuffer(impl->computeCmdBuffer);
+}
+
+void record_graphics_command_buffer(HzImplVulkan *impl, VkCommandBuffer commandBuffer, uint32_t imageIndex)
+{
+    vkResetCommandBuffer(commandBuffer,0);
+
+    VkCommandBufferBeginInfo beginInfo = {0};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.pInheritanceInfo = NULL;
+    beginInfo.flags = 0;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    // draw commands
+    VkRenderPassBeginInfo renderPassInfo = {0};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = impl->renderPass;
+    renderPassInfo.framebuffer = impl->framebuffers[imageIndex];
+
+    // render area
+    renderPassInfo.renderArea.offset = (VkOffset2D){0, 0};
+    renderPassInfo.renderArea.extent = impl->swapchainExtent;
+
+    // clear color
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->graphicsPipeline);
+    vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+
+    vkCmdEndRenderPass(commandBuffer);
+    vkEndCommandBuffer(commandBuffer);
 }
 
 void
-hz_vk_render_frame(hz_vk_context_t *ctx)
+hz_impl_vulkan_render_frame(HzImplVulkan *impl)
 {
+    uint32_t imageIndex;
+    vkAcquireNextImageKHR(impl->device, impl->swapchain, UINT64_MAX,
+                          impl->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
-    dispatch_compute(ctx, 1024, 1024);
+#if 0
+    vkResetCommandBuffer(impl->computeCmdBuffer, 0);
+    record_compute_commands(impl, 1024, 1024);
+
+
+    uint32_t Semaphores;
+
+    {
+        VkSubmitInfo submitInfo = {0};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = NULL;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &impl->computeCmdBuffer;
+        submitInfo.waitSemaphoreCount = 0;
+        submitInfo.pWaitSemaphores = NULL;
+        submitInfo.signalSemaphoreCount = 0;
+        submitInfo.pSignalSemaphores = NULL;
+        submitInfo.pWaitDstStageMask = NULL;
+
+        vkQueueSubmit(impl->computeQueue, 1, &submitInfo, impl->inFlightFence);
+
+        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+        vkResetFences(impl->device, 1, &impl->inFlightFence);
+    }
+#endif
+
+    {
+        // DEBUG RENDER FULLSCREEN TRIANGLE TO DISPLAY GLYPH CACHE IMAGE
+        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, 0);
+
+        VkSubmitInfo submitInfo = {0};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        VkSemaphore waitSemaphores[] = {impl->imageAvailableSemaphore};
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        submitInfo.waitSemaphoreCount = HZ_ARRLEN(waitSemaphores);
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &impl->graphicsCmdBuffer;
+        VkSemaphore signalSemaphores[] = {impl->renderFinishedSemaphore};
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        vkQueueSubmit(impl->graphicsQueue, 1, &submitInfo, impl->inFlightFence);
+        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+
+        VkPresentInfoKHR presentInfo = {0};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+        VkSwapchainKHR swapChains[] = {impl->swapchain};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+        presentInfo.pResults = NULL; // Optional
+
+        vkQueuePresentKHR(impl->presentQueue, &presentInfo);
+    }
 }
 
 void
-hz_vk_context_destroy(hz_vk_context_t *ctx)
+hz_impl_vulkan_terminate(HzImplVulkan *impl)
 {
-    vkDestroyPipelineLayout(ctx->device, ctx->pipelineLayout, NULL);
+    vkDestroyPipelineLayout(impl->device, impl->pipelineLayout, NULL);
 
-    for (uint32_t i = 0; i < ctx->swapchainImageCount; ++i) {
-        vkDestroyImageView(ctx->device, ctx->swapchainImageViews[i], NULL);
+    for (uint32_t i = 0; i < impl->swapchainImageCount; ++i) {
+        vkDestroyImageView(impl->device, impl->swapchainImageViews[i], NULL);
     }
 
-    free(ctx->swapchainImageViews);
+    free(impl->swapchainImageViews);
 
-    vkDestroySwapchainKHR(ctx->device, ctx->swapchain, NULL);
+    vkDestroySwapchainKHR(impl->device, impl->swapchain, NULL);
 
-    if (ctx->surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(ctx->instance, ctx->surface, NULL);
+    if (impl->surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(impl->instance, impl->surface, NULL);
     }
 
-    if (ctx->debugMessenger != VK_NULL_HANDLE) {
-        destroyDebugUtilsMessengerEXT(ctx->instance, ctx->debugMessenger, NULL);
+    if (impl->debugMessenger != VK_NULL_HANDLE) {
+        destroyDebugUtilsMessengerEXT(impl->instance, impl->debugMessenger, NULL);
     }
 
-    vkDestroyInstance(ctx->instance, NULL);
-    free(ctx);
+    vkDestroyInstance(impl->instance, NULL);
+    free(impl);
+}
+
+void hz_vk_wait_idle(HzImplVulkan *impl)
+{
+    vkDeviceWaitIdle(impl->device);
 }

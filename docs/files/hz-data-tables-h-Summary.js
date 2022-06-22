@@ -1,1 +1,1 @@
-﻿NDFramePage.OnPageTitleLoaded("File:hz-data-tables.h","hz-data-tables.h");NDSummary.OnSummaryLoaded("File:hz-data-tables.h",[["C/C++","C"]],[["Enums","Enumeration"],["Groups","Group"]],[[1,0,1,"Types","Types"],[2,0,0,"HzLanguage","HzLanguage"],[3,0,0,"HzFeature","HzFeature"]]);
+﻿NDFramePage.OnPageTitleLoaded("File:hz-data-tables.h","hz-data-tables.h");NDSummary.OnSummaryLoaded("File:hz-data-tables.h",[["C/C++","C"]],[["Enums","Enumeration"]],[[1,0,0,"HzLanguage","HzLanguage"],[2,0,0,"HzFeature","HzFeature"]]);

@@ -152,7 +152,7 @@ typedef uint16_t hz_index_t;
 typedef int32_t hz_fixed32_t, hz_position_t, hz_fixed26dot6_t;
 
 // dynamic array header
-typedef struct hz_vector_hdr_t {
+typedef struct {
     size_t size, capacity;
     size_t member_size;
 } hz_vector_hdr_t;
@@ -227,7 +227,7 @@ typedef enum {
     HZ_ERROR_SETUP_FAILED                   = 0x10000000ul
 } hz_error_t;
 
-/*  enum: HzGlyphClass
+/*  enum: hz_glyph_class_t
  *      HZ_GLYPH_CLASS_ZERO - Nothing.
  *      HZ_GLYPH_CLASS_BASE - Base glyph.
  *      HZ_GLYPH_CLASS_LIGATURE - Ligature glyph.
@@ -240,7 +240,7 @@ typedef enum {
     HZ_GLYPH_CLASS_LIGATURE  = 0x00000002ul,
     HZ_GLYPH_CLASS_MARK      = 0x00000004ul,
     HZ_GLYPH_CLASS_COMPONENT = 0x00000008ul
-} HzGlyphClass;
+} hz_glyph_class_t;
 
 /* include tables, types, and functions and other generated code */
 #include "hz-data-tables.h"
@@ -303,7 +303,7 @@ typedef enum hz_glyph_attrib_flags_t {
     HZ_GLYPH_ATTRIB_CODEPOINT_BIT = 0x00000004,
     HZ_GLYPH_ATTRIB_GLYPH_CLASS_BIT = 0x00000008,
     HZ_GLYPH_ATTRIB_ATTACHMENT_CLASS_BIT = 0x00000010,
-    HZ_GLYPH_ATTRIB_ATTACHMENT_INDEX_BIT = 0x00000020,
+    HZ_GLYPH_ATTRIB_COMPONENT_INDEX_BIT = 0x00000020,
 } hz_glyph_attrib_flags_t;
 
 /* struct: hz_buffer_t   */
@@ -314,7 +314,7 @@ typedef struct hz_buffer_t {
     hz_unicode_t *         codepoints;
     uint16_t *          glyph_classes;
     uint16_t *          attachment_classes;
-    uint16_t *          attachment_indices;
+    uint16_t *          component_indices;
     hz_glyph_attrib_flags_t  attrib_flags;
 } hz_buffer_t;
 
@@ -352,7 +352,7 @@ HZDECL hz_error_t hz_setup(hz_setup_flags_t flags);
  */
 HZDECL void hz_cleanup(void);
 
-/*  function: hz_lang
+/*  Function: hz_lang
  *      Finds language based on <ISO 639-2: https://www.loc.gov/standards/iso639-2/php/code_list.php">
  *      or <ISO 639-3: https://iso639-3.sil.org/"> language tag.
  *
@@ -360,25 +360,25 @@ HZDECL void hz_cleanup(void);
  *      tag - An <ISO 639-2: https://www.loc.gov/standards/iso639-2/php/code_list.php> or <ISO 639-3: https://iso639-3.sil.org/> language tag.
  *
  *  Returns:
- *      Returns <HzLanguage> enum value based on OpenType language tag.
+ *      Returns <hz_language_t> enum value based on OpenType language tag.
  */
 HZDECL hz_language_t hz_lang(const char *tag);
 
-/*  function: hz_lang_iso639_1_2002
+/*  Function: hz_lang_iso639_1_2002
  *      Finds language based on old <ISO 639-1:2002: https://id.loc.gov/vocabulary/iso639-1.html> two-character language tags.
  *
  *  Parameters:
  *      tag - An <ISO 639-1:2002: https://id.loc.gov/vocabulary/iso639-1.html> language tag.
  *
  *  Returns:
- *      Returns <HzLanguage> enum value based on OpenType language tag.
+ *      Returns <hz_language_t> enum value based on OpenType language tag.
  */
 HZDECL hz_language_t hz_lang_iso639_1_2002(const char *tag);
 
 /* function: hz_script */
 HZDECL hz_script_t hz_script(const char *tag);
 
-/* struct: HzFace */
+/* struct: hz_face_t */
 typedef struct hz_face_t hz_face_t;
 
 /* function: hz_face_create */
@@ -416,6 +416,8 @@ HZDECL hz_face_t* hz_font_get_face(hz_font_t *font);
 /* function: hz_font_set_face */
 HZDECL void hz_font_set_face(hz_font_t *font, hz_face_t *face);
 
+HZDECL void hz_font_get_glyph_shape();
+
 /*  function: hz_stbtt_font_create
  *      Loads a font from a stbtt_fontinfo structure.
  * */
@@ -432,7 +434,7 @@ HZDECL hz_font_t* hz_stbtt_font_create(stbtt_fontinfo *info);
  *      flags - Flags to configure shaping process.
  *
  *  See Also:
- *      <HzFont>, <HzSegment> and <HzFeature>.
+ *      <hz_font_t>, <hz_segment_t> and <hz_feature_t>.
  * */
 HZDECL void
 hz_shape(hz_font_t *font,

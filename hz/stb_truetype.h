@@ -840,11 +840,11 @@ STBTT_DEF int stbtt_IsGlyphEmpty(const stbtt_fontinfo *info, int glyph_index);
 
 STBTT_DEF int stbtt_GetCodepointShape(const stbtt_fontinfo *info, int unicode_codepoint, stbtt_vertex **vertices);
 STBTT_DEF int stbtt_GetGlyphShape(const stbtt_fontinfo *info, int glyph_index, stbtt_vertex **vertices);
-// returns # of vertices and fills *vertices with the pointer to them
+// returns # of vertices and fills *vertces with the pointer to them
 //   these are expressed in "unscaled" coordinates
 //
 // The shape is a series of contours. Each one starts with
-// a STBTT_moveto, then consists of a series of mixed
+// a STBTT_moveto, then consists iof a series of mixed
 // STBTT_lineto and STBTT_curveto segments. A lineto
 // draws a line from previous endpoint to its x,y; a curveto
 // draws a quadratic bezier from previous endpoint to

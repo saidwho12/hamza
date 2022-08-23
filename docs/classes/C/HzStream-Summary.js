@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("CClass:HzStream","HzStream");NDSummary.OnSummaryLoaded("CClass:HzStream",[["C/C++","C"]],[["Functions","Function"],["Structs","Struct"]],[[8,0,1,"HzStream"],[9,0,0,"hz_stream_create","hz_stream_create"]]);

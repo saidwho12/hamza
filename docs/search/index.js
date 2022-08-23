@@ -1,1 +1,1 @@
-﻿NDSearch.OnPrefixIndexLoaded(["has","hz_","hzc","hze","hzf","hzg","hzl","hzs","hzv","lic","min","per","tab"]);
+﻿NDSearch.OnPrefixIndexLoaded(["has","hz_","hze","hzf","hzg","hzl","hzs","lic","min","per","tab"]);

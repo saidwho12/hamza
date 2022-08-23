@@ -1,10 +1,10 @@
 # Web files
-*.html
-*.js
-*.css
-*.sass
-*.coffee
-*.xhtml
+# *.html
+# *.js
+# *.css
+# *.sass
+# *.coffee
+# *.xhtml
 
 # Docs folder
 ./data/

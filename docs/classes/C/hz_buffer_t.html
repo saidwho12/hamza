@@ -8,52 +8,52 @@
 
 <body onload="NDLoader.OnLoad('Content');" class="NDPage NDContentPage">
 
-<a name="Topic37"></a><div class="CTopic TStruct LC first">
+<a name="Topic38"></a><div class="CTopic TStruct LC first">
  <div class="CTitle">hz_buffer_t</div>
- <div class="NDClassPrototype" id="NDClassPrototype37"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_buffer_t</div></div></div>
+ <div class="NDClassPrototype" id="NDClassPrototype38"><div class="CPEntry TStruct Current"><div class="CPModifiers"><span class="SHKeyword">typedef</span> <span class="SHKeyword">struct</span></div><div class="CPName">hz_buffer_t</div></div></div>
 </div>
 
-<a name="hz_segment_get_buffer"></a><a name="Topic38"></a><div class="CTopic TFunction LC">
+<a name="hz_segment_get_buffer"></a><a name="Topic39"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_segment_get_buffer</div>
- <div id="NDPrototype38" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL <span class="SHKeyword">const</span> <a href="../../index.html#CClass:hz_buffer_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,37);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_buffer_t</a>* hz_segment_get_buffer(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_segment_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,11);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_segment_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">seg</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div id="NDPrototype39" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL <span class="SHKeyword">const</span> <a href="../../index.html#CClass:hz_buffer_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,38);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_buffer_t</a>* hz_segment_get_buffer(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_segment_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,11);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_segment_t</a>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">seg</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
 </div>
 
-<a name="hz_shape_flags_t"></a><a name="Topic39"></a><div class="CTopic TEnumeration LC">
+<a name="hz_shape_flags_t"></a><a name="Topic40"></a><div class="CTopic TEnumeration LC">
  <div class="CTitle">hz_shape_flags_t</div>
 </div>
 
-<a name="hz_setup_flags_t"></a><a name="Topic40"></a><div class="CTopic TEnumeration LC">
+<a name="hz_setup_flags_t"></a><a name="Topic41"></a><div class="CTopic TEnumeration LC">
  <div class="CTitle">hz_setup_flags_t</div>
- <div class="CBody"><p>Set of special flags passed in to <a href="../../index.html#CClass:hz_buffer_t:hz_setup" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,41);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup</a> used to configure the library.</p></div>
+ <div class="CBody"><p>Set of special flags passed in to <a href="../../index.html#CClass:hz_buffer_t:hz_setup" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,42);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup</a> used to configure the library.</p></div>
 </div>
 
-<a name="hz_setup"></a><a name="Topic41"></a><div class="CTopic TFunction LC">
+<a name="hz_setup"></a><a name="Topic42"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_setup</div>
- <div id="NDPrototype41" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_error_t hz_setup(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_buffer_t:hz_setup_flags_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,40);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup_flags_t</a>&nbsp;</td><td class="PName last">flags</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div id="NDPrototype42" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_error_t hz_setup(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PType first"><a href="../../index.html#CClass:hz_buffer_t:hz_setup_flags_t" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,41);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup_flags_t</a>&nbsp;</td><td class="PName last">flags</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
  <div class="CBody"><p>Sets up the library's internal structures and lookup tables.&nbsp; If HZ_USE_CPUID_FOR_SIMD_CHECKS flag is set it will also initialize a special hardware specific info to allow for runtime SIMD specialization. Otherwise, it will use compile-time macros to determine which instruction set to optimize with.</p><div class="CHeading">Returns</div><p>Returns HZ_OK on success, otherwise HZ_ERROR_SETUP_FAILED.</p></div>
 </div>
 
-<a name="hz_cleanup"></a><a name="Topic42"></a><div class="CTopic TFunction LC">
+<a name="hz_cleanup"></a><a name="Topic43"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_cleanup</div>
- <div id="NDPrototype42" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL <span class="SHKeyword">void</span> hz_cleanup(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PName first last">void</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
- <div class="CBody"><p>Cleans up all the data initialized by <a href="../../index.html#CClass:hz_buffer_t:hz_setup" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,41);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup</a> as well as any shaper cache that might've been allocated.</p></div>
+ <div id="NDPrototype43" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL <span class="SHKeyword">void</span> hz_cleanup(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PName first last">void</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Cleans up all the data initialized by <a href="../../index.html#CClass:hz_buffer_t:hz_setup" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,42);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >hz_setup</a> as well as any shaper cache that might've been allocated.</p></div>
 </div>
 
-<a name="hz_lang"></a><a name="Topic43"></a><div class="CTopic TFunction LC">
+<a name="hz_lang"></a><a name="Topic44"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_lang</div>
- <div id="NDPrototype43" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_language_t hz_lang(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
- <div class="CBody"><p>Finds language based on <a href="https://www.loc.gov/standards/iso639-2/php/code_list.php&quot;" target="_top">ISO 639-2</a> or <a href="https://iso639-3.sil.org/&quot;" target="_top">ISO 639-3</a> language tag.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">tag<div class="CDLParameterType"><span class="SHKeyword">const</span> <span class="SHKeyword">char</span>*</div></td><td class="CDLDefinition"><p>An <a href="https://www.loc.gov/standards/iso639-2/php/code_list.php" target="_top">ISO 639-2</a> or <a href="https://iso639-3.sil.org/" target="_top">ISO 639-3</a> language tag.</p></td></tr></table><div class="CHeading">Returns</div><p>Returns <a href="../../index.html#File:hz-data-tables.h:HzLanguage" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,1);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >HzLanguage</a> enum value based on OpenType language tag.</p></div>
+ <div id="NDPrototype44" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_language_t hz_lang(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Finds language based on <a href="https://www.loc.gov/standards/iso639-2/php/code_list.php&quot;" target="_top">ISO 639-2</a> or <a href="https://iso639-3.sil.org/&quot;" target="_top">ISO 639-3</a> language tag.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">tag<div class="CDLParameterType"><span class="SHKeyword">const</span> <span class="SHKeyword">char</span>*</div></td><td class="CDLDefinition"><p>An <a href="https://www.loc.gov/standards/iso639-2/php/code_list.php" target="_top">ISO 639-2</a> or <a href="https://iso639-3.sil.org/" target="_top">ISO 639-3</a> language tag.</p></td></tr></table><div class="CHeading">Returns</div><p>Returns &lt;hz_language_t&gt; enum value based on OpenType language tag.</p></div>
 </div>
 
-<a name="hz_lang_iso639_1_2002"></a><a name="Topic44"></a><div class="CTopic TFunction LC">
+<a name="hz_lang_iso639_1_2002"></a><a name="Topic45"></a><div class="CTopic TFunction LC">
  <div class="CTitle">hz_lang_iso639_1_2002</div>
- <div id="NDPrototype44" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_language_t hz_lang_iso639_1_2002(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
- <div class="CBody"><p>Finds language based on old <a href="https://id.loc.gov/vocabulary/iso639-1.html" target="_top">ISO 639-1:2002</a> two-character language tags.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">tag<div class="CDLParameterType"><span class="SHKeyword">const</span> <span class="SHKeyword">char</span>*</div></td><td class="CDLDefinition"><p>An <a href="https://id.loc.gov/vocabulary/iso639-1.html" target="_top">ISO 639-1:2002</a> language tag.</p></td></tr></table><div class="CHeading">Returns</div><p>Returns <a href="../../index.html#File:hz-data-tables.h:HzLanguage" target="_top" onmouseover="NDContentPage.OnLinkMouseOver(event,1);" onmouseout="NDContentPage.OnLinkMouseOut(event);" >HzLanguage</a> enum value based on OpenType language tag.</p></div>
+ <div id="NDPrototype45" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_language_t hz_lang_iso639_1_2002(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div class="CBody"><p>Finds language based on old <a href="https://id.loc.gov/vocabulary/iso639-1.html" target="_top">ISO 639-1:2002</a> two-character language tags.</p><div class="CHeading">Parameters</div><table class="CDefinitionList"><tr><td class="CDLEntry">tag<div class="CDLParameterType"><span class="SHKeyword">const</span> <span class="SHKeyword">char</span>*</div></td><td class="CDLDefinition"><p>An <a href="https://id.loc.gov/vocabulary/iso639-1.html" target="_top">ISO 639-1:2002</a> language tag.</p></td></tr></table><div class="CHeading">Returns</div><p>Returns &lt;hz_language_t&gt; enum value based on OpenType language tag.</p></div>
 </div>
 
-<a name="hz_script"></a><a name="Topic45"></a><div class="CTopic TFunction LC last">
+<a name="hz_script"></a><a name="Topic46"></a><div class="CTopic TFunction LC last">
  <div class="CTitle">hz_script</div>
- <div id="NDPrototype45" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_script_t hz_script(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
+ <div id="NDPrototype46" class="NDPrototype WideForm"><div class="PSection PParameterSection CStyle"><table><tr><td class="PBeforeParameters">HZDECL hz_script_t hz_script(</td><td class="PParametersParentCell"><table class="PParameters"><tr><td class="PModifierQualifier first"><span class="SHKeyword">const</span>&nbsp;</td><td class="PType"><span class="SHKeyword">char</span>&nbsp;</td><td class="PSymbols">*</td><td class="PName last">tag</td></tr></table></td><td class="PAfterParameters">)</td></tr></table></div></div>
 </div>
 
 </body></html>

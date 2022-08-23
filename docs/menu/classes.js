@@ -1,1 +1,1 @@
-﻿NDMenu.OnSectionLoaded("classes.js",[[1,"hz_buffer_t"],[1,"hz_char16_t"],[1,"hz_char32_t"],[1,"hz_glyph_metrics_t"],[1,"hz_segment_t"],[1,"HzFace"],[1,"HzFont"],[1,"HzGlyphAttribFlags"],[1,"HzStream"]]);
+﻿NDMenu.OnSectionLoaded("classes.js",[[1,"hz_buffer_t"],[1,"hz_char16_t"],[1,"hz_char32_t"],[1,"hz_face_t"],[1,"hz_glyph_metrics_t"],[1,"hz_segment_t"],[1,"hz_stream_t"],[1,"HzFont"],[1,"HzGlyphAttribFlags"]]);

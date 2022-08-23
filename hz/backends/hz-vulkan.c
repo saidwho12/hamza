@@ -24,7 +24,7 @@ typedef struct {
     VkImageLayout imageLayout;
 } GlyphCacheImageData;
 
-struct HzImplVulkan {
+struct hz_impl_vulkan_t {
     GLFWwindow *                window;
     VkInstance                  instance;
     VkDebugUtilsMessengerEXT    debugMessenger;
@@ -213,7 +213,7 @@ void destroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 }
 
 static hz_string_list_t *
-get_required_vk_extensions(HzImplVulkan *ctx)
+get_required_vk_extensions(hz_impl_vulkan_t *ctx)
 {
     hz_string_list_t *names = hz_string_list_create();
 
@@ -240,7 +240,7 @@ populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT *create_
     create_info->pUserData = NULL; // Optional
 }
 
-static int create_instance(HzImplVulkan *ctx)
+static int create_instance(hz_impl_vulkan_t *ctx)
 {
     hz_string_list_t *required_extensions = get_required_vk_extensions(ctx);
 
@@ -276,7 +276,7 @@ static int create_instance(HzImplVulkan *ctx)
     return vkCreateInstance(&create_info, NULL, &ctx->instance) == VK_SUCCESS;
 }
 
-static int create_debug_messenger(HzImplVulkan *ctx)
+static int create_debug_messenger(hz_impl_vulkan_t *ctx)
 {
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {0};
     populate_debug_messenger_create_info(&createInfo);
@@ -299,7 +299,7 @@ static QueueFamilyIndices find_queue_families(VkPhysicalDevice device, VkSurface
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, NULL);
 
-    VkQueueFamilyProperties queueFamilies[queueFamilyCount];
+    VkQueueFamilyProperties *queueFamilies = malloc(queueFamilyCount * sizeof (*queueFamilies));
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies);
 
     for (int i = 0; i < queueFamilyCount; ++i) {
@@ -324,6 +324,7 @@ static QueueFamilyIndices find_queue_families(VkPhysicalDevice device, VkSurface
         }
     }
 
+    free(queueFamilies);
     return indices;
 }
 
@@ -345,7 +346,7 @@ static int check_device_extension_support(VkPhysicalDevice device)
 {
     uint32_t extension_count;
     vkEnumerateDeviceExtensionProperties(device, NULL, &extension_count, NULL);
-    VkExtensionProperties available_extensions[extension_count];
+    VkExtensionProperties *available_extensions = malloc(extension_count * sizeof(VkExtensionProperties));
     vkEnumerateDeviceExtensionProperties(device, NULL, &extension_count, available_extensions);
 
     for (uint32_t i = 0; i < ARRAYSIZE(sDeviceExtensions); ++i)
@@ -355,6 +356,7 @@ static int check_device_extension_support(VkPhysicalDevice device)
             return 0;
     }
 
+    free(available_extensions);
     return 1;
 }
 
@@ -438,7 +440,7 @@ static VkExtent2D choose_swapchain_extent(GLFWwindow *window, const VkSurfaceCap
     }
 }
 
-static void create_swapchain(GLFWwindow *window, HzImplVulkan *ctx)
+static void create_swapchain(GLFWwindow *window, hz_impl_vulkan_t *ctx)
 {
     SwapchainSupportDetails swapchainSupport = query_swapchain_support(ctx->physicalDevice, ctx->surface);
 
@@ -559,7 +561,7 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
     vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL);
 
     if (physicalDeviceCount > 0) {
-        VkPhysicalDevice physicalDevices[physicalDeviceCount];
+        VkPhysicalDevice *physicalDevices = malloc(physicalDeviceCount * sizeof(VkPhysicalDevice));
         vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, &physicalDevices[0]);
 
         CandidateDevice *entries = malloc(physicalDeviceCount * sizeof(CandidateDevice));
@@ -575,6 +577,7 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
             device = entries[0].device;
         }
 
+        free(physicalDevices);
         free(entries);
     }
 
@@ -582,7 +585,7 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
 }
 
 static void
-create_swapchain_image_views(HzImplVulkan *ctx)
+create_swapchain_image_views(hz_impl_vulkan_t *ctx)
 {
     ctx->swapchainImageViews = malloc(sizeof(VkImageView) * ctx->swapchainImageCount);
 
@@ -647,7 +650,7 @@ VkPipelineLayout create_graphics_pipeline_layout(VkDevice device, VkDescriptorSe
     return pipelineLayout;
 }
 
-static VkPipeline create_graphics_pipeline(HzImplVulkan *impl, const char *vertexShaderPath, const char *fragmentShaderPath)
+static VkPipeline create_graphics_pipeline(hz_impl_vulkan_t *impl, const char *vertexShaderPath, const char *fragmentShaderPath)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
     File *vertexShaderCode = load_entire_file(vertexShaderPath);
@@ -835,7 +838,7 @@ void hz_frustum2d_cull_glyphs(hz_rect2f_t screenRect, hz_vector(hz_drawable_glyp
     }
 }
 
-static VkPipeline create_compute_pipeline(HzImplVulkan *ctx,
+static VkPipeline create_compute_pipeline(hz_impl_vulkan_t *ctx,
                                           const char *filename)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
@@ -881,7 +884,7 @@ static VkPipeline create_compute_pipeline(HzImplVulkan *ctx,
     return pipeline;
 }
 
-static void create_render_pass(HzImplVulkan *ctx)
+static void create_render_pass(hz_impl_vulkan_t *ctx)
 {
     VkAttachmentDescription colorAttachment = {0};
     colorAttachment.format = ctx->swapchainImageFormat;
@@ -931,7 +934,7 @@ static void create_render_pass(HzImplVulkan *ctx)
     }
 }
 
-void create_descriptor_pool(HzImplVulkan *ctx)
+void create_descriptor_pool(hz_impl_vulkan_t *ctx)
 {
     VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
@@ -993,7 +996,7 @@ typedef struct {
     VkImage glyph_cache_image;
 } Compute;
 
-static void allocate_compute_descriptor_sets(HzImplVulkan *ctx)
+static void allocate_compute_descriptor_sets(hz_impl_vulkan_t *ctx)
 {
     ctx->computeDescriptorSets = (VkDescriptorSet *) malloc(sizeof(VkDescriptorSet));
 
@@ -1039,7 +1042,7 @@ typedef struct {
     VkImageLayout imageLayout;
 } Texture;
 
-static void update_compute_descriptor_sets(VkDevice device, VkDescriptorSet descriptorSet,
+static void update_glyph_texture_descriptor(VkDevice device, VkDescriptorSet descriptorSet,
                                            GlyphCacheImageData glyphCacheImageData)
 {
     VkWriteDescriptorSet writeDescriptorSet;
@@ -1061,14 +1064,10 @@ static void update_compute_descriptor_sets(VkDevice device, VkDescriptorSet desc
     writeDescriptorSet.pTexelBufferView = NULL;
     writeDescriptorSet.pImageInfo = &imageInfo;
 
-
-    // Uniform buffer
-
-
     vkUpdateDescriptorSets(device,1,&writeDescriptorSet,0,NULL);
 }
 
-void create_descriptor_set_layout(HzImplVulkan *ctx)
+void create_descriptor_set_layout(hz_impl_vulkan_t *ctx)
 {
     // information about the binding.
     VkDescriptorSetLayoutBinding layoutBindings[2] = {0};
@@ -1095,13 +1094,6 @@ void create_descriptor_set_layout(HzImplVulkan *ctx)
         fprintf(stderr, "Failed to create descriptor set layout!\n");
     }
 }
-
-//void update_glyph_cache_descriptors(VkCommandBuffer cmd)
-//{
-//    VkWriteDescriptorSet write;
-//
-//
-//}
 
 void createGlyphCacheImage(VkDevice device, GlyphCacheImageData *imageData, uint32_t width, uint32_t height)
 {
@@ -1195,9 +1187,10 @@ VkCommandBuffer create_command_buffer(VkDevice device, VkCommandPool commandPool
     return cmdBuffer;
 }
 
-VkBuffer
-create_uniform_buffer(VkDevice device, void *mem, size_t size)
+VkBuffer create_buffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties, VkDeviceMemory *bufferMemory)
 {
+    VkResult vr;
     VkBufferCreateInfo createInfo = {0};
     createInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     createInfo.size = size;
@@ -1208,11 +1201,24 @@ create_uniform_buffer(VkDevice device, void *mem, size_t size)
     createInfo.pQueueFamilyIndices = NULL;
 
     VkBuffer buffer;
-    VkResult vr;
 
     if (VR_FAILED(vr = vkCreateBuffer(device, &createInfo, NULL, &buffer))) {
-        fprintf(stderr, "Failed to create uniform buffer! %s\n", vr);
+        fprintf(stderr, "failed to create buffer! %d\n", vr);
     }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo = {0};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = find_memory_type(physicalDevice, memRequirements.memoryTypeBits, properties);
+
+    if (VR_FAILED(vr = vkAllocateMemory(device, &allocInfo, NULL, bufferMemory))) {
+        fprintf(stderr, "failed to allocate buffer memory! %d\n", vr);
+    }
+
+    vkBindBufferMemory(device, buffer, *bufferMemory, 0);
 
     return buffer;
 }
@@ -1240,7 +1246,7 @@ VkSemaphore create_semaphore(VkDevice device)
     return semaphore;
 }
 
-void create_framebuffers(HzImplVulkan *impl)
+void create_framebuffers(hz_impl_vulkan_t *impl)
 {
     hz_vector_resize(impl->framebuffers, impl->swapchainImageCount);
 
@@ -1278,10 +1284,10 @@ VkCommandPool create_command_pool(VkDevice device, uint32_t queueFamilyIndex)
     return commandPool;
 }
 
-HzImplVulkan *
+hz_impl_vulkan_t *
 hz_vk_create_impl(GLFWwindow *window, int enableDebug)
 {
-    HzImplVulkan *impl = malloc(sizeof(*impl));
+    hz_impl_vulkan_t *impl = malloc(sizeof(*impl));
     impl->framebuffers = NULL;
 
     impl->enableDebug = enableDebug;
@@ -1411,7 +1417,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
 
     {
         impl->glyphCacheImageData.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        update_compute_descriptor_sets(impl->device, impl->computeDescriptorSets[0], impl->glyphCacheImageData);
+        update_glyph_texture_descriptor(impl->device, impl->computeDescriptorSets[0], impl->glyphCacheImageData);
     }
 
     impl->inFlightFence = create_fence(impl->device, VK_TRUE);
@@ -1427,11 +1433,58 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     return impl;
 }
 
+/*
+VkBuffer update_glyph_data_descriptor(VkDevice device, VkDescriptorSet descriptorSet, hz_glyph_shape_t *shape)
+{
+    VkDeviceMemory deviceMemory = VK_NULL_HANDLE;    
+    VkDeviceSize bufferSize = sizeof(int) + shape->vertexCount * sizeof(hz_vertex_t);
+
+    VkBuffer glyphDataBuffer = create_buffer(device,
+        bufferSize,
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        &deviceMemory);
+
+    uint8_t *mappedData;
+    vkMapMemory(device, deviceMemory, 0, VK_WHOLE_SIZE, 0, &mappedData);
+    *(int *)mappedData = shape->vertexCount;
+    memcpy(mappedData+4, shape->vertices, shape->vertexCount * sizeof(hz_vertex_t));
+    vkUnmapMemory(device, deviceMemory);
+
+    VkWriteDescriptorSet writeDescriptorSet;
+
+    // glyph data descriptor write
+    VkDescriptorBufferInfo bufferInfo = {0};
+    bufferInfo.buffer = glyphDataBuffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = VK_WHOLE_SIZE;
+
+    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet.pNext = NULL;
+    writeDescriptorSet.descriptorCount = 1;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writeDescriptorSet.dstArrayElement = 0;
+    writeDescriptorSet.dstBinding = 1;
+    writeDescriptorSet.dstSet = descriptorSet;
+    writeDescriptorSet.pBufferInfo = &bufferInfo;
+    writeDescriptorSet.pTexelBufferView = NULL;
+    writeDescriptorSet.pImageInfo = NULL;
+
+    vkUpdateDescriptorSets(device,1,&writeDescriptorSet,0,NULL);
+
+    // destroy frame resources
+    VkFreeMemory(device,deviceMemory,NULL);
+    VkDestroyBuffer(device,glyphDataBuffer,NULL);
+}
+*/
+
 #define WORKGROUP_SIZE_X 16
 #define WORKGROUP_SIZE_Y 16
 
-void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHeight)
+void record_compute_commands(hz_impl_vulkan_t *impl,
+                             int textureWidth, int textureHeight)
 {
+
     // Begin the command buffer
     VkCommandBufferBeginInfo beginInfo = {0};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1457,7 +1510,7 @@ void record_compute_commands(HzImplVulkan *impl, int textureWidth, int textureHe
     vkEndCommandBuffer(impl->computeCmdBuffer);
 }
 
-void record_graphics_command_buffer(HzImplVulkan *impl, VkCommandBuffer commandBuffer, uint32_t imageIndex)
+void record_graphics_command_buffer(hz_impl_vulkan_t *impl, VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
     VkCommandBufferBeginInfo beginInfo = {0};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1490,16 +1543,63 @@ void record_graphics_command_buffer(HzImplVulkan *impl, VkCommandBuffer commandB
 }
 
 void
-hz_vk_render_frame(HzImplVulkan *impl)
+hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
 {
     vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(impl->device, 1, &impl->inFlightFence);
-        
+
     uint32_t imageIndex;
     vkAcquireNextImageKHR(impl->device, impl->swapchain, UINT64_MAX,
                           impl->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
-#if 0
+#if 1
+    VkDeviceMemory glyphDataDeviceMemory = VK_NULL_HANDLE;
+    VkBuffer glyphDataBuffer = VK_NULL_HANDLE;
+
+    hz_glyph_shape_t *glyph_shape = hz_stbtt_get_glyph_shape(fontinfo, glyph_index);
+     
+
+    // setup uniform buffer object for glyph curve data
+    {
+        VkDeviceSize bufferSize = 4 + glyph_shape->vertexCount * sizeof(hz_vertex_t);
+
+        glyphDataBuffer = create_buffer(impl->device, impl->physicalDevice,
+            bufferSize,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+            &glyphDataDeviceMemory);
+
+        uint8_t *mappedData;
+        vkMapMemory(impl->device, glyphDataDeviceMemory, 0, VK_WHOLE_SIZE, 0, (void **)&mappedData);
+        *(int *)mappedData = glyph_shape->vertexCount;
+        memcpy(mappedData+4, glyph_shape->vertices, glyph_shape->vertexCount * sizeof(hz_vertex_t));
+        vkUnmapMemory(impl->device, glyphDataDeviceMemory);
+
+        VkWriteDescriptorSet writeDescriptorSet;
+
+        // glyph data descriptor write
+        VkDescriptorBufferInfo bufferInfo = {0};
+        bufferInfo.buffer = glyphDataBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = VK_WHOLE_SIZE;
+
+        writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDescriptorSet.pNext = NULL;
+        writeDescriptorSet.descriptorCount = 1;
+        writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writeDescriptorSet.dstArrayElement = 0;
+        writeDescriptorSet.dstBinding = 1;
+        writeDescriptorSet.dstSet = impl->computeDescriptorSets[0];
+        writeDescriptorSet.pBufferInfo = &bufferInfo;
+        writeDescriptorSet.pTexelBufferView = NULL;
+        writeDescriptorSet.pImageInfo = NULL;
+
+        vkUpdateDescriptorSets(impl->device,1,&writeDescriptorSet,0,NULL);
+    }
+
+    hz_glyph_shape_destroy(glyph_shape);
+    
+
     vkResetCommandBuffer(impl->computeCmdBuffer, 0);
     record_compute_commands(impl, 1024, 1024);
 
@@ -1522,6 +1622,11 @@ hz_vk_render_frame(HzImplVulkan *impl)
 
         vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
         vkResetFences(impl->device, 1, &impl->inFlightFence);
+
+
+        // destroy frame resources
+        vkFreeMemory(impl->device,glyphDataDeviceMemory,NULL);
+        vkDestroyBuffer(impl->device,glyphDataBuffer,NULL);
     }
 #endif
 
@@ -1561,7 +1666,7 @@ hz_vk_render_frame(HzImplVulkan *impl)
 }
 
 void
-hz_vk_terminate(HzImplVulkan *impl)
+hz_vk_terminate(hz_impl_vulkan_t *impl)
 {
     vkDestroyPipelineLayout(impl->device, impl->pipelineLayout, NULL);
 
@@ -1585,7 +1690,7 @@ hz_vk_terminate(HzImplVulkan *impl)
     free(impl);
 }
 
-void hz_vk_wait_idle(HzImplVulkan *impl)
+void hz_vk_wait_idle(hz_impl_vulkan_t *impl)
 {
     vkDeviceWaitIdle(impl->device);
 }

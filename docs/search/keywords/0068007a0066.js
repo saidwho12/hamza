@@ -1,1 +1,1 @@
-﻿NDSearch.OnPrefixDataLoaded("hzf",["Struct","Enumeration"],[["HzFace",,[[,,,,0,"File:hz.h:HzFace","CClass:HzFace"]]],["HzFeature",,[[,,,,1,"File:hz-data-tables.h:HzFeature"]]],["HzFont",,[[,,,,0,"File:hz.h:HzFont","CClass:HzFont"]]]]);
+﻿NDSearch.OnPrefixDataLoaded("hzf",["Enumeration","Struct"],[["HzFeature",,[[,,,,0,"File:hz-data-tables.h:HzFeature"]]],["HzFont",,[[,,,,1,"File:hz.h:HzFont","CClass:HzFont"]]]]);

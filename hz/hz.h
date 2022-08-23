@@ -245,7 +245,7 @@ typedef enum {
 /* include tables, types, and functions and other generated code */
 #include "hz-data-tables.h"
 
-/* function: HzSegment */
+/* function: hz_segment_t */
 typedef struct hz_segment_t hz_segment_t;
 
 /* function: hz_segment_create */
@@ -296,7 +296,7 @@ typedef struct  hz_glyph_metrics_t {
     hz_fixed26dot6_t yOffset;
 } hz_glyph_metrics_t;
 
-/* struct: HzGlyphAttribFlags */
+/* struct: hz_glyph_attrib_flags_t */
 typedef enum hz_glyph_attrib_flags_t {
     HZ_GLYPH_ATTRIB_METRICS_BIT = 0x00000001,
     HZ_GLYPH_ATTRIB_INDEX_BIT = 0x00000002,
@@ -306,7 +306,7 @@ typedef enum hz_glyph_attrib_flags_t {
     HZ_GLYPH_ATTRIB_COMPONENT_INDEX_BIT = 0x00000020,
 } hz_glyph_attrib_flags_t;
 
-/* struct: hz_buffer_t   */
+/* struct: hz_buffer_t */
 typedef struct hz_buffer_t {
     size_t              glyph_count;
     hz_glyph_metrics_t *    glyph_metrics;
@@ -401,7 +401,7 @@ hz_face_get_glyph_metrics(hz_face_t *face, hz_index_t id);
 HZDECL uint16_t
 hz_face_get_num_glyphs(hz_face_t *face);
 
-/* struct: HzFont */
+/* struct: hz_font_t */
 typedef struct hz_font_t hz_font_t;
 
 /* function: hz_font_create */

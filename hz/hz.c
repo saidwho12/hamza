@@ -366,10 +366,10 @@ static void hz_reset_linear_allocator(hz_linear_allocator_t *la)
  *   Struct: hz_stream_t
  *
  *       A struct to store a buffer.
- *      This is also used by <HzDeserializer> to read off bytes.
+ *      This is also used by <hz_deserializer_t> to read off bytes.
  *
  *   See Also:
- *      <HzDeserializer>
+ *      <hz_deserializer_t>
  */
 typedef struct {
     const uint8_t *data;

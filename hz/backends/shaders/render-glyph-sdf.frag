@@ -4,6 +4,6 @@
 layout (location = 0) in vec2 fragUv;
 layout (location = 0) out vec4 outColor;
 
-void main(void) {
+void main() {
     outColor = vec4(fragUv,0.0,1.0);
 }

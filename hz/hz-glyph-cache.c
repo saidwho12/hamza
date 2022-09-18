@@ -8,28 +8,67 @@ hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
     }
 
     hz_glyph_shape_t *shape = malloc(sizeof(*shape));
+    hz_vector(hz_bezier_vertex_t) bezier_result = NULL;
 
     stbtt_vertex *vertices;
-    shape->vertexCount = stbtt_GetGlyphShape(fontinfo, glyph_index, &vertices);
-    shape->vertices = malloc(sizeof(hz_vertex_t) * shape->vertexCount);
+    size_t nverts = stbtt_GetGlyphShape(fontinfo, glyph_index, &vertices);
 
-    float scale = stbtt_ScaleForPixelHeight(fontinfo, 300.);
+    //float scale = stbtt_ScaleForPixelHeight(fontinfo, 300.);
 
-    for (int i = 0; i < shape->vertexCount; ++i) {
-        hz_vertex_t v;
-        // v.padding = vertices[i].padding;
-        v.x = (float)vertices[i].x * scale;
-        v.y = (float)vertices[i].y * scale;
-        v.cx = (float)vertices[i].cx * scale;
-        v.cy = (float)vertices[i].cy * scale;
-        v.cx1 = (float)vertices[i].cx1 * scale;
-        v.cy1 = (float)vertices[i].cy1 * scale;
-        v.type = vertices[i].type;
-        shape->vertices[i] = v;
+    hz_vec2_t pos = {0};
+    for (int i = 0; i < nverts; ++i) {
+        switch (vertices[i].type) {
+            case HZ_VERTEX_TYPE_MOVETO: { // moveto
+                pos.x = vertices[i].x;
+                pos.y = vertices[i].y;
+                break;
+            }
+
+            case HZ_VERTEX_TYPE_LINE: { // line
+                hz_bezier_vertex_t v;
+                v.type = vertices[i].type;
+                v.v1 = pos;
+                v.v2.x = vertices[i].x;
+                v.v2.y = vertices[i].y;
+                hz_vector_push_back(bezier_result, v);
+                pos.x = vertices[i].x;
+                pos.y = vertices[i].y;
+                break;
+            }
+            case HZ_VERTEX_TYPE_QUADRATIC_BEZIER: { // quadratic bezier
+                hz_bezier_vertex_t v;
+                v.type = vertices[i].type;
+                v.v1 = pos;
+                v.v2.x = vertices[i].x;
+                v.v2.y = vertices[i].y;
+                v.c1.x = vertices[i].cx;
+                v.c1.y = vertices[i].cy;
+                hz_vector_push_back(bezier_result, v);
+                pos.x = vertices[i].x;
+                pos.y = vertices[i].y;
+                break;
+            }
+            case HZ_VERTEX_TYPE_CUBIC_BEZIER: { // cubic bezier
+                hz_bezier_vertex_t v;
+                v.type = vertices[i].type;
+                v.v1 = pos;
+                v.v2.x = vertices[i].x;
+                v.v2.y = vertices[i].y;
+                v.c1.x = vertices[i].cx;
+                v.c1.y = vertices[i].cy;
+                v.c2.x = vertices[i].cx1;
+                v.c2.y = vertices[i].cy1;
+                hz_vector_push_back(bezier_result, v);
+                pos.x = vertices[i].x;
+                pos.y = vertices[i].y;
+                break;
+            }
+        }
     }
 
-    //printf("vertexCount: %d\n", shape->vertexCount);
-
+    shape->vertices = bezier_result;
+    shape->vertex_count = hz_vector_size(bezier_result);
+    printf("vertex_count: %d\n", shape->vertex_count);
     stbtt_FreeShape(fontinfo, vertices);
 
     return shape;
@@ -37,6 +76,6 @@ hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
 
 void hz_glyph_shape_destroy(hz_glyph_shape_t *shape)
 {
-    free(shape->vertices);
+    hz_vector_destroy(shape->vertices);
     free(shape);
 }

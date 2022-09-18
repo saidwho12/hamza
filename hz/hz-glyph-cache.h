@@ -22,19 +22,25 @@ typedef enum {
     HZ_VERTEX_TYPE_CUBIC_BEZIER
 } hz_vertex_type_t;
 
-// curve vertex could be of a line, quadratic bezier curve or cubic bezier curve.
-// cx,cy,cx1,cy1 are the optional control points. 
 typedef struct {
-    float x,y;
-    float cx,cy;
-    float cx1,cy1;
-    int type; // hz_vertex_type_t
-} hz_vertex_t;
+    float x, y;
+} hz_vec2_t;
+
+// curve vertex could be of a line, quadratic bezier curve or cubic bezier curve.
+// c1,c2 are the optional control points. 
+typedef struct {
+    hz_vec2_t v1,v2,c1,c2;
+    hz_vertex_type_t type; // hz_vertex_type_t
+} hz_bezier_vertex_t;
 
 typedef struct {
-    int vertexCount;
-    hz_vertex_t *vertices;
+    int vertex_count;
+    hz_bezier_vertex_t *vertices;
 } hz_glyph_shape_t;
+
+typedef struct {
+    float max_sdf_distance;
+} hz_sdf_variables_t;
 
 HZDECL hz_glyph_shape_t *
 hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index);

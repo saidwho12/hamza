@@ -17,7 +17,7 @@ Vertex triangleVerts[6] = {
     Vertex(vec3(.5, .5, 0.0), vec2(1.0, 0.0))
 };
 
-void main(void) {
+void main() {
     Vertex v = triangleVerts[gl_VertexIndex];
     gl_Position = vec4(v.pos, 1.0);
     fragUv = v.uv;

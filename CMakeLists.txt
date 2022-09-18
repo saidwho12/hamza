@@ -66,9 +66,8 @@ add_custom_command(
         COMMENT "Creating ${SHADER_BINARY_DIR}"
         )
 
-set(GLSL_SHADERS ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/render-glyph-sdf.vert
-        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/render-glyph-sdf.frag
-        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier-to-sdf.comp)
+set(GLSL_SHADERS ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_to_sdf.vert
+        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_to_sdf.frag)
 
 foreach(source IN LISTS GLSL_SHADERS)
     get_filename_component(FILENAME ${source} NAME)

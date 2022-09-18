@@ -349,11 +349,6 @@ static void* hz_alloc_linear(hz_linear_allocator_t *la, size_t size)
     return NULL;
 }
 
-static void *LinearAlignedhz_malloc(hz_linear_allocator_t *la, size_t n, size_t alignment)
-{
-
-}
-
 static void hz_reset_linear_allocator(hz_linear_allocator_t *la)
 {
     la->offset = 0;
@@ -5224,6 +5219,15 @@ hz_load_gpos_pair_adjustment_subtable(hz_stream_t *stream,
 }
 
 HZ_STATIC hz_error_t
+hz_load_gpos_cursive_attachment_subtable(hz_stream_t *stream,
+                                         hz_lookup_table_t *lookup,
+                                         uint16_t subtable_index,
+                                         uint16_t format)
+{
+    return HZ_OK;
+}
+
+HZ_STATIC hz_error_t
 hz_load_gpos_mark_to_base_attachment_subtable(hz_stream_t *stream,
                                               hz_lookup_table_t *lookup,
                                               uint16_t subtable_index,
@@ -5443,36 +5447,30 @@ hz_load_gpos_lookup_subtable(const uint8_t *data,
     format = Unpack16(&stream);
 
     switch (lookup_type) {
-        case HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT: {
+        case HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT:
             return hz_load_gpos_single_adjustment_subtable(&stream, lookup, subtable_index, format);
-        }
 
-        case HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT: {
+        case HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT:
             return hz_load_gpos_pair_adjustment_subtable(&stream, lookup, subtable_index, format);
-        }
 
-        case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
-            break;
-        }
+        case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT:
+            return hz_load_gpos_cursive_attachment_subtable(&stream, lookup, subtable_index, format);
 
         case HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT:
             return hz_load_gpos_mark_to_base_attachment_subtable(&stream, lookup, subtable_index, format);
 
-        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT: {
+        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT:
             return hz_load_gpos_mark_to_ligature_attachment_subtable(&stream, lookup, subtable_index, format);
-        }
 
-        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT: {
+        case HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT:
             return hz_load_gpos_mark_to_mark_attachment_subtable(&stream, lookup, subtable_index, format);
-        }
 
         case HZ_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING: {
             break;
         }
 
-        case HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING: {
+        case HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING:
             return hz_load_gpos_chained_context_positioning_subtable(&stream, lookup, subtable_index, format);
-        }
 
         case HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING: { // implemented inline
             if (format == 1) {
@@ -6344,7 +6342,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                                 .id = ligature->ligature_glyph,
                                                                 .codepoint = 0,
-                                                                .component_index = 0});
+                                                                .component_index = b1->component_indices[v]});
 
                                                         // Push ignored glyphs found within the matched range
                                                         for (int k = s1; k <= s2; ++k) {
@@ -6995,17 +6993,16 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                         if (hz_should_replace(b1, feature, v, table->lookup_flags, table->mark_filtering_set)) {
                                             int prev_mark = hz_search_prev_glyph(b1, v, HZ_GLYPH_CLASS_MARK, HZ_GLYPH_CLASS_MARK);//range->base + (v - range->mn) - 1;
                                             if (prev_mark != -1) {
-                                                if (hz_map_contains(subtable->mark2_coverage,
-                                                                        b1->glyph_indices[prev_mark]) &&
+                                                if (hz_map_contains(subtable->mark2_coverage, b1->glyph_indices[prev_mark]) &&
                                                     hz_map_contains(subtable->mark1_coverage, b1->glyph_indices[v])
-                                                    && b1->component_indices[v] == b1->component_indices[prev_mark])
-
+                                                    && (b1->component_indices[v] == b1->component_indices[prev_mark]))
                                                 {
                                                     // valid second mark found
                                                     uint16_t mark1_index = hz_map_get_value(subtable->mark1_coverage, b1->glyph_indices[v]);
                                                     uint16_t mark2_index = hz_map_get_value(subtable->mark2_coverage, b1->glyph_indices[prev_mark]);
                                                     hz_mark_record_t *mark_record = &subtable->mark1_array.mark_records[mark1_index];
-                                                    hz_anchor_t *base_anchor = &subtable->mark2_array.mark2_records[mark2_index].mark2_anchors[mark_record->mark_class];
+                                                    hz_mark2_record_t *mark2_record = &subtable->mark2_array.mark2_records[mark2_index];
+                                                    hz_anchor_t *base_anchor = &mark2_record->mark2_anchors[mark_record->mark_class];
                                                     hz_anchor_t *mark_anchor = &mark_record->mark_anchor;
 
                                                     hz_glyph_metrics_t base_metrics = b1->glyph_metrics[prev_mark];

@@ -1,1 +1,0 @@
-﻿NDSearch.OnPrefixDataLoaded("hzs",["Function"],[["HzSegment",,[[,,,,0,"File:hz.h:HzSegment"]]]]);

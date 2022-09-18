@@ -1,1 +1,1 @@
-﻿NDContentPage.OnToolTipsLoaded({8:"<div class=\"NDToolTip TStruct LC\"><div class=\"TTSummary\">A struct to store a buffer.&nbsp; This is also used by &lt;HzDeserializer&gt; to read off bytes.</div></div>"});
+﻿NDContentPage.OnToolTipsLoaded({8:"<div class=\"NDToolTip TStruct LC\"><div class=\"TTSummary\">A struct to store a buffer.&nbsp; This is also used by &lt;hz_deserializer_t&gt; to read off bytes.</div></div>"});

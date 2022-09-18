@@ -1,1 +1,0 @@
-﻿NDSearch.OnPrefixDataLoaded("hzg",["Struct"],[["HzGlyphAttribFlags",,[[,,,,0,"File:hz.h:HzGlyphAttribFlags","CClass:HzGlyphAttribFlags"]]]]);

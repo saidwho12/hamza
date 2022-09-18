@@ -3,9 +3,7 @@
 Hamza is a light-weight, fast and portable C99 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's built alongside the [stb_truetype.h](https://github.com/nothings/stb) TrueType library. It's designed to be a small, 
 portable and optimized shaper that's easy to integrate into an existing project.
 Originally Hamza was a research project to learn about font shaping for an Arabic calligraphy software I had in mind.
-Later, with much research and work I have only developed more fascination with the general shaping process and possible strategies of optimization.
-
-![Arabic rendered with the complex font "Omar-Naskh"](misc/simple-arabic.png)     
+Later, with much research and work I have only developed more fascination with the general shaping process and possible strategies of optimization.    
 
 ## Objective
 * Keep the library as a whole excluding backends and auto-generated tables under 10k SLOC.

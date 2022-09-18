@@ -32,7 +32,7 @@ static void initApp(App *app)
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 
-    app->window = glfwCreateWindow(1280, 720, "Hamza Demo", NULL, NULL);
+    app->window = glfwCreateWindow(800, 800, "Hamza Demo", NULL, NULL);
 
     if (app->window == NULL) {
         fprintf(stderr, "%s\n", "Failed to create window!");
@@ -73,7 +73,7 @@ static void mainLoop(App *app)
 {
     while (!glfwWindowShouldClose(app->window)) {
         glfwPollEvents();
-        hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 0x398);
+        hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 'a');
         hz_vk_render_frame(app->vk_impl, &app->fontinfo, gid);
     }
 
@@ -92,6 +92,15 @@ Color BlendOver(Color b, Color a)
     o.green = (a.green * a.alpha + b.green * (1.0f - a.alpha));
     o.blue = (a.blue * a.alpha + b.blue * (1.0f - a.alpha));
     return o;
+}
+
+float rand_float() {
+    #define RAND_MAX 1000
+    return (float)(rand() % RAND_MAX)/RAND_MAX;  
+}
+
+float rand_float_in_range(float a, float b) {
+    return rand_float() * (b-a) + a;
 }
 
 void blit_image(unsigned char *dstPixels, long dstW, long dstH, unsigned char *srcPixels,
@@ -235,10 +244,11 @@ void render_text_to_png(const char *filename,
             stbtt_MakeGlyphBitmap(font, glyph_buffer, c_w,
                                   c_h, c_w, scale, scale, glyph_index);
 
-            Color col = {1.0f,//138.0f/255.0f,
-                         0.3f,//176.0f/255.0f,
-                         0.3f,//238.0f/255.0f,
-                         1.0f};
+            Color col = {0.0f,//rand_float(),//138.0f/255.0f,
+                         0.0f,//rand_float(),//176.0f/255.0f,
+                         0.0f,//rand_float(),//238.0f/255.0f,
+                         1.0F};
+
 
 #if 0
             if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
@@ -272,9 +282,9 @@ int main(int argc, char *argv[]) {
     hz_setup(HZ_USE_CPUID_FOR_SIMD_CHECKS);
 
     stbtt_fontinfo  fontinfo;
-    // load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
-//        load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
-    // load_font_face(&fontinfo, "../data/fonts/UthmanTN1 Ver10.otf");
+    load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
+    //load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
+    //load_font_face(&fontinfo, "../data/fonts/UthmanTN1 Ver10.otf");
 //load_font_face(&fontinfo, "../data/fonts/Amiri-Regular.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
 //load_font_face(&fontinfo, "../data/fonts/Quran/AyeshaQuran-Light.ttf");
@@ -282,8 +292,8 @@ int main(int argc, char *argv[]) {
    // load_font_face(&fontinfo, "../data/fonts/Quran/AyeshaQuran-Light.ttf");
 //    load_font_face(&fontinfo, "../data/fonts/Devnew.ttf");
 //load_font_face(&fontinfo, "../data/fonts/NotoKufiArabic-Bold.ttf");
-   // load_font_face(&fontinfo, "../data/fonts/UthmanicHafs1 Ver13.ttf");
-   load_font_face(&fontinfo,"../data/fonts/Quran/OmarNaskh-Light.ttf");
+   // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
+   //load_font_face(&fontinfo,"../data/fonts/Quran/OmarNaskh-Light.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/NotoSansArabicUI-Regular.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/EBGaramond-VariableFont_wght.ttf");
 //    load_font_face(&fontinfo,"../data/fonts/ScheherazadeNew-Regular.ttf");
@@ -303,61 +313,26 @@ int main(int argc, char *argv[]) {
 //                   "\n"
 //                   "Hello, World! How's it going today?";
 
+   // const char *text = "۞ أَوَلَمْ يَسِيرُوا۟ فِى ٱلْأَرْضِ فَيَنظُرُوا۟ كَيْفَ كَانَ عَـٰقِبَةُ ٱلَّذِينَ كَانُوا۟ مِن قَبْلِهِمْ ۚ كَانُوا۟ هُمْ أَشَدَّ مِنْهُمْ قُوَّةً وَءَاثَارًا فِى ٱلْأَرْضِ فَأَخَذَهُمُ ٱللَّهُ بِذُنُوبِهِمْ وَمَا كَانَ لَهُم مِّنَ ٱللَّهِ مِن وَاقٍ";
+   // const char *text = "وَلَوْ يُؤَاخِذُ ٱللَّهُ ٱلنَّاسَ بِمَا كَسَبُوا۟ مَا تَرَكَ عَلَىٰ ظَهْرِهَا مِن دَآبَّةٍ وَلَـٰكِن يُؤَخِّرُهُمْ إِلَىٰٓ أَجَلٍ مُّسَمًّى ۖ فَإِذَا جَآءَ أَجَلُهُمْ فَإِنَّ ٱللَّهَ كَانَ بِعِبَادِهِۦ بَصِيرًۢا";
+   // const char *text = "ٱلَّذِينَ يَحْمِلُونَ ٱلْعَرْشَ وَمَنْ حَوْلَهُۥ يُسَبِّحُونَ بِحَمْدِ رَبِّهِمْ وَيُؤْمِنُونَ بِهِۦ وَيَسْتَغْفِرُونَ لِلَّذِينَ ءَامَنُوا۟ رَبَّنَا وَسِعْتَ كُلَّ شَىْءٍ رَّحْمَةً وَعِلْمًا فَٱغْفِرْ لِلَّذِينَ تَابُوا۟ وَٱتَّبَعُوا۟ سَبِيلَكَ وَقِهِمْ عَذَابَ ٱلْجَحِيمِ";
+   // const char *text = "يَـٰٓأَيُّهَا ٱلَّذِينَ ءَامَنُوا۟ لَا يَحِلُّ لَكُمْ أَن تَرِثُوا۟ ٱلنِّسَآءَ كَرْهًا ۖ وَلَا تَعْضُلُوهُنَّ لِتَذْهَبُوا۟ بِبَعْضِ مَآ ءَاتَيْتُمُوهُنَّ إِلَّآ أَن يَأْتِينَ بِفَـٰحِشَةٍ مُّبَيِّنَةٍ ۚ وَعَاشِرُوهُنَّ بِٱلْمَعْرُوفِ ۚ فَإِن كَرِهْتُمُوهُنَّ فَعَسَىٰٓ أَن تَكْرَهُوا۟ شَيْـًٔا وَيَجْعَلَ ٱللَّهُ فِيهِ خَيْرًا كَثِيرًا";
    // const char *text = "لِتُنذِرَ قَوْمًا مَّآ أُنذِرَ ءَابَآؤُهُمْ فَهُمْ غَـٰفِلُونَ";
-  const char *text = "وَجَعَلْنَا ٱلَّيْلَ وَٱلنَّهَارَ ءَايَتَيْنِ ۖ فَمَحَوْنَآ ءَايَةَ ٱلَّيْلِ وَجَعَلْنَآ ءَايَةَ ٱلنَّهَارِ مُبْصِرَةً لِّتَبْتَغُوا۟ فَضْلًا مِّن رَّبِّكُمْ وَلِتَعْلَمُوا۟ عَدَدَ ٱلسِّنِينَ وَٱلْحِسَابَ ۚ وَكُلَّ شَىْءٍ فَصَّلْنَـٰهُ تَفْصِيلًا";
-   // const char *text = "فَإِن تَوَلَّوْا۟ فَقَدْ أَبْلَغْتُكُم مَّآ أُرْسِلْتُ بِهِۦٓ إِلَيْكُمْ ۚ وَيَسْتَخْلِفُ رَبِّى قَوْمًا غَيْرَكُمْ وَلَا تَضُرُّونَهُۥ شَيْـًٔا ۚ إِنَّ رَبِّى عَلَىٰ كُلِّ شَىْءٍ حَفِيظٌ";
-//    const char *text = "عَلَىٰ";
-//    const char *text = "إيمان أتى";
-//    const char *text = "قُلْ هُوَ ٱللَّهُ أَحَدٌ";
-//    const char *text = "أحد لا الى جاء حاجة";
-    // const char *text = "وحثت وسائل الإعلام المواطنين على توخّي الحذر بخصوص أشياء قد تكون أُسقطت عبر الحدود من جهة الجنوب.\n"
-    //                    "\n"
-    //                    "وتشهد الحدود بين الكوريتين منذ سنوات تسيير مناطيد من الجنوب صوب الشمال محمّلة بمنشورات ومساعدات إنسانية.";
-
-   // const char *text = "وتداول رواد مواقع التواصل الاجتماعي المقطع المصور بشكل كبير، وطالب ناشطون باعتقال قوات الأمن المعتدين ومحاسبتهم.\n"
-   //                    " ضجت مواقع التواصل الاجتماعي في العراق غضبا بعد انتشار مقطع فيديو يظهر اعتداء أفراد أمن على عدد من النساء داخل محكمة السليمانية في إقليم كردستان العراق.";
-
-   // const char *text = "سوشل میڈیا رہنماؤں نے اس ویڈیو کو بہت زیادہ گردش کیا اور کارکنوں نے مطالبہ کیا کہ سیکورٹی فورسز حملہ آوروں کو گرفتار کریں اور ان کا احتساب کریں۔                        عراق میں سوشل میڈیا سائٹس اس وقت مشتعل ہو گئیں جب ایک ویڈیو سامنے آئی جس میں سیکورٹی اہلکاروں کو عراق کے کردستان خطے میں سلیمانیہ کورٹ ہاؤس کے اندر متعدد خواتین پر حملہ کرتے ہوئے دکھایا گیا ہے۔";
-
-   // const char *text="534- الْعَطْفُ إِمَّا ذُو بِيانِ أوْ نَسَقْ…… وَالْغَرَضُ الآن بَيانُ سَبَقْ\n"
-   //                  "535- فَذُو الْبَيَانِ تَابعٌ شِبْهُ الصِّفَهْ……حَقِيقَةُ الْقَصْدِ بِهِ مُنْكَشِفَهْ\n"
-   //                  "536- فَأَوْلِيَنْهُ مِنْ وِفَاقِ الأَولِ…… مَا مِنْ وَفَاقِ الأوَّلِ النَّعْتُ وَلي\n"
-   //                  "537- فَقَدْ يَكُونَانِ مُنكَّرَيْنَ…… كَمَا يَكُونَانِ مُعَرَّفَيْنِ\n"
-   //                  "538- وَصَالَحاً لِبَدَلِيَّةٍ يُرَى…… فِي غَيْرِ نَحْوِ يَا غُلامُ يَعْمُرَا\n"
-   //                  "539- وَنَحْوِ بِشْرٍ تَابعِ الْبَكْرِيِّ…… وَلَيْسَ أنْ يُبْدَلَ بِالمَرْ ضِيِّ";
-    //const char *text = "W wiatraku „Franciszek”\n"
-    //                   "\n"
-    //                   "Tu znajduje się wystawa licznych pamiątek etnograficznych i historycznych, oczywiście zebranych głównie z regionu Wielkopolski. Ale są tutaj także pamiątki z Dolnego Śląska i Ziemi Lubuskiej. Znajdują się tu między innymi dawne narzędzia rolnicze i gospodarskie, przedmioty codziennego użytku, stroje ludowe oraz te przedmioty, które stanowią sztukę ludową.";
+  // const char *text = "وَجَعَلْنَا ٱلَّيْلَ وَٱلنَّهَارَ ءَايَتَيْنِ ۖ فَمَحَوْنَآ ءَايَةَ ٱلَّيْلِ وَجَعَلْنَآ ءَايَةَ ٱلنَّهَارِ مُبْصِرَةً لِّتَبْتَغُوا۟ فَضْلًا مِّن رَّبِّكُمْ وَلِتَعْلَمُوا۟ عَدَدَ ٱلسِّنِينَ وَٱلْحِسَابَ ۚ وَكُلَّ شَىْءٍ فَصَّلْنَـٰهُ تَفْصِيلًا";
+   //const char *text = "فَإِن تَوَلَّوْا۟ فَقَدْ أَبْلَغْتُكُم مَّآ أُرْسِلْتُ بِهِۦٓ إِلَيْكُمْ ۚ وَيَسْتَخْلِفُ رَبِّى قَوْمًا غَيْرَكُمْ وَلَا تَضُرُّونَهُۥ شَيْـًٔا ۚ إِنَّ رَبِّى عَلَىٰ كُلِّ شَىْءٍ حَفِيظٌ (10)";
+   // const char *text = "۞ وَقَضَىٰ رَبُّكَ أَلَّا تَعْبُدُوٓا۟ إِلَّآ إِيَّاهُ وَبِٱلْوَٰلِدَيْنِ إِحْسَـٰنًا ۚ إِمَّا يَبْلُغَنَّ عِندَكَ ٱلْكِبَرَ أَحَدُهُمَآ أَوْ كِلَاهُمَا فَلَا تَقُل لَّهُمَآ أُفٍّ وَلَا تَنْهَرْهُمَا وَقُل لَّهُمَا قَوْلًا كَرِيمًا";
+   const char *text = "Hello, World!";
 
    hz_segment_t *seg = hz_segment_create();
    hz_segment_load_utf8(seg, text);
-   hz_segment_set_direction(seg, HZ_DIRECTION_RTL);
-   hz_segment_set_script(seg, HZ_SCRIPT_ARABIC);
-   hz_segment_set_language(seg, HZ_LANGUAGE_ARABIC);
-
-//    const char *text = "हमजा एक हल्का, तेज और पोर्टेबल ओपन टाइप आकार देने वाला पुस्तकालय है।";
-//    hz_segment_t *seg = hz_segment_create();
-//    hz_segment_load_utf8(seg, text);
-//    hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
-//    hz_segment_set_script(seg, HZ_SCRIPT_DEVANAGARI);
-//    hz_segment_set_language(seg, HZ_LANGUAGE_HINDI);
-
-//    hz_feature_t features[] = {
-//        HZ_FEATURE_LOCL,
-//        HZ_FEATURE_NUKT,
-//        HZ_FEATURE_AKHN,
-//        HZ_FEATURE_RPHF,
-//        HZ_FEATURE_RKRF,
-//        HZ_FEATURE_BLWF,
-//        HZ_FEATURE_HALF,
-//        HZ_FEATURE_VATU,
-//        HZ_FEATURE_CJCT
-//    };
+   hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
+   hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
+   hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
 
     hz_feature_t features[] = {
             HZ_FEATURE_CCMP,
 //            HZ_FEATURE_RVRN,
-//            HZ_FEATURE_LOCL,
+            HZ_FEATURE_LOCL,
             HZ_FEATURE_ISOL,
             HZ_FEATURE_FINA,
             HZ_FEATURE_MEDI,
@@ -368,13 +343,14 @@ int main(int argc, char *argv[]) {
             HZ_FEATURE_MSET,
             HZ_FEATURE_CLIG,
             HZ_FEATURE_LIGA,
-           HZ_FEATURE_SS12,
-            HZ_FEATURE_SS13,
+            HZ_FEATURE_SS12,
+            //HZ_FEATURE_SS13,
             // HZ_FEATURE_SS07,
-            HZ_FEATURE_SS08,
-            HZ_FEATURE_SS02,
+            //HZ_FEATURE_SS08,
+            //HZ_FEATURE_SS04,
+            //HZ_FEATURE_SS02,
 //            HZ_FEATURE_SS03,
-            HZ_FEATURE_SS05,
+           // HZ_FEATURE_SS05,
             HZ_FEATURE_KERN,
             HZ_FEATURE_CURS,
             HZ_FEATURE_MARK,
@@ -382,20 +358,19 @@ int main(int argc, char *argv[]) {
 //            HZ_FEATURE_CSWH,
     };
 
-    hz_shape(font, seg, features, ARRAYSIZE(features), 0);
-    //hz_shape(font, seg, NULL, 0, HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES);
-//    hz_shape(font, seg, NULL, 0, 0);
+    //hz_shape(font, seg, features, ARRAYSIZE(features), 0);
+    hz_shape(font, seg, NULL, 0, HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES);
+    //hz_shape(font, seg, NULL, 0, 0);
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
     // printf("glyph count: %llu\n", buffer->glyph_count);
-    render_text_to_png("out.png", &fontinfo, buffer);
+    //render_text_to_png("out.png", &fontinfo, buffer);
     hz_segment_destroy(seg);
 
-
-    //App app;
-    //initApp(&app);
-    //app.fontinfo = fontinfo;
-    //mainLoop(&app);
+    App app;
+    initApp(&app);
+    app.fontinfo = fontinfo;
+    mainLoop(&app);
 
     hz_cleanup();
 

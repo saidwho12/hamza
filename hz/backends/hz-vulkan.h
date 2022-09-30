@@ -11,7 +11,6 @@
 extern "C" {
 #endif
 
-
 typedef struct hz_impl_vulkan_t hz_impl_vulkan_t;
 
 hz_impl_vulkan_t *hz_vk_create_impl(GLFWwindow *window, int enableDebug);

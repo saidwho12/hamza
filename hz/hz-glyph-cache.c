@@ -1,26 +1,35 @@
 #include "hz-glyph-cache.h"
 
-hz_glyph_shape_t *
+hz_vec2_t hz_vec2(float a, float b)
+{ return (hz_vec2_t){a,b}; }
+
+hz_bezier_shape_t *
 hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
 {
     if (stbtt_IsGlyphEmpty(fontinfo, glyph_index)) {
         return NULL;
     }
 
-    hz_glyph_shape_t *shape = malloc(sizeof(*shape));
+    hz_bezier_shape_t *shape = malloc(sizeof(*shape));
     hz_vector(hz_bezier_vertex_t) bezier_result = NULL;
+    hz_vector(hz_contour_t) contours = NULL;
 
     stbtt_vertex *vertices;
     size_t nverts = stbtt_GetGlyphShape(fontinfo, glyph_index, &vertices);
-
     //float scale = stbtt_ScaleForPixelHeight(fontinfo, 300.);
 
     hz_vec2_t pos = {0};
     for (int i = 0; i < nverts; ++i) {
         switch (vertices[i].type) {
             case HZ_VERTEX_TYPE_MOVETO: { // moveto
+                hz_contour_t contour;
                 pos.x = vertices[i].x;
                 pos.y = vertices[i].y;
+                contour.winding = 0;
+                contour.start = i;
+                contour.curve_count = 0;
+                contour.pos = pos;
+                hz_vector_push_back(contours, contour);
                 break;
             }
 
@@ -64,17 +73,25 @@ hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
                 break;
             }
         }
+
+        if (contours != NULL) {
+            // add to curve count of last contour
+            ++contours[ hz_vector_size(contours)-1 ].curve_count;
+        }
     }
 
     shape->vertices = bezier_result;
     shape->vertex_count = hz_vector_size(bezier_result);
+    shape->contours = contours;
+    shape->contour_count = hz_vector_size(contours);
     printf("vertex_count: %d\n", shape->vertex_count);
+    printf("contour_count: %d\n", shape->contour_count);
     stbtt_FreeShape(fontinfo, vertices);
 
     return shape;
 }
 
-void hz_glyph_shape_destroy(hz_glyph_shape_t *shape)
+void hz_glyph_shape_destroy(hz_bezier_shape_t *shape)
 {
     hz_vector_destroy(shape->vertices);
     free(shape);

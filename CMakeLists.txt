@@ -67,7 +67,9 @@ add_custom_command(
         )
 
 set(GLSL_SHADERS ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_to_sdf.vert
-        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_to_sdf.frag)
+        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_to_sdf.frag
+        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_mask.vert
+        ${CMAKE_CURRENT_LIST_DIR}/hz/backends/shaders/bezier_mask.frag)
 
 foreach(source IN LISTS GLSL_SHADERS)
     get_filename_component(FILENAME ${source} NAME)

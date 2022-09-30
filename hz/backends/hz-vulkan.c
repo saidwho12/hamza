@@ -62,7 +62,9 @@ struct hz_impl_vulkan_t {
     VkPipeline                  computePipeline;
 
     VkPipelineLayout            graphicsPipelineLayout;
-    VkPipeline                  graphicsPipeline;
+
+    VkPipeline                  bezier_sdf_shader;
+    VkPipeline                  bezier_mask_shader;
 
 
     hz_vector(VkFramebuffer)    framebuffers;
@@ -653,13 +655,14 @@ VkPipelineLayout create_graphics_pipeline_layout(VkDevice device, VkDescriptorSe
     return pipelineLayout;
 }
 
-static VkPipeline create_fast_sdf_shader(hz_impl_vulkan_t *impl,
+static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
     size_t vertex_binding_count,
     VkVertexInputBindingDescription *vertex_bindings,
     size_t vertex_attrib_count,
     VkVertexInputAttributeDescription *vertex_attribs,
     const char *vertex_shader_path,
-    const char *fragment_shader_path)
+    const char *fragment_shader_path,
+    VkPipelineColorBlendAttachmentState *colorBlendAttachment)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
     File *vertexShaderCode = load_entire_file(vertex_shader_path);
@@ -751,7 +754,7 @@ static VkPipeline create_fast_sdf_shader(hz_impl_vulkan_t *impl,
     multisampling.pSampleMask = NULL; // Optional
     multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
     multisampling.alphaToOneEnable = VK_FALSE; // Optional
-
+/*
     VkPipelineColorBlendAttachmentState colorBlendAttachment = {0};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_TRUE;
@@ -761,13 +764,13 @@ static VkPipeline create_fast_sdf_shader(hz_impl_vulkan_t *impl,
     colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
     colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
     colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
-
+*/
     VkPipelineColorBlendStateCreateInfo colorBlending = {0};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
     colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.pAttachments = colorBlendAttachment;
     colorBlending.blendConstants[0] = 0.0f; // Optional
     colorBlending.blendConstants[1] = 0.0f; // Optional
     colorBlending.blendConstants[2] = 0.0f; // Optional
@@ -1419,7 +1422,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
         VkVertexInputBindingDescription vertex_bindings[] = {
             { 0, sizeof(hz_bezier_vertex_t), VK_VERTEX_INPUT_RATE_INSTANCE } // Buffer
         };
-        static const
+        
         VkVertexInputAttributeDescription vertex_attribs[] = {
             { 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_bezier_vertex_t, v1) }, // v1
             { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_bezier_vertex_t, v2) }, // v2
@@ -1428,9 +1431,49 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
             { 4, 0, VK_FORMAT_R32_SINT, offsetof(hz_bezier_vertex_t, type) } // type
         };
 
-        impl->graphicsPipeline = create_fast_sdf_shader(impl,1,vertex_bindings,5,vertex_attribs,
-            "./shaders/bezier_to_sdf.vert.spv", "./shaders/bezier_to_sdf.frag.spv");
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {0};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_MAX; // Optional
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+
+        impl->bezier_sdf_shader = create_pipeline(impl,1,vertex_bindings,5,vertex_attribs,
+            "./shaders/bezier_to_sdf.vert.spv", "./shaders/bezier_to_sdf.frag.spv",
+            &colorBlendAttachment);
     }
+
+    {
+        // Create Kokojima et al. mask shader
+        VkVertexInputBindingDescription vertex_bindings[] = {
+            { 0, sizeof(hz_stencil_vertex_t), VK_VERTEX_INPUT_RATE_VERTEX } // Buffer
+        };
+ 
+        VkVertexInputAttributeDescription vertex_attribs[] = {
+            { 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_stencil_vertex_t, pos) }, // pos
+            { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_stencil_vertex_t, uv) }, // uv
+        };
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {0};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_MAX; // Optional
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+
+        impl->bezier_mask_shader = create_pipeline(impl,1,vertex_bindings,2,vertex_attribs,
+            "./shaders/bezier_mask.vert.spv", "./shaders/bezier_mask.frag.spv",
+            &colorBlendAttachment);
+    }
+
+
 
     // Create graphics pipeline
     //impl->graphicsPipeline = create_graphics_pipeline(impl, "./shaders/render-glyph-sdf.vert.spv", "./shaders/render-glyph-sdf.frag.spv");
@@ -1461,7 +1504,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
 }
 
 /*
-VkBuffer update_glyph_data_descriptor(VkDevice device, VkDescriptorSet descriptorSet, hz_glyph_shape_t *shape)
+VkBuffer update_glyph_data_descriptor(VkDevice device, VkDescriptorSet descriptorSet, hz_bezier_shape_t *shape)
 {
     VkDeviceMemory deviceMemory = VK_NULL_HANDLE;    
     VkDeviceSize bufferSize = sizeof(int) + shape->vertexCount * sizeof(hz_vertex_t);
@@ -1540,8 +1583,10 @@ void record_compute_commands(hz_impl_vulkan_t *impl,
 void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
     VkCommandBuffer commandBuffer,
     uint32_t imageIndex,
-    VkBuffer vertex_buffer,
-    uint32_t instanceCount)
+    VkBuffer curve_buffer,
+    uint32_t curve_count,
+    VkBuffer mask_vbo,
+    uint32_t mask_drawcount)
 {
     VkCommandBufferBeginInfo beginInfo = {0};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1565,17 +1610,51 @@ void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
     renderPassInfo.pClearValues = &clearColor;
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->graphicsPipeline);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->bezier_sdf_shader);
     
-    // bind vertex buffer for curve segments
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertex_buffer, offsets);
+    {
+        // bind vertex buffer for curve segments
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &curve_buffer, offsets);
+    }
 
-    vkCmdDraw(commandBuffer, 6, instanceCount, 0, 0);
+    // draw bezier curve distances with min blending
+    vkCmdDraw(commandBuffer, 6, curve_count, 0, 0);
+
+    // create stencil mask for the bezier spline shape kokojima
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->bezier_mask_shader);
+
+    // enable stencil test
+    //vkCmdSetStencilTestEnable(commandBuffer, VK_TRUE);
+    
+
+    {
+        // bind stencil triangles vertex buffers
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mask_vbo, offsets);
+    }
+
+    // render the stencil triangles
+    vkCmdDraw(commandBuffer, mask_drawcount, 1, 0, 0);
+
+
+    //vkCmdSetStencilTestEnable(commandBuffer, VK_FALSE);
+    // draw full-screen triangle with blending set to 1-dstCol
+
 
     vkCmdEndRenderPass(commandBuffer);
     vkEndCommandBuffer(commandBuffer);
+}
+
+void
+create_buffer_and_mmap(hz_impl_vulkan_t *impl, VkBuffer *buffer, VkDeviceMemory *memory, void *data, VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties)
+{
+    *buffer = create_buffer(impl->device, impl->physicalDevice, size, usage, properties, memory);
+    uint8_t *hostptr;
+    vkMapMemory(impl->device, *memory, 0, VK_WHOLE_SIZE, 0, (void **)&hostptr);
+    memcpy(hostptr, data, size);
+    vkUnmapMemory(impl->device, *memory);
 }
 
 void
@@ -1590,7 +1669,7 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
 
 #if 0
     // setup uniform buffer object for glyph curve data
-    hz_glyph_shape_t *glyph_shape = hz_stbtt_get_glyph_shape(fontinfo, glyph_index);
+    hz_bezier_shape_t *glyph_shape = hz_stbtt_get_glyph_shape(fontinfo, glyph_index);
 
     {
         VkDeviceSize bufferSize = 4 + glyph_shape->vertex_count * sizeof(hz_bezier_vertex_t);
@@ -1664,27 +1743,48 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
 #endif
 
     {
-        hz_glyph_shape_t *glyph_shape = hz_stbtt_get_glyph_shape(fontinfo, glyph_index);
+        hz_bezier_shape_t *shape = hz_stbtt_get_glyph_shape(fontinfo, glyph_index);
 
         VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
-        VkDeviceSize vertex_buffer_size = glyph_shape->vertex_count * sizeof(hz_bezier_vertex_t);
+        VkDeviceSize vertex_buffer_size = shape->vertex_count * sizeof(hz_bezier_vertex_t);
         VkBuffer vertex_buffer = VK_NULL_HANDLE;
-
-        // Upload glyph vertices
-        vertex_buffer = create_buffer(impl->device, impl->physicalDevice,
-            vertex_buffer_size,
+        create_buffer_and_mmap(impl, &vertex_buffer, &vertex_buffer_memory, shape->vertices, vertex_buffer_size,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-            &vertex_buffer_memory);
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
-        uint8_t *hostptr;
-        vkMapMemory(impl->device, vertex_buffer_memory, 0, VK_WHOLE_SIZE, 0, (void **)&hostptr);
-        *(int *)hostptr = glyph_shape->vertex_count;
-        memcpy(hostptr, glyph_shape->vertices, vertex_buffer_size);
-        vkUnmapMemory(impl->device, vertex_buffer_memory);
+        // create vertex buffer for the stencil mask triangle fans (kokojima method)
+        // both line-edged and curve-edged triangle fans have to be computed.
+        hz_vector(hz_stencil_vertex_t) mask_verts = NULL;
+        for (int i = 0; i < 1/*shape->contour_count*/; ++i) {
+            hz_contour_t *contour = &shape->contours[i];
+            for (int j = 0; j < contour->curve_count; ++j) {
+                hz_stencil_vertex_t v1,v2,v3;
+                v1.pos = contour->pos;
+                v1.uv = hz_vec2(0.0f, 1.0f);
+                v2.pos = shape->vertices[contour->start+j].v2;
+                v2.uv = hz_vec2(0.0f, 1.0f);
+                v3.pos = shape->vertices[contour->start+j].v1;
+                v3.uv = hz_vec2(0.0f, 1.0f);
+                hz_vector_push_back(mask_verts, v1);
+                hz_vector_push_back(mask_verts, v2);
+                hz_vector_push_back(mask_verts, v3);
+            }
+        }
+
+        uint32_t mask_drawcount = hz_vector_size(mask_verts);
+        VkDeviceMemory mask_vbo_memory = VK_NULL_HANDLE;
+        VkDeviceSize mask_vbo_size = mask_drawcount * sizeof(hz_stencil_vertex_t);
+        VkBuffer mask_vbo = VK_NULL_HANDLE;
+        create_buffer_and_mmap(impl, &mask_vbo, &mask_vbo_memory, mask_verts, mask_vbo_size,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+        printf("mask vertices: %d\n", mask_drawcount);
 
         vkResetCommandBuffer(impl->graphicsCmdBuffer, 0);
-        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, imageIndex, vertex_buffer, glyph_shape->vertex_count);
+        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, imageIndex,
+            vertex_buffer, shape->vertex_count,
+            mask_vbo, mask_drawcount);
 
         VkSubmitInfo submitInfo = {0};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1702,6 +1802,7 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
         submitInfo.pSignalSemaphores = signalSemaphores;
 
         vkQueueSubmit(impl->graphicsQueue, 1, &submitInfo, impl->inFlightFence);
+        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
 
         VkPresentInfoKHR presentInfo = {0};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1714,11 +1815,14 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
         presentInfo.pResults = NULL; // Optional
 
         vkQueuePresentKHR(impl->presentQueue, &presentInfo);
-
-
+        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+        
         // destroy frame resources
         vkFreeMemory(impl->device, vertex_buffer_memory, NULL);
         vkDestroyBuffer(impl->device, vertex_buffer, NULL);
+        vkFreeMemory(impl->device, mask_vbo_memory, NULL);
+        vkDestroyBuffer(impl->device, mask_vbo, NULL);
+        hz_vector_destroy(mask_verts);
     }
 }
 

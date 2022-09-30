@@ -176,6 +176,9 @@ void main() {
         }
     }
 
+    if (abs(t) > max_sdf_distance) // discard fragments outside of curve max distance
+        discard;
+
     t = 0.5 - (abs(t) / max_sdf_distance/2.0);
     outColor = vec4(t,t,t,1);
 }

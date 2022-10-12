@@ -9,6 +9,12 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    set(PLATFORM_LINUX true)
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+    set(PLATFORM_WINDOWS true)
+endif ()
+
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c99 -march=native -O0 -g2 -ggdb -pedantic")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=c99 -march=native -ftree-slp-vectorize -O2 -Ofast")
@@ -36,33 +42,46 @@ endif()
 set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
         SOVERSION ${HAMZA_VERSION_MAJOR})
 
-set(VULKAN_SDK_ROOT $ENV{VULKAN_SDK})
-
-if (${VULKAN_SDK_ROOT} NOT STREQUAL "")
+if ($ENV{VULKAN_SDK} STREQUAL "")
     message(FATAL_ERROR "VULKAN_SDK environment variable must be set.")
 endif()
 
-file(TO_CMAKE_PATH ${VULKAN_SDK_ROOT} LUNARG_SDK_ROOT)
+file(TO_CMAKE_PATH $ENV{VULKAN_SDK} LUNARG_SDK_ROOT)
 
 message("LunarG (Vulkan) SDK: ${LUNARG_SDK_ROOT}")
-set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
 
 add_executable(hamza_demo "hz/backends/hz_renderer_vulkan.c" "hz/backends/hz_renderer_vulkan.h" "example/shaping-test.c" example/stb_image_write.h)
-target_link_libraries(hamza_demo PRIVATE gdi32 imm32 "${LUNARG_SDK_ROOT}/Lib/vulkan-1.lib" "${GLFW_ROOT_DIR}/lib-mingw-w64/libglfw3dll.a" hamza)
-target_include_directories(hamza_demo PRIVATE
-        "${CMAKE_CURRENT_LIST_DIR}"
-        "${LUNARG_SDK_ROOT}/Include"
-        "${GLFW_ROOT_DIR}/include")
 
-if (MINGW)
-    add_custom_command(TARGET hamza_demo POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${GLFW_ROOT_DIR}/lib-mingw-w64/glfw3.dll"
-            $<TARGET_FILE_DIR:hamza_demo>)
-endif()
+if (PLATFORM_WINDOWS)
+    set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
+
+    target_link_libraries(hamza_demo PRIVATE gdi32 imm32 "${LUNARG_SDK_ROOT}/Lib/vulkan-1.lib" "${GLFW_ROOT_DIR}/lib-mingw-w64/libglfw3dll.a" hamza)
+    target_include_directories(hamza_demo PRIVATE
+            "${CMAKE_CURRENT_LIST_DIR}"
+            "${LUNARG_SDK_ROOT}/include"
+            "${GLFW_ROOT_DIR}/lib-mingw-w64/include"
+            )
+
+    if (MINGW)
+        add_custom_command(TARGET hamza_demo POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${GLFW_ROOT_DIR}/lib-mingw-w64/glfw3.dll"
+                $<TARGET_FILE_DIR:hamza_demo>)
+    endif()
+elseif (PLATFORM_LINUX)
+    # On Linux, link with shared system library.
+    target_link_libraries(hamza_demo PRIVATE m pthread dl Xi Xxf86vm Xrandr X11 glfw "${LUNARG_SDK_ROOT}/lib/libvulkan.so" hamza)
+    target_include_directories(hamza_demo PRIVATE
+            "${CMAKE_CURRENT_LIST_DIR}"
+            "${LUNARG_SDK_ROOT}/include")
+endif ()
 
 # Compile GLSL shaders to SPIR-V
+if (PLATFORM_WINDOWS)
 set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/Bin/glslc.exe")
+elseif (PLATFORM_LINUX)
+set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/bin/glslc")
+endif ()
 
 set(SHADER_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders/")
 

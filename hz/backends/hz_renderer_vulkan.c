@@ -202,7 +202,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverity
                                                      void* user_data)
 {
     if (message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        fprintf_s(stderr, "VALIDATION: %s\n\n", callback_data->pMessage);
+        fprintf(stderr, "VALIDATION: %s\n\n", callback_data->pMessage);
     }
 
     return VK_FALSE;
@@ -1232,35 +1232,35 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
     renderer->enableDebug = enableDebug;
 
     if (!create_instance(renderer)) {
-        fprintf_s(stderr, "%s\n", "failed to create Instance.");
+        fprintf(stderr, "%s\n", "failed to create Instance.");
         hz_vk_terminate(renderer);
         return NULL;
     }
 
-    fprintf_s(stdout, "%s\n", "created vulkan instance.");
+    fprintf(stdout, "%s\n", "created vulkan instance.");
 
     if (renderer->enableDebug) {
         if (!create_debug_messenger(renderer)) {
-            fprintf_s(stderr, "%s\n", "failed to create debug messenger!");
+            fprintf(stderr, "%s\n", "failed to create debug messenger!");
             hz_vk_terminate(renderer);
             return NULL;
         }
 
-        fprintf_s(stdout, "%s\n", "created debug messenger.");
+        fprintf(stdout, "%s\n", "created debug messenger.");
     }
 
     // Create window surface
     if (glfwCreateWindowSurface(renderer->instance, window, NULL, &renderer->surface) != VK_SUCCESS) {
-        fprintf_s(stderr, "%s\n", "failed to create vulkan surface!");
+        fprintf(stderr, "%s\n", "failed to create vulkan surface!");
         hz_vk_terminate(renderer);
         return NULL;
     }
 
-    fprintf_s(stdout, "%s\n", "created vulkan surface.");
+    fprintf(stdout, "%s\n", "created vulkan surface.");
 
     renderer->physicalDevice = choose_physical_device(renderer->instance, renderer->surface);
     if (renderer->physicalDevice == VK_NULL_HANDLE) {
-        fprintf_s(stderr, "%s\n", "could not find any suitable vulkan device.");
+        fprintf(stderr, "%s\n", "could not find any suitable vulkan device.");
     }
 
     // Create logical device

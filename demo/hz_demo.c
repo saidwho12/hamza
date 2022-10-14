@@ -282,8 +282,10 @@ int main(int argc, char *argv[]) {
 
     hz_setup(HZ_USE_CPUID_FOR_SIMD_CHECKS);
 
-    stbtt_fontinfo  fontinfo;
+    stbtt_fontinfo fontinfo;
     load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
+    hz_font_t *font = hz_stbtt_font_create(&fontinfo);
+
     const char *text = "Hello, World!";
 
     hz_segment_t *seg = hz_segment_create();

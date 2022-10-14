@@ -2,8 +2,8 @@
 #include <stdlib.h>
 
 #include <hz/hz.h>
-#include <hz/backends/hz-vulkan.h>
-#include <minmax.h>
+#include <hz/backends/hz_vulkan.h>
+#include <limits.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"

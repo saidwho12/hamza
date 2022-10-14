@@ -9,16 +9,19 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    set(PLATFORM_LINUX true)
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-    set(PLATFORM_WINDOWS true)
+if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") OR WIN32)
+    message(STATUS "Building Hamza for Windows.")
+    set(PLATFORM_WINDOWS TRUE)
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    message(STATUS "Building Hamza for Linux.")
+    set(PLATFORM_UNIX TRUE)
 endif ()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c99 -march=native -O0 -g2 -ggdb -pedantic")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=c99 -march=native -ftree-slp-vectorize -O2 -Ofast")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g2 -ggdb -pedantic")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -O2 -Ofast")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native")
+
     if (MINGW)
         set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
@@ -44,7 +47,7 @@ endif()
 set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
         SOVERSION ${HAMZA_VERSION_MAJOR})
 
-message("LUNARG (Vulkan) SDK Path: \"$ENV{VULKAN_SDK}\"")  
+message(DEBUG "LUNARG Vulkan SDK Path: \"$ENV{VULKAN_SDK}\"")  
 
 if ("$ENV{VULKAN_SDK}" STREQUAL "")
     message(FATAL_ERROR "VULKAN_SDK environment variable must not be set to nothing.")
@@ -61,7 +64,7 @@ if (PLATFORM_WINDOWS)
     target_include_directories(hamza_demo PRIVATE
             "${CMAKE_CURRENT_LIST_DIR}"
             "${LUNARG_SDK_ROOT}/include"
-            "${GLFW_ROOT_DIR}/lib-mingw-w64/include"
+            "${GLFW_ROOT_DIR}/include"
             )
 
     if (MINGW)
@@ -70,7 +73,7 @@ if (PLATFORM_WINDOWS)
                 "${GLFW_ROOT_DIR}/lib-mingw-w64/glfw3.dll"
                 $<TARGET_FILE_DIR:hamza_demo>)
     endif()
-elseif (PLATFORM_LINUX)
+elseif (PLATFORM_UNIX)
     # On Linux, link with shared system library.
     target_link_libraries(hamza_demo PRIVATE m pthread dl Xi Xxf86vm Xrandr X11 glfw "${LUNARG_SDK_ROOT}/lib/libvulkan.so" hamza)
     target_include_directories(hamza_demo PRIVATE
@@ -81,7 +84,7 @@ endif ()
 # Compile GLSL shaders to SPIR-V
 if (PLATFORM_WINDOWS)
     set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/Bin/glslc.exe")
-elseif (PLATFORM_LINUX)
+elseif (PLATFORM_UNIX)
     set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/bin/glslc")
 endif ()
 

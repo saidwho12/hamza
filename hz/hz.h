@@ -243,7 +243,7 @@ typedef enum {
 } hz_glyph_class_t;
 
 /* include tables, types, and functions and other generated code */
-#include "hz-data-tables.h"
+#include "hz_data_tables.h"
 
 /* function: hz_segment_t */
 typedef struct hz_segment_t hz_segment_t;
@@ -308,14 +308,14 @@ typedef enum hz_glyph_attrib_flags_t {
 
 /* struct: hz_buffer_t */
 typedef struct hz_buffer_t {
-    size_t              glyph_count;
+    size_t                  glyph_count;
     hz_glyph_metrics_t *    glyph_metrics;
-    hz_index_t *           glyph_indices;
-    hz_unicode_t *         codepoints;
-    uint16_t *          glyph_classes;
-    uint16_t *          attachment_classes;
-    uint16_t *          component_indices;
-    hz_glyph_attrib_flags_t  attrib_flags;
+    hz_index_t *            glyph_indices;
+    hz_unicode_t *          codepoints;
+    uint16_t *              glyph_classes;
+    uint16_t *              attachment_classes;
+    uint16_t *              component_indices;
+    hz_glyph_attrib_flags_t attrib_flags;
 } hz_buffer_t;
 
 /*  function: hz_segment_get_buffer

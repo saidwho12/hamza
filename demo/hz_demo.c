@@ -12,7 +12,7 @@
 
 typedef struct {
     GLFWwindow *window;
-    hz_impl_vulkan_t *vk_impl;
+    hz_vk_renderer_t *vk_renderer;
     stbtt_fontinfo fontinfo;
 } App;
 
@@ -40,7 +40,7 @@ static void initApp(App *app)
 
     glfwSwapInterval(0);
 
-    app->vk_impl = hz_vk_create_impl(app->window, 1);
+    app->vk_renderer = hz_vk_create_renderer(app->window, 1);
 }
 
 static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
@@ -77,7 +77,7 @@ static void mainLoop(App *app)
         hz_vk_render_frame(app->vk_impl, &app->fontinfo, gid);
     }
 
-    hz_vk_wait_idle(app->vk_impl);
+    hz_vk_wait_idle(app->vk_renderer);
 }
 
 typedef struct {
@@ -283,94 +283,39 @@ int main(int argc, char *argv[]) {
 
     stbtt_fontinfo  fontinfo;
     load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
-    //load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Regular.otf");
-    //load_font_face(&fontinfo, "../data/fonts/UthmanTN1 Ver10.otf");
-//load_font_face(&fontinfo, "../data/fonts/Amiri-Regular.ttf");
-//    load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
-//load_font_face(&fontinfo, "../data/fonts/Quran/AyeshaQuran-Light.ttf");
-//load_font_face(&fontinfo, "../data/fonts/arabic-ejaza.ttf");
-   // load_font_face(&fontinfo, "../data/fonts/Quran/AyeshaQuran-Light.ttf");
-//    load_font_face(&fontinfo, "../data/fonts/Devnew.ttf");
-//load_font_face(&fontinfo, "../data/fonts/NotoKufiArabic-Bold.ttf");
-   // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
-   //load_font_face(&fontinfo,"../data/fonts/Quran/OmarNaskh-Light.ttf");
-//    load_font_face(&fontinfo,"../data/fonts/NotoSansArabicUI-Regular.ttf");
-//    load_font_face(&fontinfo,"../data/fonts/EBGaramond-VariableFont_wght.ttf");
-//    load_font_face(&fontinfo,"../data/fonts/ScheherazadeNew-Regular.ttf");
-//    load_font_face(&fontinfo,"../data/fonts/ScheherazadeRegOT.ttf");
-//    load_font_face(&fontinfo,"../data/fonts/Literata-Regular.ttf");
+    const char *text = "Hello, World!";
 
-//    load_font_face(&fontinfo,"../data/fonts/alfont_com_adoody.ttf");
-
-   hz_font_t *font = hz_stbtt_font_create(&fontinfo);
-
-//    const char *text = "الحَمْدُ لِلَّه رب العالمين";
-//const char *text = "AT AV AW AY Av Aw Ay \n"
-//                   "\n"
-//                   "Fa Fe Fo Kv Kw Ky LO \n"
-//                   "\n"
-//                   "LV LY PA Pa Pe Po TA \n"
-//                   "\n"
-//                   "Hello, World! How's it going today?";
-
-   // const char *text = "۞ أَوَلَمْ يَسِيرُوا۟ فِى ٱلْأَرْضِ فَيَنظُرُوا۟ كَيْفَ كَانَ عَـٰقِبَةُ ٱلَّذِينَ كَانُوا۟ مِن قَبْلِهِمْ ۚ كَانُوا۟ هُمْ أَشَدَّ مِنْهُمْ قُوَّةً وَءَاثَارًا فِى ٱلْأَرْضِ فَأَخَذَهُمُ ٱللَّهُ بِذُنُوبِهِمْ وَمَا كَانَ لَهُم مِّنَ ٱللَّهِ مِن وَاقٍ";
-   // const char *text = "وَلَوْ يُؤَاخِذُ ٱللَّهُ ٱلنَّاسَ بِمَا كَسَبُوا۟ مَا تَرَكَ عَلَىٰ ظَهْرِهَا مِن دَآبَّةٍ وَلَـٰكِن يُؤَخِّرُهُمْ إِلَىٰٓ أَجَلٍ مُّسَمًّى ۖ فَإِذَا جَآءَ أَجَلُهُمْ فَإِنَّ ٱللَّهَ كَانَ بِعِبَادِهِۦ بَصِيرًۢا";
-   // const char *text = "ٱلَّذِينَ يَحْمِلُونَ ٱلْعَرْشَ وَمَنْ حَوْلَهُۥ يُسَبِّحُونَ بِحَمْدِ رَبِّهِمْ وَيُؤْمِنُونَ بِهِۦ وَيَسْتَغْفِرُونَ لِلَّذِينَ ءَامَنُوا۟ رَبَّنَا وَسِعْتَ كُلَّ شَىْءٍ رَّحْمَةً وَعِلْمًا فَٱغْفِرْ لِلَّذِينَ تَابُوا۟ وَٱتَّبَعُوا۟ سَبِيلَكَ وَقِهِمْ عَذَابَ ٱلْجَحِيمِ";
-   // const char *text = "يَـٰٓأَيُّهَا ٱلَّذِينَ ءَامَنُوا۟ لَا يَحِلُّ لَكُمْ أَن تَرِثُوا۟ ٱلنِّسَآءَ كَرْهًا ۖ وَلَا تَعْضُلُوهُنَّ لِتَذْهَبُوا۟ بِبَعْضِ مَآ ءَاتَيْتُمُوهُنَّ إِلَّآ أَن يَأْتِينَ بِفَـٰحِشَةٍ مُّبَيِّنَةٍ ۚ وَعَاشِرُوهُنَّ بِٱلْمَعْرُوفِ ۚ فَإِن كَرِهْتُمُوهُنَّ فَعَسَىٰٓ أَن تَكْرَهُوا۟ شَيْـًٔا وَيَجْعَلَ ٱللَّهُ فِيهِ خَيْرًا كَثِيرًا";
-   // const char *text = "لِتُنذِرَ قَوْمًا مَّآ أُنذِرَ ءَابَآؤُهُمْ فَهُمْ غَـٰفِلُونَ";
-  // const char *text = "وَجَعَلْنَا ٱلَّيْلَ وَٱلنَّهَارَ ءَايَتَيْنِ ۖ فَمَحَوْنَآ ءَايَةَ ٱلَّيْلِ وَجَعَلْنَآ ءَايَةَ ٱلنَّهَارِ مُبْصِرَةً لِّتَبْتَغُوا۟ فَضْلًا مِّن رَّبِّكُمْ وَلِتَعْلَمُوا۟ عَدَدَ ٱلسِّنِينَ وَٱلْحِسَابَ ۚ وَكُلَّ شَىْءٍ فَصَّلْنَـٰهُ تَفْصِيلًا";
-   //const char *text = "فَإِن تَوَلَّوْا۟ فَقَدْ أَبْلَغْتُكُم مَّآ أُرْسِلْتُ بِهِۦٓ إِلَيْكُمْ ۚ وَيَسْتَخْلِفُ رَبِّى قَوْمًا غَيْرَكُمْ وَلَا تَضُرُّونَهُۥ شَيْـًٔا ۚ إِنَّ رَبِّى عَلَىٰ كُلِّ شَىْءٍ حَفِيظٌ (10)";
-   // const char *text = "۞ وَقَضَىٰ رَبُّكَ أَلَّا تَعْبُدُوٓا۟ إِلَّآ إِيَّاهُ وَبِٱلْوَٰلِدَيْنِ إِحْسَـٰنًا ۚ إِمَّا يَبْلُغَنَّ عِندَكَ ٱلْكِبَرَ أَحَدُهُمَآ أَوْ كِلَاهُمَا فَلَا تَقُل لَّهُمَآ أُفٍّ وَلَا تَنْهَرْهُمَا وَقُل لَّهُمَا قَوْلًا كَرِيمًا";
-   const char *text = "Hello, World!";
-
-   hz_segment_t *seg = hz_segment_create();
-   hz_segment_load_utf8(seg, text);
-   hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
-   hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
-   hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
+    hz_segment_t *seg = hz_segment_create();
+    hz_segment_load_utf8(seg, text);
+    hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
+    hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
+    hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
 
     hz_feature_t features[] = {
             HZ_FEATURE_CCMP,
-//            HZ_FEATURE_RVRN,
             HZ_FEATURE_LOCL,
-            HZ_FEATURE_ISOL,
-            HZ_FEATURE_FINA,
-            HZ_FEATURE_MEDI,
-            HZ_FEATURE_INIT,
             HZ_FEATURE_RCLT,
             HZ_FEATURE_CALT,
             HZ_FEATURE_RLIG,
             HZ_FEATURE_MSET,
             HZ_FEATURE_CLIG,
             HZ_FEATURE_LIGA,
-            HZ_FEATURE_SS12,
-            //HZ_FEATURE_SS13,
-            // HZ_FEATURE_SS07,
-            //HZ_FEATURE_SS08,
-            //HZ_FEATURE_SS04,
-            //HZ_FEATURE_SS02,
-//            HZ_FEATURE_SS03,
-           // HZ_FEATURE_SS05,
             HZ_FEATURE_KERN,
             HZ_FEATURE_CURS,
             HZ_FEATURE_MARK,
-            HZ_FEATURE_MKMK,
-//            HZ_FEATURE_CSWH,
+            HZ_FEATURE_MKMK
     };
 
-    //hz_shape(font, seg, features, ARRAYSIZE(features), 0);
-    hz_shape(font, seg, NULL, 0, HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES);
-    //hz_shape(font, seg, NULL, 0, 0);
+    hz_shape(font, seg, features, ARRAYSIZE(features), 0);
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
-    // printf("glyph count: %llu\n", buffer->glyph_count);
-    //render_text_to_png("out.png", &fontinfo, buffer);
+    render_text_to_png("out.png", &fontinfo, buffer);
     hz_segment_destroy(seg);
 
-    App app;
-    initApp(&app);
-    app.fontinfo = fontinfo;
-    mainLoop(&app);
+    // App app;
+    // initApp(&app);
+    // app.fontinfo = fontinfo;
+    // mainLoop(&app);
 
     hz_cleanup();
 

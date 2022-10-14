@@ -7,13 +7,23 @@
 extern "C" {
 #endif
 
-typedef struct hz_glyph_cache_config_t {
+typedef struct {
     int width;
     int height;
-    int grid_divisions;
-    float distance_scale;
-    float margin;
-} hz_glyph_cache_config_t;
+    int cols;
+    int rows;
+    float max_sdf_distance;
+    float padd;
+    int oversample;
+} hz_glyph_cache_opts_t;
+
+typedef struct {
+    int x, y, w, h;
+} hz_rect_t;
+
+HZDECL void hz_glyph_cache_opts_create(hz_glyph_cache_opts_t *opts);
+
+HZDECL hz_rect_t hz_glyph_cache_compute_cell_rect(hz_glyph_cache_opts_t *opts, int cell);
 
 typedef enum {
     HZ_VERTEX_TYPE_MOVETO = 1,

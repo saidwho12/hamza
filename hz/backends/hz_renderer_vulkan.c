@@ -1,4 +1,4 @@
-#include "hz-vulkan.h"
+#include "hz_renderer_vulkan.h"
 
 #include <stdlib.h> // malloc, free
 
@@ -22,9 +22,19 @@ typedef struct {
     VkImageView imageView;
     VkSampler sampler;
     VkImageLayout imageLayout;
-} GlyphCacheImageData;
+} hz_vk_glyph_cache_t;
 
-struct hz_impl_vulkan_t {
+typedef struct {
+    VkImageView     sdf_image_view;
+    VkImageView     stencil_image_view;
+    VkImage         sdf_image;
+    VkImage         stencil_image;
+    VkFramebuffer   framebuffer;
+    VkSampler       sampler;
+    VkImageLayout   layout;
+} glyph_cache_data_t;
+
+struct hz_vk_renderer_t {
     GLFWwindow *                window;
     VkInstance                  instance;
     VkDebugUtilsMessengerEXT    debugMessenger;
@@ -48,7 +58,7 @@ struct hz_impl_vulkan_t {
     VkSemaphore                 imageAvailableSemaphore;
     VkSemaphore                 renderFinishedSemaphore;
     VkFence                     inFlightFence;
-    GlyphCacheImageData         glyphCacheImageData;
+    glyph_cache_data_t          glyph_cache_data;
 
     VkCommandPool               computeCmdPool;
     VkCommandBuffer             computeCmdBuffer;
@@ -215,7 +225,7 @@ void destroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 }
 
 static hz_string_list_t *
-get_required_vk_extensions(hz_impl_vulkan_t *ctx)
+get_required_vk_extensions(hz_vk_renderer_t *renderer)
 {
     hz_string_list_t *names = hz_string_list_create();
 
@@ -225,7 +235,7 @@ get_required_vk_extensions(hz_impl_vulkan_t *ctx)
 
     hz_string_list_add_range(names, glfw_extensions, glfw_extensions + glfw_extension_count);
 
-    if (ctx->enableDebug) {
+    if (renderer->enableDebug) {
         hz_string_list_add(names, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
@@ -242,9 +252,9 @@ populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT *create_
     create_info->pUserData = NULL; // Optional
 }
 
-static int create_instance(hz_impl_vulkan_t *ctx)
+static int create_instance(hz_vk_renderer_t *renderer)
 {
-    hz_string_list_t *required_extensions = get_required_vk_extensions(ctx);
+    hz_string_list_t *required_extensions = get_required_vk_extensions(renderer);
 
     VkApplicationInfo app_info = {0};
 
@@ -263,7 +273,7 @@ static int create_instance(hz_impl_vulkan_t *ctx)
 
     VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {0};
 
-    if (ctx->enableDebug) {
+    if (renderer->enableDebug) {
         create_info.ppEnabledLayerNames = sValidationLayers;
         create_info.enabledLayerCount = ARRAYSIZE(sValidationLayers);
 
@@ -275,14 +285,14 @@ static int create_instance(hz_impl_vulkan_t *ctx)
         create_info.enabledLayerCount = 0;
     }
 
-    return vkCreateInstance(&create_info, NULL, &ctx->instance) == VK_SUCCESS;
+    return vkCreateInstance(&create_info, NULL, &renderer->instance) == VK_SUCCESS;
 }
 
-static int create_debug_messenger(hz_impl_vulkan_t *ctx)
+static int create_debug_messenger(hz_vk_renderer_t *renderer)
 {
     VkDebugUtilsMessengerCreateInfoEXT createInfo = {0};
     populate_debug_messenger_create_info(&createInfo);
-    return createDebugUtilsMessengerEXT(ctx->instance, &createInfo, NULL, &ctx->debugMessenger) == VK_SUCCESS;
+    return createDebugUtilsMessengerEXT(renderer->instance, &createInfo, NULL, &renderer->debugMessenger) == VK_SUCCESS;
 }
 
 typedef struct {
@@ -445,16 +455,16 @@ static VkExtent2D choose_swapchain_extent(GLFWwindow *window, const VkSurfaceCap
     }
 }
 
-static void create_swapchain(GLFWwindow *window, hz_impl_vulkan_t *ctx)
+static void create_swapchain(GLFWwindow *window, hz_vk_renderer_t *renderer)
 {
-    SwapchainSupportDetails swapchainSupport = query_swapchain_support(ctx->physicalDevice, ctx->surface);
+    SwapchainSupportDetails swapchainSupport = query_swapchain_support(renderer->physicalDevice, renderer->surface);
 
     VkSurfaceFormatKHR surfaceFormat = choose_swapchain_surface_format(swapchainSupport.formats, swapchainSupport.formatCount);
     VkPresentModeKHR presentMode = choose_swapchain_present_mode(swapchainSupport.presentModes, swapchainSupport.presentModeCount);
     VkExtent2D extent = choose_swapchain_extent(window, &swapchainSupport.capabilities);
 
-    ctx->swapchainExtent = extent;
-    ctx->swapchainImageFormat = surfaceFormat.format;
+    renderer->swapchainExtent = extent;
+    renderer->swapchainImageFormat = surfaceFormat.format;
 
     uint32_t imageCount = swapchainSupport.capabilities.minImageCount + 1;
 
@@ -464,7 +474,7 @@ static void create_swapchain(GLFWwindow *window, hz_impl_vulkan_t *ctx)
 
     VkSwapchainCreateInfoKHR createInfo = {0};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    createInfo.surface = ctx->surface;
+    createInfo.surface = renderer->surface;
     createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -472,7 +482,7 @@ static void create_swapchain(GLFWwindow *window, hz_impl_vulkan_t *ctx)
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices indices = find_queue_families(ctx->physicalDevice, ctx->surface);
+    QueueFamilyIndices indices = find_queue_families(renderer->physicalDevice, renderer->surface);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily, indices.presentFamily};
 
     if (indices.graphicsFamily != indices.presentFamily) {
@@ -492,7 +502,7 @@ static void create_swapchain(GLFWwindow *window, hz_impl_vulkan_t *ctx)
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    if (vkCreateSwapchainKHR(ctx->device, &createInfo, NULL, &ctx->swapchain) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(renderer->device, &createInfo, NULL, &renderer->swapchain) != VK_SUCCESS) {
         EXIT_ERROR("failed to create swap chain!");
     }
 }
@@ -590,17 +600,17 @@ static VkPhysicalDevice choose_physical_device(VkInstance instance, VkSurfaceKHR
 }
 
 static void
-create_swapchain_image_views(hz_impl_vulkan_t *ctx)
+create_swapchain_image_views(hz_vk_renderer_t *renderer)
 {
-    ctx->swapchainImageViews = malloc(sizeof(VkImageView) * ctx->swapchainImageCount);
+    renderer->swapchainImageViews = malloc(sizeof(VkImageView) * renderer->swapchainImageCount);
 
-    for (size_t i = 0; i < ctx->swapchainImageCount; i++) {
+    for (size_t i = 0; i < renderer->swapchainImageCount; i++) {
         VkImageViewCreateInfo createInfo = {0};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = ctx->swapchainImages[i];
+        createInfo.image = renderer->swapchainImages[i];
 
         createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = ctx->swapchainImageFormat;
+        createInfo.format = renderer->swapchainImageFormat;
         createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -612,7 +622,7 @@ create_swapchain_image_views(hz_impl_vulkan_t *ctx)
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(ctx->device, &createInfo, NULL, &ctx->swapchainImageViews[i]) != VK_SUCCESS) {
+        if (vkCreateImageView(renderer->device, &createInfo, NULL, &renderer->swapchainImageViews[i]) != VK_SUCCESS) {
             EXIT_ERROR("failed to create image views!");
         }
     }
@@ -655,7 +665,7 @@ VkPipelineLayout create_graphics_pipeline_layout(VkDevice device, VkDescriptorSe
     return pipelineLayout;
 }
 
-static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
+static VkPipeline create_pipeline(hz_vk_renderer_t *renderer,
     size_t vertex_binding_count,
     VkVertexInputBindingDescription *vertex_bindings,
     size_t vertex_attrib_count,
@@ -678,8 +688,8 @@ static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
         return pipeline;
     }
 
-    VkShaderModule vertexShaderModule = create_shader_module(impl->device, vertexShaderCode->data, vertexShaderCode->size);
-    VkShaderModule fragmentShaderModule = create_shader_module(impl->device, fragmentShaderCode->data, fragmentShaderCode->size);
+    VkShaderModule vertexShaderModule = create_shader_module(renderer->device, vertexShaderCode->data, vertexShaderCode->size);
+    VkShaderModule fragmentShaderModule = create_shader_module(renderer->device, fragmentShaderCode->data, fragmentShaderCode->size);
 
     // fill in details for the two stages
     VkPipelineShaderStageCreateInfo vertexShaderStageInfo = {0};
@@ -714,14 +724,14 @@ static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
     VkViewport viewport = {0};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float) impl->swapchainExtent.width;
-    viewport.height = (float) impl->swapchainExtent.height;
+    viewport.width = (float) renderer->swapchainExtent.width;
+    viewport.height = (float) renderer->swapchainExtent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor = {0};
     scissor.offset = (VkOffset2D){0, 0};
-    scissor.extent = impl->swapchainExtent;
+    scissor.extent = renderer->swapchainExtent;
 
     // Viewport state
     VkPipelineViewportStateCreateInfo viewportState = {0};
@@ -788,15 +798,15 @@ static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
     createInfo.pDepthStencilState = NULL; // Optional
     createInfo.pColorBlendState = &colorBlending;
     createInfo.pDynamicState = NULL; // Optional
-    createInfo.layout = impl->graphicsPipelineLayout;
+    createInfo.layout = renderer->graphicsPipelineLayout;
 
-    createInfo.renderPass = impl->renderPass;
+    createInfo.renderPass = renderer->renderPass;
     createInfo.subpass = 0;
 
     createInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
     createInfo.basePipelineIndex = -1; // Optional
 
-    if (vkCreateGraphicsPipelines(impl->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
+    if (vkCreateGraphicsPipelines(renderer->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create graphics pipeline!\n");
     }
 
@@ -806,58 +816,14 @@ static VkPipeline create_pipeline(hz_impl_vulkan_t *impl,
     return pipeline;
 }
 
-typedef struct hz_rect2f_t {
-    float x0, y0, x1, y1;
-} hz_rect2f_t;
-
-typedef struct hz_color32f_t {
-    float r,g,b,a;
-} hz_color32f_t;
-
-typedef struct hz_drawable_glyph2d_t {
-    hz_rect2f_t rect;
-    hz_index_t gid;
-    hz_color32f_t color;
-    float slant;
-    float weight;
-} hz_drawable_glyph2d_t;
-
-int hz_rect_overlap_test(const hz_rect2f_t *a, const hz_rect2f_t *b)
-{
-    int qx1 = a->x1 >= b->x0;
-    int qx2 = a->x0 <= b->x1;
-    int qy1 = a->y1 >= b->y0;
-    int qy2 = a->y0 <= b->y1;
-
-    if (qx1 || qx2 || qy1 || qy2) {
-        // two rectangles are overlapping
-        return 1;
-    }
-
-    // no overlap
-    return 0;
-}
-
-void hz_frustum2d_cull_glyphs(hz_rect2f_t screenRect, hz_vector(hz_drawable_glyph2d_t) glyphs)
-{
-    // NOTE: this can be improved using a quadtree, kd-tree or other spacial partitioning structure.
-    hz_vector(hz_drawable_glyph2d_t) result;
-
-    for (size_t i = 0; i < hz_vector_size(glyphs); ++i) {
-        if (hz_rect_overlap_test(&screenRect, &glyphs[i].rect)) {
-            hz_vector_push_back(result, glyphs[i]);
-        }
-    }
-}
-
-static VkPipeline create_compute_pipeline(hz_impl_vulkan_t *ctx,
+static VkPipeline create_compute_pipeline(hz_vk_renderer_t *renderer,
                                           const char *filename)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
-    File *shaderBin = load_entire_file(filename);
+    File *shader_bin = load_entire_file(filename);
 
-    if (shaderBin->was_loaded) {
-        VkShaderModule computeShaderModule = create_shader_module(ctx->device, shaderBin->data, shaderBin->size);
+    if (shader_bin->was_loaded) {
+        VkShaderModule computeShaderModule = create_shader_module(renderer->device, shader_bin->data, shader_bin->size);
 
         // Create pipeline stage
         VkPipelineShaderStageCreateInfo computeShaderStageInfo = {0};
@@ -870,11 +836,11 @@ static VkPipeline create_compute_pipeline(hz_impl_vulkan_t *ctx,
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {0};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = &ctx->setLayout;
+        pipelineLayoutInfo.pSetLayouts = &renderer->setLayout;
         pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
         pipelineLayoutInfo.pPushConstantRanges = NULL; // Optional
 
-        if (vkCreatePipelineLayout(ctx->device, &pipelineLayoutInfo, NULL, &ctx->pipelineLayout) != VK_SUCCESS) {
+        if (vkCreatePipelineLayout(renderer->device, &pipelineLayoutInfo, NULL, &renderer->pipelineLayout) != VK_SUCCESS) {
             fprintf(stderr, "failed to create pipeline layout!\n");
         }
 
@@ -882,24 +848,24 @@ static VkPipeline create_compute_pipeline(hz_impl_vulkan_t *ctx,
         VkComputePipelineCreateInfo createInfo = {0};
         createInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
         createInfo.pNext = NULL;
-        createInfo.layout = ctx->pipelineLayout;
+        createInfo.layout = renderer->pipelineLayout;
         createInfo.stage = computeShaderStageInfo;
 
-        if (vkCreateComputePipelines(ctx->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
+        if (vkCreateComputePipelines(renderer->device, VK_NULL_HANDLE, 1, &createInfo, NULL, &pipeline) != VK_SUCCESS) {
             fprintf(stderr, "Failed to create compute pipeline!\n");
         }
     } else {
         fprintf(stderr, "Failed to load compute shader!\n");
     }
 
-    destroy_file(shaderBin);
+    destroy_file(shader_bin);
     return pipeline;
 }
 
-static void create_render_pass(hz_impl_vulkan_t *ctx)
+static void create_render_pass(hz_vk_renderer_t *renderer)
 {
     VkAttachmentDescription colorAttachment = {0};
-    colorAttachment.format = ctx->swapchainImageFormat;
+    colorAttachment.format = renderer->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
 
     // Applies to color and depth buffers
@@ -941,14 +907,14 @@ static void create_render_pass(hz_impl_vulkan_t *ctx)
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(ctx->device, &renderPassInfo, NULL, &ctx->renderPass) != VK_SUCCESS) {
+    if (vkCreateRenderPass(renderer->device, &renderPassInfo, NULL, &renderer->renderPass) != VK_SUCCESS) {
         fprintf(stderr, "%s\n", "failed to create render pass!");
     }
 }
 
-void create_descriptor_pool(hz_impl_vulkan_t *ctx)
+void create_descriptor_pool(hz_vk_renderer_t *renderer)
 {
-    VkDescriptorPoolSize poolSizes[] = {
+    VkDescriptorPoolSize pool_sizes[] = {
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 },
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4 },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 }
@@ -957,11 +923,11 @@ void create_descriptor_pool(hz_impl_vulkan_t *ctx)
     VkDescriptorPoolCreateInfo createInfo = {0};
     createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     createInfo.maxSets = 1000;
-    createInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT ;
-    createInfo.pPoolSizes = poolSizes;
-    createInfo.poolSizeCount = ARRAYSIZE(poolSizes);
+    createInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+    createInfo.pPoolSizes = pool_sizes;
+    createInfo.poolSizeCount = ARRAYSIZE(pool_sizes);
 
-    if (vkCreateDescriptorPool(ctx->device, &createInfo, NULL, &ctx->descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(renderer->device, &createInfo, NULL, &renderer->descriptorPool) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create descriptor pool!\n");
     }
 }
@@ -1008,18 +974,18 @@ typedef struct {
     VkImage glyph_cache_image;
 } Compute;
 
-static void allocate_compute_descriptor_sets(hz_impl_vulkan_t *ctx)
+static void allocate_compute_descriptor_sets(hz_vk_renderer_t *renderer)
 {
-    ctx->computeDescriptorSets = (VkDescriptorSet *) malloc(sizeof(VkDescriptorSet));
+    renderer->computeDescriptorSets = (VkDescriptorSet *) malloc(sizeof(VkDescriptorSet));
 
     VkDescriptorSetAllocateInfo allocateInfo = {0};
     allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocateInfo.pNext = NULL;
-    allocateInfo.descriptorPool = ctx->descriptorPool;
+    allocateInfo.descriptorPool = renderer->descriptorPool;
     allocateInfo.descriptorSetCount = 1;
-    allocateInfo.pSetLayouts = &ctx->setLayout;
+    allocateInfo.pSetLayouts = &renderer->setLayout;
 
-    if (VR_FAILED(vkAllocateDescriptorSets(ctx->device, &allocateInfo, ctx->computeDescriptorSets))) {
+    if (VR_FAILED(vkAllocateDescriptorSets(renderer->device, &allocateInfo, renderer->computeDescriptorSets))) {
         fprintf(stderr, "Failed to allocate descriptor sets!\n");
     }
 }
@@ -1054,32 +1020,7 @@ typedef struct {
     VkImageLayout imageLayout;
 } Texture;
 
-static void update_glyph_texture_descriptor(VkDevice device, VkDescriptorSet descriptorSet,
-                                           GlyphCacheImageData glyphCacheImageData)
-{
-    VkWriteDescriptorSet writeDescriptorSet;
-
-    // Target image
-    VkDescriptorImageInfo imageInfo = {0};
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageInfo.imageView = glyphCacheImageData.imageView;
-    imageInfo.sampler = glyphCacheImageData.sampler;
-
-    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writeDescriptorSet.pNext = NULL;
-    writeDescriptorSet.descriptorCount = 1;
-    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    writeDescriptorSet.dstArrayElement = 0;
-    writeDescriptorSet.dstBinding = 0;
-    writeDescriptorSet.dstSet = descriptorSet;
-    writeDescriptorSet.pBufferInfo = NULL;
-    writeDescriptorSet.pTexelBufferView = NULL;
-    writeDescriptorSet.pImageInfo = &imageInfo;
-
-    vkUpdateDescriptorSets(device,1,&writeDescriptorSet,0,NULL);
-}
-
-void create_descriptor_set_layout(hz_impl_vulkan_t *ctx)
+void create_descriptor_set_layout(hz_vk_renderer_t *renderer)
 {
     // information about the binding.
     VkDescriptorSetLayoutBinding layoutBindings[2] = {0};
@@ -1102,13 +1043,14 @@ void create_descriptor_set_layout(hz_impl_vulkan_t *ctx)
     setLayoutInfo.flags = 0;
     setLayoutInfo.pNext = NULL;
 
-    if (vkCreateDescriptorSetLayout(ctx->device, &setLayoutInfo, NULL, &ctx->setLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(renderer->device, &setLayoutInfo, NULL, &renderer->setLayout) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create descriptor set layout!\n");
     }
 }
 
-void createGlyphCacheImage(VkDevice device, GlyphCacheImageData *imageData, uint32_t width, uint32_t height)
+int create_image(VkDevice device, VkFormat format, VkImage *image, uint32_t width, uint32_t height)
 {
+    VkResult vr;
     VkImageCreateInfo createInfo = {0};
 
     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1120,66 +1062,51 @@ void createGlyphCacheImage(VkDevice device, GlyphCacheImageData *imageData, uint
     createInfo.mipLevels = 1;
     createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     createInfo.arrayLayers = 1;
-    createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    createInfo.format = VK_FORMAT_R8_UNORM;
     createInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     createInfo.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
     createInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
 
-    VkResult vr;
     if ((vr = vkCreateImage(device, &createInfo, NULL, &imageData->image)) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create target image! (%d)\n", vr);
-    } else {
-        VkMemoryRequirements memoryRequirements;
-        vkGetImageMemoryRequirements(device, imageData->image, &memoryRequirements);
-
-        VkMemoryAllocateInfo allocateInfo = {0};
-        allocateInfo.pNext = NULL;
-        allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocateInfo.allocationSize = memoryRequirements.size;
-        allocateInfo.memoryTypeIndex = 0;
-        imageData->deviceSize = memoryRequirements.size;
-
-        if ((vr = vkAllocateMemory(device,&allocateInfo,NULL,
-                                   &imageData->deviceMemory)) != VK_SUCCESS) {
-            fprintf(stderr, "Failed to allocate device memory! (%d)\n", vr);
-        } else {
-            vkBindImageMemory(device,
-                              imageData->image,
-                              imageData->deviceMemory,0);
-        }
-
     }
 }
 
-VkImageView createGlyphCacheImageView(VkDevice device, VkImage image)
+void create_glyph_cache_data(VkDevice device,
+    glyph_cache_data_t *glyph_cache_data, hz_glyph_cache_opts_t *opts)
 {
-    VkImageViewCreateInfo createInfo = {0};
-    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    createInfo.pNext = NULL;
-    createInfo.image = image;
-    createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-    createInfo.flags = 0;
-    createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-
-    createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    createInfo.subresourceRange.baseArrayLayer = 0;
-    createInfo.subresourceRange.baseMipLevel = 0;
-    createInfo.subresourceRange.layerCount = 1;
-    createInfo.subresourceRange.levelCount = 1;
-
-    createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-    VkImageView imageView = VK_NULL_HANDLE;
-    VkResult vr;
-    if ((vr = vkCreateImageView(device, &createInfo, NULL, &imageView)) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create image view for glyph cache! (%d)\n", vr);
-    }
-
-    return imageView;
+    
 }
+
+// VkImageView createGlyphCacheImageView(VkDevice device, VkImage image)
+// {
+//     VkImageViewCreateInfo createInfo = {0};
+//     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+//     createInfo.pNext = NULL;
+//     createInfo.image = image;
+//     createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+//     createInfo.flags = 0;
+//     createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+//     createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+//     createInfo.subresourceRange.baseArrayLayer = 0;
+//     createInfo.subresourceRange.baseMipLevel = 0;
+//     createInfo.subresourceRange.layerCount = 1;
+//     createInfo.subresourceRange.levelCount = 1;
+
+//     createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+//     createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+//     createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+//     createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+//     VkImageView imageView = VK_NULL_HANDLE;
+//     VkResult vr;
+//     if ((vr = vkCreateImageView(device, &createInfo, NULL, &imageView)) != VK_SUCCESS) {
+//         fprintf(stderr, "Failed to create image view for glyph cache! (%d)\n", vr);
+//     }
+
+//     return imageView;
+// }
 
 VkCommandBuffer create_command_buffer(VkDevice device, VkCommandPool commandPool)
 {
@@ -1241,7 +1168,7 @@ VkFence create_fence(VkDevice device, VkBool32 isSignaled)
     VkFenceCreateInfo createInfo = {0};
     createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     if (isSignaled) createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    vkCreateFence(device,&createInfo,NULL,&fence);
+    vkCreateFence(device, &createInfo, NULL, &fence);
     return fence;
 }
 
@@ -1258,23 +1185,23 @@ VkSemaphore create_semaphore(VkDevice device)
     return semaphore;
 }
 
-void create_framebuffers(hz_impl_vulkan_t *impl)
+void create_framebuffers(hz_vk_renderer_t *renderer)
 {
-    hz_vector_resize(impl->framebuffers, impl->swapchainImageCount);
+    hz_vector_resize(renderer->framebuffers, renderer->swapchainImageCount);
 
-    for (size_t i = 0; i < impl->swapchainImageCount; ++i) {
-        VkImageView attachments[] = { impl->swapchainImageViews[i] };
+    for (size_t i = 0; i < renderer->swapchainImageCount; ++i) {
+        VkImageView attachments[] = { renderer->swapchainImageViews[i] };
 
         VkFramebufferCreateInfo framebufferInfo = {0};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = impl->renderPass;
+        framebufferInfo.renderPass = renderer->renderPass;
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = attachments;
-        framebufferInfo.width = impl->swapchainExtent.width;
-        framebufferInfo.height = impl->swapchainExtent.height;
+        framebufferInfo.width = renderer->swapchainExtent.width;
+        framebufferInfo.height = renderer->swapchainExtent.height;
         framebufferInfo.layers = 1;
 
-        if (vkCreateFramebuffer(impl->device, &framebufferInfo, NULL, &impl->framebuffers[i]) != VK_SUCCESS) {
+        if (vkCreateFramebuffer(renderer->device, &framebufferInfo, NULL, &renderer->framebuffers[i]) != VK_SUCCESS) {
             fprintf(stderr, "Failed to create framebuffers!\n");
         }
     }
@@ -1296,26 +1223,26 @@ VkCommandPool create_command_pool(VkDevice device, uint32_t queueFamilyIndex)
     return commandPool;
 }
 
-hz_impl_vulkan_t *
-hz_vk_create_impl(GLFWwindow *window, int enableDebug)
+hz_vk_renderer_t *
+hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
 {
-    hz_impl_vulkan_t *impl = malloc(sizeof(*impl));
-    impl->framebuffers = NULL;
+    hz_vk_renderer_t *renderer = malloc(sizeof(*renderer));
+    renderer->framebuffers = NULL;
 
-    impl->enableDebug = enableDebug;
+    renderer->enableDebug = enableDebug;
 
-    if (!create_instance(impl)) {
+    if (!create_instance(renderer)) {
         fprintf_s(stderr, "%s\n", "failed to create Instance.");
-        hz_vk_terminate(impl);
+        hz_vk_terminate(renderer);
         return NULL;
     }
 
     fprintf_s(stdout, "%s\n", "created vulkan instance.");
 
-    if (impl->enableDebug) {
-        if (!create_debug_messenger(impl)) {
+    if (renderer->enableDebug) {
+        if (!create_debug_messenger(renderer)) {
             fprintf_s(stderr, "%s\n", "failed to create debug messenger!");
-            hz_vk_terminate(impl);
+            hz_vk_terminate(renderer);
             return NULL;
         }
 
@@ -1323,21 +1250,21 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     }
 
     // Create window surface
-    if (glfwCreateWindowSurface(impl->instance, window, NULL, &impl->surface) != VK_SUCCESS) {
+    if (glfwCreateWindowSurface(renderer->instance, window, NULL, &renderer->surface) != VK_SUCCESS) {
         fprintf_s(stderr, "%s\n", "failed to create vulkan surface!");
-        hz_vk_terminate(impl);
+        hz_vk_terminate(renderer);
         return NULL;
     }
 
     fprintf_s(stdout, "%s\n", "created vulkan surface.");
 
-    impl->physicalDevice = choose_physical_device(impl->instance, impl->surface);
-    if (impl->physicalDevice == VK_NULL_HANDLE) {
+    renderer->physicalDevice = choose_physical_device(renderer->instance, renderer->surface);
+    if (renderer->physicalDevice == VK_NULL_HANDLE) {
         fprintf_s(stderr, "%s\n", "could not find any suitable vulkan device.");
     }
 
     // Create logical device
-    QueueFamilyIndices indices = find_queue_families(impl->physicalDevice, impl->surface);
+    QueueFamilyIndices indices = find_queue_families(renderer->physicalDevice, renderer->surface);
 
     if (!queue_families_complete(&indices)) {
         fprintf(stderr, "%s\n", "Queue family indices are not complete.");
@@ -1370,7 +1297,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     createInfo.enabledExtensionCount = ARRAYSIZE(sDeviceExtensions);
     createInfo.ppEnabledExtensionNames = sDeviceExtensions;
 
-    if (impl->enableDebug) {
+    if (renderer->enableDebug) {
         createInfo.enabledLayerCount = ARRAYSIZE(sValidationLayers);
         createInfo.ppEnabledLayerNames = sValidationLayers;
     } else {
@@ -1378,44 +1305,44 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
     }
 
     VkResult result;
-    if ((result = vkCreateDevice(impl->physicalDevice, &createInfo, NULL, &impl->device)) != VK_SUCCESS) {
+    if ((result = vkCreateDevice(renderer->physicalDevice, &createInfo, NULL, &renderer->device)) != VK_SUCCESS) {
         printf("Create device error: %d\n", result);
         EXIT_ERROR("Failed to create logical device!");
     }
 
-    vkGetDeviceQueue(impl->device, indices.graphicsFamily, 0, &impl->graphicsQueue);
-    vkGetDeviceQueue(impl->device, indices.presentFamily, 0, &impl->presentQueue);
-    vkGetDeviceQueue(impl->device, indices.computeFamily, 0, &impl->computeQueue);
+    vkGetDeviceQueue(renderer->device, indices.graphicsFamily, 0, &renderer->graphicsQueue);
+    vkGetDeviceQueue(renderer->device, indices.presentFamily, 0, &renderer->presentQueue);
+    vkGetDeviceQueue(renderer->device, indices.computeFamily, 0, &renderer->computeQueue);
 
     // Create swapchain
-    create_swapchain(window, impl);
+    create_swapchain(window, renderer);
 
-    vkGetSwapchainImagesKHR(impl->device, impl->swapchain, &impl->swapchainImageCount, NULL);
-    impl->swapchainImages = malloc(sizeof(VkImage) * impl->swapchainImageCount);
-    vkGetSwapchainImagesKHR(impl->device, impl->swapchain, &impl->swapchainImageCount, impl->swapchainImages);
+    vkGetSwapchainImagesKHR(renderer->device, renderer->swapchain, &renderer->swapchainImageCount, NULL);
+    renderer->swapchainImages = malloc(sizeof(VkImage) * renderer->swapchainImageCount);
+    vkGetSwapchainImagesKHR(renderer->device, renderer->swapchain, &renderer->swapchainImageCount, renderer->swapchainImages);
 
-    printf("Created swapchain with %d images\n", impl->swapchainImageCount);
+    printf("Created swapchain with %d images\n", renderer->swapchainImageCount);
 
     // Create swapchain image views
-    create_swapchain_image_views(impl);
+    create_swapchain_image_views(renderer);
 
     // Create render pass
-    create_render_pass(impl);
+    create_render_pass(renderer);
 
     // Setup descriptor pool, set and layout (must be done before creating the pipelines)
-    create_descriptor_pool(impl);
-    create_descriptor_set_layout(impl);
-    allocate_compute_descriptor_sets(impl);
+    create_descriptor_pool(renderer);
+    create_descriptor_set_layout(renderer);
+    allocate_compute_descriptor_sets(renderer);
 
     // Create compute pipeline
-    //impl->computePipeline = create_compute_pipeline(impl, "./shaders/bezier-to-sdf.comp.spv");
+    //renderer->computePipeline = create_compute_pipeline(g, "./shaders/bezier-to-sdf.comp.spv");
     // Create compute command pool
-    //impl->computeCmdPool = create_command_pool(impl->device, indices.computeFamily);
+    //renderer->computeCmdPool = create_command_pool(renderer->device, indices.computeFamily);
     // Create compute command buffer
-    //impl->computeCmdBuffer = create_command_buffer(impl->device, impl->computeCmdPool);
+    //renderer->computeCmdBuffer = create_command_buffer(renderer->device, renderer->computeCmdPool);
 
     // Create graphics pipeline layout
-    impl->graphicsPipelineLayout = create_graphics_pipeline_layout(impl->device, VK_NULL_HANDLE);
+    renderer->graphicsPipelineLayout = create_graphics_pipeline_layout(renderer->device, VK_NULL_HANDLE);
 
     {
         // Create single channel fast SDF generator shader
@@ -1431,7 +1358,6 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
             { 4, 0, VK_FORMAT_R32_SINT, offsetof(hz_bezier_vertex_t, type) } // type
         };
 
-
         VkPipelineColorBlendAttachmentState colorBlendAttachment = {0};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = VK_TRUE;
@@ -1442,7 +1368,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-        impl->bezier_sdf_shader = create_pipeline(impl,1,vertex_bindings,5,vertex_attribs,
+        renderer->bezier_sdf_shader = create_pipeline(renderer,1,vertex_bindings,5,vertex_attribs,
             "./shaders/bezier_to_sdf.vert.spv", "./shaders/bezier_to_sdf.frag.spv",
             &colorBlendAttachment);
     }
@@ -1468,7 +1394,7 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-        impl->bezier_mask_shader = create_pipeline(impl,1,vertex_bindings,2,vertex_attribs,
+        renderer->bezier_mask_shader = create_pipeline(renderer,1,vertex_bindings,2,vertex_attribs,
             "./shaders/bezier_mask.vert.spv", "./shaders/bezier_mask.frag.spv",
             &colorBlendAttachment);
     }
@@ -1476,31 +1402,30 @@ hz_vk_create_impl(GLFWwindow *window, int enableDebug)
 
 
     // Create graphics pipeline
-    //impl->graphicsPipeline = create_graphics_pipeline(impl, "./shaders/render-glyph-sdf.vert.spv", "./shaders/render-glyph-sdf.frag.spv");
+    //renderer->graphicsPipeline = create_graphics_pipeline(renderer, "./shaders/render-glyph-sdf.vert.spv", "./shaders/render-glyph-sdf.frag.spv");
 
     {
         GlyphCacheImageData cacheTexture;
-        createGlyphCacheImage(impl->device, &impl->glyphCacheImageData, 1024, 1024);
-        impl->glyphCacheImageData.imageView = createGlyphCacheImageView(impl->device, impl->glyphCacheImageData.image);
-        impl->glyphCacheImageData.sampler = createGlyphCacheSampler(impl->device);
+        createGlyphCacheImage(renderer->device, &renderer->glyphCacheImageData, 1024, 1024);
+        renderer->glyphCacheImageData.imageView = createGlyphCacheImageView(renderer->device, renderer->glyphCacheImageData.image);
+        renderer->glyphCacheImageData.sampler = createGlyphCacheSampler(renderer->device);
     }
 
     {
-        impl->glyphCacheImageData.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        update_glyph_texture_descriptor(impl->device, impl->computeDescriptorSets[0], impl->glyphCacheImageData);
+        renderer->glyphCacheImageData.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        update_glyph_texture_descriptor(renderer->device, renderer->computeDescriptorSets[0], renderer->glyphCacheImageData);
     }
 
-    impl->inFlightFence = create_fence(impl->device, VK_TRUE);
+    renderer->inFlightFence = create_fence(renderer->device, VK_TRUE);
+    renderer->graphicsCmdPool = create_command_pool(renderer->device, indices.graphicsFamily);
+    renderer->graphicsCmdBuffer = create_command_buffer(renderer->device, renderer->graphicsCmdPool);
 
-    impl->graphicsCmdPool = create_command_pool(impl->device, indices.graphicsFamily);
-    impl->graphicsCmdBuffer = create_command_buffer(impl->device, impl->graphicsCmdPool);
+    create_framebuffers(renderer);
 
-    create_framebuffers(impl);
+    renderer->imageAvailableSemaphore = create_semaphore(renderer->device);
+    renderer->renderFinishedSemaphore = create_semaphore(renderer->device);
 
-    impl->imageAvailableSemaphore = create_semaphore(impl->device);
-    impl->renderFinishedSemaphore = create_semaphore(impl->device);
-
-    return impl;
+    return renderer;
 }
 
 /*
@@ -1551,7 +1476,7 @@ VkBuffer update_glyph_data_descriptor(VkDevice device, VkDescriptorSet descripto
 #define WORKGROUP_SIZE_X 16
 #define WORKGROUP_SIZE_Y 16
 
-void record_compute_commands(hz_impl_vulkan_t *impl,
+void record_compute_commands(hz_vk_renderer_t *renderer,
                              int textureWidth, int textureHeight)
 {
 
@@ -1568,19 +1493,19 @@ void record_compute_commands(hz_impl_vulkan_t *impl,
     glyphCacheInfo.gridDivisions = 64;
     glyphCacheInfo.margin = 0.05f;
 
-    vkBeginCommandBuffer(impl->computeCmdBuffer, &beginInfo);
-    vkCmdBindPipeline(impl->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl->computePipeline);
-    vkCmdBindDescriptorSets(impl->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl->pipelineLayout, 0,
-                            1, impl->computeDescriptorSets, 0, NULL);
+    vkBeginCommandBuffer(renderer->computeCmdBuffer, &beginInfo);
+    vkCmdBindPipeline(renderer->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, renderer->computePipeline);
+    vkCmdBindDescriptorSets(renderer->computeCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, renderer->pipelineLayout, 0,
+                            1, renderer->computeDescriptorSets, 0, NULL);
 
     uint32_t groupCountX = ((textureWidth) / WORKGROUP_SIZE_X) + 1;
     uint32_t groupCountY = ((textureHeight) / WORKGROUP_SIZE_Y) + 1;
 
-    vkCmdDispatch(impl->computeCmdBuffer, groupCountX, groupCountY, 1);
-    vkEndCommandBuffer(impl->computeCmdBuffer);
+    vkCmdDispatch(renderer->computeCmdBuffer, groupCountX, groupCountY, 1);
+    vkEndCommandBuffer(renderer->computeCmdBuffer);
 }
 
-void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
+void record_graphics_command_buffer(hz_vk_renderer_t *renderer,
     VkCommandBuffer commandBuffer,
     uint32_t imageIndex,
     VkBuffer curve_buffer,
@@ -1597,12 +1522,12 @@ void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
     // draw commands
     VkRenderPassBeginInfo renderPassInfo = {0};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = impl->renderPass;
-    renderPassInfo.framebuffer = impl->framebuffers[imageIndex];
+    renderPassInfo.renderPass = renderer->renderPass;
+    renderPassInfo.framebuffer = renderer->framebuffers[imageIndex];
 
     // render area
     renderPassInfo.renderArea.offset = (VkOffset2D){0, 0};
-    renderPassInfo.renderArea.extent = impl->swapchainExtent;
+    renderPassInfo.renderArea.extent = renderer->swapchainExtent;
 
     // clear color
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
@@ -1610,7 +1535,7 @@ void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
     renderPassInfo.pClearValues = &clearColor;
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->bezier_sdf_shader);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->bezier_sdf_shader);
     
     {
         // bind vertex buffer for curve segments
@@ -1622,7 +1547,7 @@ void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
     vkCmdDraw(commandBuffer, 6, curve_count, 0, 0);
 
     // create stencil mask for the bezier spline shape kokojima
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, impl->bezier_mask_shader);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->bezier_mask_shader);
 
     // enable stencil test
     //vkCmdSetStencilTestEnable(commandBuffer, VK_TRUE);
@@ -1647,25 +1572,25 @@ void record_graphics_command_buffer(hz_impl_vulkan_t *impl,
 }
 
 void
-create_buffer_and_mmap(hz_impl_vulkan_t *impl, VkBuffer *buffer, VkDeviceMemory *memory, void *data, VkDeviceSize size, VkBufferUsageFlags usage,
+create_buffer_and_mmap(hz_vk_renderer_t *renderer, VkBuffer *buffer, VkDeviceMemory *memory, void *data, VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags properties)
 {
-    *buffer = create_buffer(impl->device, impl->physicalDevice, size, usage, properties, memory);
+    *buffer = create_buffer(renderer->device, renderer->physicalDevice, size, usage, properties, memory);
     uint8_t *hostptr;
-    vkMapMemory(impl->device, *memory, 0, VK_WHOLE_SIZE, 0, (void **)&hostptr);
+    vkMapMemory(renderer->device, *memory, 0, VK_WHOLE_SIZE, 0, (void **)&hostptr);
     memcpy(hostptr, data, size);
-    vkUnmapMemory(impl->device, *memory);
+    vkUnmapMemory(renderer->device, *memory);
 }
 
 void
-hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
+hz_vk_render_frame(hz_vk_renderer_t *renderer, stbtt_fontinfo *fontinfo, hz_index_t glyph_index)
 {
-    vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(impl->device, 1, &impl->inFlightFence);
+    vkWaitForFences(renderer->device, 1, &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(renderer->device, 1, &renderer->inFlightFence);
 
     uint32_t imageIndex;
-    vkAcquireNextImageKHR(impl->device, impl->swapchain, UINT64_MAX,
-                          impl->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    vkAcquireNextImageKHR(renderer->device, renderer->swapchain, UINT64_MAX,
+                          renderer->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
 #if 0
     // setup uniform buffer object for glyph curve data
@@ -1674,17 +1599,17 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
     {
         VkDeviceSize bufferSize = 4 + glyph_shape->vertex_count * sizeof(hz_bezier_vertex_t);
 
-        glyphDataBuffer = create_buffer(impl->device, impl->physicalDevice,
+        glyphDataBuffer = create_buffer(renderer->device, renderer->physicalDevice,
             bufferSize,
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
             &glyphDataDeviceMemory);
 
         uint8_t *mappedData;
-        vkMapMemory(impl->device, glyphDataDeviceMemory, 0, VK_WHOLE_SIZE, 0, (void **)&mappedData);
+        vkMapMemory(renderer->device, glyphDataDeviceMemory, 0, VK_WHOLE_SIZE, 0, (void **)&mappedData);
         *(int *)mappedData = glyph_shape->vertex_count;
         memcpy(mappedData+4, glyph_shape->vertices, glyph_shape->vertex_count * sizeof(hz_vertex_t));
-        vkUnmapMemory(impl->device, glyphDataDeviceMemory);
+        vkUnmapMemory(renderer->device, glyphDataDeviceMemory);
 
         VkWriteDescriptorSet writeDescriptorSet;
 
@@ -1700,12 +1625,12 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
         writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         writeDescriptorSet.dstArrayElement = 0;
         writeDescriptorSet.dstBinding = 1;
-        writeDescriptorSet.dstSet = impl->computeDescriptorSets[0];
+        writeDescriptorSet.dstSet = renderer->computeDescriptorSets[0];
         writeDescriptorSet.pBufferInfo = &bufferInfo;
         writeDescriptorSet.pTexelBufferView = NULL;
         writeDescriptorSet.pImageInfo = NULL;
 
-        vkUpdateDescriptorSets(impl->device,1,&writeDescriptorSet,0,NULL);
+        vkUpdateDescriptorSets(renderer->device,1,&writeDescriptorSet,0,NULL);
     }
     hz_glyph_shape_destroy(glyph_shape);
 #endif
@@ -1713,7 +1638,7 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
 
 #if 0
     
-    vkResetCommandBuffer(impl->computeCmdBuffer, 0);
+    vkResetCommandBuffer(renderer->computeCmdBuffer, 0);
     record_compute_commands(impl, 1024, 1024);
 
     uint32_t Semaphores;
@@ -1723,22 +1648,22 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.pNext = NULL;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &impl->computeCmdBuffer;
+        submitInfo.pCommandBuffers = &renderer->computeCmdBuffer;
         submitInfo.waitSemaphoreCount = 0;
         submitInfo.pWaitSemaphores = NULL;
         submitInfo.signalSemaphoreCount = 0;
         submitInfo.pSignalSemaphores = NULL;
         submitInfo.pWaitDstStageMask = NULL;
 
-        vkQueueSubmit(impl->computeQueue, 1, &submitInfo, impl->inFlightFence);
+        vkQueueSubmit(renderer->computeQueue, 1, &submitInfo, renderer->inFlightFence);
 
-        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(impl->device, 1, &impl->inFlightFence);
+        vkWaitForFences(renderer->device, 1, &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
+        vkResetFences(renderer->device, 1, &renderer->inFlightFence);
 
 
         // destroy frame resources
-        vkFreeMemory(impl->device,glyphDataDeviceMemory,NULL);
-        vkDestroyBuffer(impl->device,glyphDataBuffer,NULL);
+        vkFreeMemory(renderer->device,glyphDataDeviceMemory,NULL);
+        vkDestroyBuffer(renderer->device,glyphDataBuffer,NULL);
     }
 #endif
 
@@ -1781,77 +1706,77 @@ hz_vk_render_frame(hz_impl_vulkan_t *impl, stbtt_fontinfo *fontinfo, hz_index_t 
 
         printf("mask vertices: %d\n", mask_drawcount);
 
-        vkResetCommandBuffer(impl->graphicsCmdBuffer, 0);
-        record_graphics_command_buffer(impl, impl->graphicsCmdBuffer, imageIndex,
+        vkResetCommandBuffer(renderer->graphicsCmdBuffer, 0);
+        record_graphics_command_buffer(impl, renderer->graphicsCmdBuffer, imageIndex,
             vertex_buffer, shape->vertex_count,
             mask_vbo, mask_drawcount);
 
         VkSubmitInfo submitInfo = {0};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        VkSemaphore waitSemaphores[] = {impl->imageAvailableSemaphore};
+        VkSemaphore waitSemaphores[] = {renderer->imageAvailableSemaphore};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = HZ_ARRLEN(waitSemaphores);
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
 
-        VkCommandBuffer commandBuffers[] = {impl->graphicsCmdBuffer};
+        VkCommandBuffer commandBuffers[] = {renderer->graphicsCmdBuffer};
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = commandBuffers;
-        VkSemaphore signalSemaphores[] = {impl->renderFinishedSemaphore};
+        VkSemaphore signalSemaphores[] = {renderer->renderFinishedSemaphore};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkQueueSubmit(impl->graphicsQueue, 1, &submitInfo, impl->inFlightFence);
-        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+        vkQueueSubmit(renderer->graphicsQueue, 1, &submitInfo, renderer->inFlightFence);
+        vkWaitForFences(renderer->device, 1, &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
 
         VkPresentInfoKHR presentInfo = {0};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
-        VkSwapchainKHR swapChains[] = {impl->swapchain};
+        VkSwapchainKHR swapChains[] = {renderer->swapchain};
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains; 
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = NULL; // Optional
 
-        vkQueuePresentKHR(impl->presentQueue, &presentInfo);
-        vkWaitForFences(impl->device, 1, &impl->inFlightFence, VK_TRUE, UINT64_MAX);
+        vkQueuePresentKHR(renderer->presentQueue, &presentInfo);
+        vkWaitForFences(renderer->device, 1, &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
         
         // destroy frame resources
-        vkFreeMemory(impl->device, vertex_buffer_memory, NULL);
-        vkDestroyBuffer(impl->device, vertex_buffer, NULL);
-        vkFreeMemory(impl->device, mask_vbo_memory, NULL);
-        vkDestroyBuffer(impl->device, mask_vbo, NULL);
+        vkFreeMemory(renderer->device, vertex_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->device, vertex_buffer, NULL);
+        vkFreeMemory(renderer->device, mask_vbo_memory, NULL);
+        vkDestroyBuffer(renderer->device, mask_vbo, NULL);
         hz_vector_destroy(mask_verts);
     }
 }
 
 void
-hz_vk_terminate(hz_impl_vulkan_t *impl)
+hz_vk_terminate(hz_vk_renderer_t *renderer)
 {
-    vkDestroyPipelineLayout(impl->device, impl->pipelineLayout, NULL);
+    vkDestroyPipelineLayout(renderer->device, renderer->pipelineLayout, NULL);
 
-    for (uint32_t i = 0; i < impl->swapchainImageCount; ++i) {
-        vkDestroyImageView(impl->device, impl->swapchainImageViews[i], NULL);
+    for (uint32_t i = 0; i < renderer->swapchainImageCount; ++i) {
+        vkDestroyImageView(renderer->device, renderer->swapchainImageViews[i], NULL);
     }
 
-    free(impl->swapchainImageViews);
+    free(renderer->swapchainImageViews);
 
-    vkDestroySwapchainKHR(impl->device, impl->swapchain, NULL);
+    vkDestroySwapchainKHR(renderer->device, renderer->swapchain, NULL);
 
-    if (impl->surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(impl->instance, impl->surface, NULL);
+    if (renderer->surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(renderer->instance, renderer->surface, NULL);
     }
 
-    if (impl->debugMessenger != VK_NULL_HANDLE) {
-        destroyDebugUtilsMessengerEXT(impl->instance, impl->debugMessenger, NULL);
+    if (renderer->debugMessenger != VK_NULL_HANDLE) {
+        destroyDebugUtilsMessengerEXT(renderer->instance, renderer->debugMessenger, NULL);
     }
 
-    vkDestroyInstance(impl->instance, NULL);
-    free(impl);
+    vkDestroyInstance(renderer->instance, NULL);
+    free(renderer);
 }
 
-void hz_vk_wait_idle(hz_impl_vulkan_t *impl)
+void hz_vk_wait_idle(hz_vk_renderer_t *renderer)
 {
-    vkDeviceWaitIdle(impl->device);
+    vkDeviceWaitIdle(renderer->device);
 }

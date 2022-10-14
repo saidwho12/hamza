@@ -1,7 +1,17 @@
-#include "hz-glyph-cache.h"
+#include "hz_glyph_cache.h"
 
 hz_vec2_t hz_vec2(float a, float b)
 { return (hz_vec2_t){a,b}; }
+
+hz_rect_t hz_glyph_cache_compute_cell_rect(hz_glyph_cache_opts_t *opts, int cell)
+{
+    HZ_ASSERT(cell < opts->cols*opts->rows);
+    float cw = (float)opts->width / (float)opts->cols;
+    float ch = (float)opts->height / (float)opts->rows;
+    int icx = cell % opts->cols;
+    int icy = cell / opts->cols;;
+    return (hz_rect_t){icx * cw, icy * ch, cw, ch};
+}
 
 hz_bezier_shape_t *
 hz_stbtt_get_glyph_shape(stbtt_fontinfo *fontinfo, hz_index_t glyph_index)

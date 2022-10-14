@@ -4,9 +4,7 @@
 
 #include "hz.h"
 #include <assert.h>
-
-#define HZ_BOOLSTR(x) ((x)?"true":"false")
-#define HZ_BIT(x) (1<<(x))
+#include <stdarg.h>
 
 #define KIB 1024
 #define MIB 1048576
@@ -33,10 +31,6 @@
 #else
 #define likely(x) (x)
 #define unlikely(x) (x)
-#endif
-
-#if HZ_COMPILER & HZ_COMPILER_VC
-typedef long long ssize_t;
 #endif
 
 typedef int16_t hz_segment_sz_t;
@@ -4546,12 +4540,12 @@ hz_buffer_flip_direction(hz_buffer_t *buffer)
 }
 
 hz_bool_t
-hz_buffer_contains_range(const hz_buffer_t *buffer, ssize_t i1, ssize_t i2)
+hz_buffer_contains_range(const hz_buffer_t *buffer, int v1, int v2)
 {
     size_t size = hz_vector_size(buffer->glyph_indices);
-    return i1 >= 0 && i1 < size
-    && i2 >= 0 && i2 < size
-    && i2 >= i1;
+    return v1 >= 0 && v1 < size
+    && v2 >= 0 && v2 < size
+    && v2 >= v1;
 }
 
 hz_buffer_t *hz_buffer_copy_range(hz_buffer_t *from, int v1, int v2)
@@ -4830,8 +4824,6 @@ typedef struct hz_chained_sequence_context_format1_subtable_t {
     uint16_t rule_set_count;
     hz_chained_sequence_rule_set_t *rule_sets;
 } hz_chained_sequence_context_format1_subtable_t;
-
-
 
 HZ_STATIC hz_error_t
 hz_load_gsub_chained_contexts_substitution_subtable(hz_stream_t *stream,
@@ -6202,8 +6194,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     // unignored
                                     for (hz_segment_sz_t v = range->mn; v <= range->mx; ++v) {
-                                        if (hz_should_replace(b1, feature, v, table->lookup_flags,
-                                                              table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, v, table->lookup_flags, table->mark_filtering_set)
                                             && hz_map_contains(subtable->coverage, b1->glyph_indices[v])) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                     .id = b1->glyph_indices[v] + subtable->delta_glyph_id,
@@ -6264,24 +6255,24 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 if (range->is_ignored) {
                                     hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
-                                    for (hz_segment_sz_t v = range->mn; v <= range->mx; ++v) {
-                                        if (hz_should_replace(b1, feature, v, table->lookup_flags,
+                                    for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
                                                               table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[v])) {
-                                            uint32_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[v]);
+                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                            uint32_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[g]);
                                             const hz_sequence_table_t *sequence = &subtable->sequences[index];
 
                                             for (uint16_t w = 0; w < sequence->glyph_count; ++w) {
                                                 hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                         .id = sequence->glyphs[w],
-                                                        .codepoint = b1->codepoints[v],
-                                                        .component_index = b1->component_indices[v]});
+                                                        .codepoint = b1->codepoints[g],
+                                                        .component_index = b1->component_indices[g]});
                                             }
                                         } else {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
-                                                    .id = b1->glyph_indices[v],
-                                                    .codepoint = b1->codepoints[v],
-                                                    .component_index = b1->component_indices[v]});
+                                                    .id = b1->glyph_indices[g],
+                                                    .codepoint = b1->codepoints[g],
+                                                    .component_index = b1->component_indices[g]});
                                         }
                                     }
                                 }
@@ -6306,20 +6297,20 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     // unignored
-                                    for (hz_segment_sz_t v = range->mn; v <= range->mx; ++v) {
+                                    for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t matched = HZ_FALSE;
 
-                                        if (hz_should_replace(b1, feature, v, table->lookup_flags,
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
                                                               table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[v])) {
-                                            uint16_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[v]);
+                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                            uint16_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[g]);
                                             const hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + index;
 
                                             // compare ligatures in ligature set to following unignored nodes for match
                                             for (uint16_t w = 0; w < ligature_set->ligature_count; ++w) {
                                                 hz_ligature_t *ligature = &ligature_set->ligatures[w];
                                                 uint16_t component_count = ligature->component_count;
-                                                hz_segment_sz_t s1 = range->base + (v - range->mn);
+                                                hz_segment_sz_t s1 = range->base + (g - range->mn);
                                                 hz_segment_sz_t s2 = s1 + component_count - 1;
                                                 if (s2 < hz_vector_size(range_list->unignored_indices)) {
                                                     int test = 1;

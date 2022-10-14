@@ -18,9 +18,11 @@ endif ()
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} --std=c99 -march=native -O0 -g2 -ggdb -pedantic")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} --std=c99 -march=native -ftree-slp-vectorize -O2 -Ofast")
-#    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
-    set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native -O0 -g -g3 -ggdb -pedantic")
+    if (MINGW)
+        set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
+    endif()
 elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /arch:AVX2")
 endif()
@@ -42,15 +44,15 @@ endif()
 set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
         SOVERSION ${HAMZA_VERSION_MAJOR})
 
-if ($ENV{VULKAN_SDK} STREQUAL "")
-    message(FATAL_ERROR "VULKAN_SDK environment variable must be set.")
+message("LUNARG (Vulkan) SDK Path: \"$ENV{VULKAN_SDK}\"")  
+
+if ("$ENV{VULKAN_SDK}" STREQUAL "")
+    message(FATAL_ERROR "VULKAN_SDK environment variable must not be set to nothing.")
 endif()
 
-file(TO_CMAKE_PATH $ENV{VULKAN_SDK} LUNARG_SDK_ROOT)
+file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}" LUNARG_SDK_ROOT)
 
-message("LunarG (Vulkan) SDK: ${LUNARG_SDK_ROOT}")
-
-add_executable(hamza_demo "hz/backends/hz_renderer_vulkan.c" "hz/backends/hz_renderer_vulkan.h" "example/shaping-test.c" example/stb_image_write.h)
+add_executable(hamza_demo "hz/backends/hz_renderer_vulkan.c" "hz/backends/hz_renderer_vulkan.h" "demo/hz_demo.c" "demo/stb_image_write.h")
 
 if (PLATFORM_WINDOWS)
     set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
@@ -78,9 +80,9 @@ endif ()
 
 # Compile GLSL shaders to SPIR-V
 if (PLATFORM_WINDOWS)
-set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/Bin/glslc.exe")
+    set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/Bin/glslc.exe")
 elseif (PLATFORM_LINUX)
-set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/bin/glslc")
+    set(GLSL_COMPILER "${LUNARG_SDK_ROOT}/bin/glslc")
 endif ()
 
 set(SHADER_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders/")
@@ -111,3 +113,4 @@ foreach(source IN LISTS GLSL_SHADERS)
 endforeach()
 
 add_custom_target(spv_shaders ALL DEPENDS ${SPV_SHADERS})
+add_dependencies(hamza_demo spv_shaders)

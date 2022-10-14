@@ -16,19 +16,10 @@
 #endif
 
 typedef struct {
-    VkImage image;
-    VkDeviceMemory deviceMemory;
-    VkDeviceSize deviceSize;
-    VkImageView imageView;
-    VkSampler sampler;
-    VkImageLayout imageLayout;
-} hz_vk_glyph_cache_t;
-
-typedef struct {
-    VkImageView     sdf_image_view;
-    VkImageView     stencil_image_view;
     VkImage         sdf_image;
     VkImage         stencil_image;
+    VkImageView     sdf_image_view;
+    VkImageView     stencil_image_view;
     VkFramebuffer   framebuffer;
     VkSampler       sampler;
     VkImageLayout   layout;
@@ -76,9 +67,7 @@ struct hz_vk_renderer_t {
     VkPipeline                  bezier_sdf_shader;
     VkPipeline                  bezier_mask_shader;
 
-
     hz_vector(VkFramebuffer)    framebuffers;
-
 
     hz_bool_t                   enableDebug, enableVSync;
 };
@@ -666,13 +655,12 @@ VkPipelineLayout create_graphics_pipeline_layout(VkDevice device, VkDescriptorSe
 }
 
 static VkPipeline create_pipeline(hz_vk_renderer_t *renderer,
-    size_t vertex_binding_count,
-    VkVertexInputBindingDescription *vertex_bindings,
-    size_t vertex_attrib_count,
-    VkVertexInputAttributeDescription *vertex_attribs,
+    size_t vertex_binding_count, VkVertexInputBindingDescription *vertex_bindings,
+    size_t vertex_attrib_count, VkVertexInputAttributeDescription *vertex_attribs,
     const char *vertex_shader_path,
     const char *fragment_shader_path,
-    VkPipelineColorBlendAttachmentState *colorBlendAttachment)
+    VkPipelineColorBlendAttachmentState *colorBlendAttachment,
+    VkPipelineDepthStencilStateCreateInfo *depthStencilState)
 {
     VkPipeline pipeline = VK_NULL_HANDLE;
     File *vertexShaderCode = load_entire_file(vertex_shader_path);
@@ -764,17 +752,7 @@ static VkPipeline create_pipeline(hz_vk_renderer_t *renderer,
     multisampling.pSampleMask = NULL; // Optional
     multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
     multisampling.alphaToOneEnable = VK_FALSE; // Optional
-/*
-    VkPipelineColorBlendAttachmentState colorBlendAttachment = {0};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
-    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_MAX; // Optional
-    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
-    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
-*/
+
     VkPipelineColorBlendStateCreateInfo colorBlending = {0};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
@@ -795,7 +773,7 @@ static VkPipeline create_pipeline(hz_vk_renderer_t *renderer,
     createInfo.pViewportState = &viewportState;
     createInfo.pRasterizationState = &rasterizer;
     createInfo.pMultisampleState = &multisampling;
-    createInfo.pDepthStencilState = NULL; // Optional
+    createInfo.pDepthStencilState = depthStencilState; // Optional
     createInfo.pColorBlendState = &colorBlending;
     createInfo.pDynamicState = NULL; // Optional
     createInfo.layout = renderer->graphicsPipelineLayout;
@@ -1228,7 +1206,6 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
 {
     hz_vk_renderer_t *renderer = malloc(sizeof(*renderer));
     renderer->framebuffers = NULL;
-
     renderer->enableDebug = enableDebug;
 
     if (!create_instance(renderer)) {
@@ -1334,13 +1311,6 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
     create_descriptor_set_layout(renderer);
     allocate_compute_descriptor_sets(renderer);
 
-    // Create compute pipeline
-    //renderer->computePipeline = create_compute_pipeline(g, "./shaders/bezier-to-sdf.comp.spv");
-    // Create compute command pool
-    //renderer->computeCmdPool = create_command_pool(renderer->device, indices.computeFamily);
-    // Create compute command buffer
-    //renderer->computeCmdBuffer = create_command_buffer(renderer->device, renderer->computeCmdPool);
-
     // Create graphics pipeline layout
     renderer->graphicsPipelineLayout = create_graphics_pipeline_layout(renderer->device, VK_NULL_HANDLE);
 
@@ -1367,10 +1337,14 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
         colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+        
+        VkPipelineDepthStencilStateCreateInfo depthStencilState = {0};
+
 
         renderer->bezier_sdf_shader = create_pipeline(renderer,1,vertex_bindings,5,vertex_attribs,
             "./shaders/bezier_to_sdf.vert.spv", "./shaders/bezier_to_sdf.frag.spv",
-            &colorBlendAttachment);
+            &colorBlendAttachment,
+            &depthStencilState);
     }
 
     {
@@ -1394,15 +1368,19 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
+        VkPipelineDepthStencilStateCreateInfo depthStencilState = {0};
+        depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencilState.pNext = NULL;
+
         renderer->bezier_mask_shader = create_pipeline(renderer,1,vertex_bindings,2,vertex_attribs,
             "./shaders/bezier_mask.vert.spv", "./shaders/bezier_mask.frag.spv",
-            &colorBlendAttachment);
+            &colorBlendAttachment,
+            &depthStencilState);
     }
 
-
-
-    // Create graphics pipeline
-    //renderer->graphicsPipeline = create_graphics_pipeline(renderer, "./shaders/render-glyph-sdf.vert.spv", "./shaders/render-glyph-sdf.frag.spv");
+    {
+        
+    }
 
     {
         GlyphCacheImageData cacheTexture;

@@ -296,7 +296,7 @@ static uint64_t Minll(uint64_t x, uint64_t y)
     return x<y?x:y;
 }
 
-static int CheckPowerOfTwo(uint64_t v)
+static int hz_check_power_of_two(uint64_t v)
 {
     return v && ~(v & (v-1));
 }
@@ -318,7 +318,7 @@ static uint64_t Ftzll(uint64_t x)
 static uint64_t Align(uint64_t x, uint64_t n)
 {
     // Aligns on largest power of two divisor of allocation size
-    assert(CheckPowerOfTwo(n)); // n must be a power of two
+    assert(hz_check_power_of_two(n)); // n must be a power of two
     uint64_t m = (x && n) ? Ftzll(n) & 0x1f : 0;
     return x + ((~x + 1) & m);
 }
@@ -344,6 +344,76 @@ static void* hz_alloc_linear(hz_linear_allocator_t *la, size_t size)
 static void hz_reset_linear_allocator(hz_linear_allocator_t *la)
 {
     la->offset = 0;
+}
+
+
+typedef struct {
+    void *prev;
+    uint64_t cursor;
+} hz_chunk_t;
+
+typedef struct {
+    size_t chunk_size;
+    size_t chunk_capacity;
+    hz_chunk_t *curr_chunk;
+} hz_memory_pool_t;
+
+hz_memory_pool_t hz_memory_pool_create(size_t chunk_size)
+{
+    hz_memory_pool_t pool;
+    pool.chunk_size = chunk_size;
+    pool.chunk_capacity = chunk_size - sizeof(hz_chunk_t);
+    pool.curr_chunk = NULL;
+    return pool;
+}
+
+hz_chunk_t *hz_memory_pool_create_chunk(size_t size)
+{
+    hz_chunk_t* chunk = hz_malloc(size);
+    chunk->prev = NULL;
+    chunk->cursor = 0;
+    return chunk;
+}
+
+void* hz_memory_pool_allocate_aligned(hz_memory_pool_t *pool, size_t size, size_t alignment)
+{
+    HZ_ASSERT(hz_check_power_of_two(alignment));
+    
+    // Requested size is larger than the chunk's capacity, cannot allocate.
+    if (size > pool->chunk_capacity) {
+        return NULL;
+    }
+
+    // Check if first chunk exists, otherwise allocate it.
+    if (pool->curr_chunk == NULL) {
+        pool->curr_chunk = hz_memory_pool_create_chunk(pool->chunk_size);
+    }
+    
+    // Not enough room in chunk, allocate other chunk:
+    if (pool->curr_chunk->cursor + size > pool->chunk_capacity) {
+        hz_chunk_t *chunk = hz_memory_pool_create_chunk(pool->chunk_size);
+        chunk->prev = pool->curr_chunk;
+        pool->curr_chunk = chunk;
+    }
+
+    uint8_t *mem = (uint8_t *)(pool->curr_chunk + 1) + pool->curr_chunk->cursor;
+    pool->curr_chunk->cursor += size;
+    return mem;
+}
+
+void* hz_memory_pool_allocate(hz_memory_pool_t *pool, size_t size)
+{
+    hz_memory_pool_allocate_aligned(pool,size,1);
+}
+
+void hz_memory_pool_release(hz_memory_pool_t *pool) {
+    hz_chunk_t *chunk = pool->curr_chunk;
+
+    while(chunk != NULL) {
+        hz_chunk_t *prev_chunk = chunk->prev;
+        hz_free(chunk);
+        chunk = prev_chunk;
+    }
 }
 
 /* no bound for buffer */
@@ -412,16 +482,10 @@ static int checkle(void)
     return (int)(*(unsigned char *)&x);
 }
 
-// Does unpacking OpenType data require byte swapping
-static int needsbswap(void)
-{
-    return checkle();
-}
-
 HZ_STATIC void UnpackArray16(hz_stream_t *stream, size_t count, uint16_t *dest)
 {
     if (count > 0) {
-        if (needsbswap()) {
+        if (checkle()) {
             // TODO: optimize using SSE/AVX
             for (size_t i = 0; i < count; ++i) {
                 uint16_t val = *(uint16_t *)(stream->data + stream->ptr);
@@ -439,7 +503,7 @@ HZ_STATIC void UnpackArray16(hz_stream_t *stream, size_t count, uint16_t *dest)
 HZ_STATIC void UnpackArray32(hz_stream_t *stream, size_t count, uint32_t *dest)
 {
     if (count > 0) {
-        if (needsbswap()) {
+        if (checkle()) {
             // TODO: optimize using SSE/AVX
             for (size_t i = 0; i < count; ++i) {
                 uint32_t val = *(uint16_t *)(stream->data + stream->ptr);
@@ -589,6 +653,10 @@ Unpackv(hz_stream_t *bs, const char *f, ...)
 
     va_end(ap);
 }
+
+
+//generic struct to hold data
+//generic function that takes string as argument to know what is in the struct and then parse that
 
 //typedef struct hz_token_t {
 //    int l; int r;
@@ -3105,7 +3173,6 @@ typedef struct hz_sequence_rule_set_t {
     hz_sequence_rule_t *rules;
 } hz_sequence_rule_set_t;
 
-
 typedef struct hz_chained_sequence_rule_t {
     uint16_t prefix_count;
     uint16_t *prefix_sequence;
@@ -4666,15 +4733,38 @@ typedef struct {
     hz_gsub_table_t gsub_table;
     hz_gpos_table_t gpos_table;
     hz_shape_flags_t shape_flags;
+    hz_memory_pool_t memory_pool;
 } hz_shape_plan_t;
 
+//generic struct that holds data
+// typedef struct {
+//     uint8_t *data;
+//     size_t cursor;
+//     hz_memory_pool_t *memory_pool;
+// } hz_binary_parser_t;
+
+// void hz_parse_with_cmd(hz_binary_parser_t *bin, const char *cmd, ...)
+// {
+//     switch (ch) {
+//         case 's': { // short
+
+//         }
+//     }
+// }
+
+// hz_deserialize_with_cmd(&plan->deserializer, "{ s[10], i[25] }", &a)
+//
+//
+// 
+
+
 HZ_STATIC void
-hz_load_feature_table(hz_stream_t *stream, hz_feature_table_t *table)
+hz_load_feature_table(hz_memory_pool_t *memory_pool, hz_stream_t *stream, hz_feature_table_t *table)
 {
     Unpackv(stream, "hh", &table->feature_params,
             &table->lookup_index_count);
 
-    table->lookup_list_indices = hz_malloc(sizeof(uint16_t) * table->lookup_index_count);
+    table->lookup_list_indices = hz_memory_pool_allocate(memory_pool, sizeof(uint16_t) * table->lookup_index_count);
     UnpackArray16(stream, table->lookup_index_count, table->lookup_list_indices);
 }
 
@@ -5661,6 +5751,9 @@ hz_unload_gsub_lookup_table(hz_lookup_table_t *table)
 HZ_STATIC hz_error_t
 hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 {
+    uint8_t buffer[4096];
+    hz_linear_allocator_t linear_allocator = hz_linear_allocator_create(buffer, 4096);
+
     hz_face_t *face = hz_font_get_face(plan->font);
 
     if (!face->gsub) {
@@ -5697,7 +5790,7 @@ hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
         hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
         uint16_t num_features = Unpack16(&stream);
         gsub_table->num_features = num_features;
-        gsub_table->features = hz_malloc(sizeof(hz_feature_list_item_t) * num_features);
+        gsub_table->features = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_feature_list_item_t) * num_features);
 
         for (uint16_t i = 0; i < num_features; ++i) {
             gsub_table->features[i].tag = Unpack32(&stream);
@@ -5705,7 +5798,7 @@ hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 
             uintptr_t lastptr = stream_tell(&stream);
             stream_seek(&stream, offset);
-            hz_load_feature_table(&stream, &gsub_table->features[i].table);
+            hz_load_feature_table(&plan->memory_pool, &stream, &gsub_table->features[i].table);
             stream_seek(&stream, lastptr);
         }
     }
@@ -5719,16 +5812,14 @@ hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
         num_lookups = Unpack16(&stream);
 
         gsub_table->num_lookups = num_lookups;
-        gsub_table->lookups = hz_malloc(sizeof(hz_lookup_table_t) * num_lookups);
+        gsub_table->lookups = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_lookup_table_t) * num_lookups);
 
-        offsets = hz_malloc(sizeof(Offset16) * num_lookups);
+        offsets = hz_alloc_linear(&linear_allocator, sizeof(Offset16) * num_lookups);
         UnpackArray16(&stream, num_lookups, offsets);
 
         for (i = 0; i < num_lookups; ++i) {
             hz_load_gsub_lookup_table(stream.data + offsets[i], face, &gsub_table->lookups[i]);
         }
-
-        hz_free(offsets);
     }
 
     return HZ_OK;
@@ -5774,7 +5865,7 @@ hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
         hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
         uint16_t num_features = Unpack16(&stream);
         gpos_table->num_features = num_features;
-        gpos_table->features = hz_malloc(sizeof(hz_feature_list_item_t) * num_features);
+        gpos_table->features = hz_memory_pool_allocate(sizeof(hz_feature_list_item_t) * num_features);
 
         for (uint16_t i = 0; i < num_features; ++i) {
             gpos_table->features[i].tag = Unpack32(&stream);
@@ -5782,7 +5873,7 @@ hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
 
             uintptr_t lastptr = stream_tell(&stream);
             stream_seek(&stream, offset);
-            hz_load_feature_table(&stream, &gpos_table->features[i].table);
+            hz_load_feature_table(&plan->memory_pool, &stream, &gpos_table->features[i].table);
             stream_seek(&stream, lastptr);
         }
     }
@@ -5831,15 +5922,16 @@ hz_shape_plan_create(hz_font_t *font,
     plan->script = seg->script;
     plan->language = seg->language;
     plan->shape_flags = shape_flags;
+    plan->memory_pool = hz_memory_pool_create(8192);
 
     plan->features = NULL;
     plan->num_features = 0;
 
-    if (plan->features == NULL && shape_flags & HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES) {
+    if (plan->features == NULL && (shape_flags & HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES)) {
         // no feature list explicitly specified, load standard features for script
         hz_ot_script_load_features(seg->script, &plan->features, &plan->num_features);
     } else {
-        plan->features = hz_malloc(sizeof(hz_feature_t) * num_features);
+        plan->features = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_feature_t) * num_features);
         plan->num_features = num_features;
         memcpy(plan->features, features, num_features * sizeof(hz_feature_t));
     }
@@ -7426,12 +7518,9 @@ hz_shape_plan_apply_gpos_features(hz_shape_plan_t *plan, hz_segment_t *seg)
 HZ_STATIC void
 hz_shape_plan_destroy(hz_shape_plan_t *plan)
 {
-    if (plan->num_features > 0) {
-        hz_free(plan->features);
-        plan->num_features = 0;
-    }
+    hz_memory_pool_release(&plan->memory_pool);
 
-    hz_shape_plan_unload_gsub_table(plan);
+    // hz_shape_plan_unload_gsub_table(plan);
     hz_free(plan);
 }
 

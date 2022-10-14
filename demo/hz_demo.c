@@ -2,7 +2,8 @@
 #include <stdlib.h>
 
 #include <hz/hz.h>
-#include <hz/backends/hz_vulkan.h>
+#include <hz/backends/hz_renderer_vulkan.h>
+#include <errno.h>
 #include <limits.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -74,7 +75,7 @@ static void mainLoop(App *app)
     while (!glfwWindowShouldClose(app->window)) {
         glfwPollEvents();
         hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 'a');
-        hz_vk_render_frame(app->vk_impl, &app->fontinfo, gid);
+        hz_vk_render_frame(app->vk_renderer, &app->fontinfo, gid);
     }
 
     hz_vk_wait_idle(app->vk_renderer);

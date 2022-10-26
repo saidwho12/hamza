@@ -274,35 +274,19 @@ void render_text_to_png(const char *filename,
     }
 
     stbi_write_png(filename, w,h,4,pixels,w*4);
-
     free(pixels);
 }
 
-void *my_allocation_func(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment)
-{   
-    switch (cmd) {
-        case HZ_CMD_ALLOC:
-            return malloc(size);
-        case HZ_CMD_REALLOC: // no-op
-            return realloc(pointer, size);
-        case HZ_CMD_DEALLOC:
-            free(pointer);
-        case HZ_CMD_RELEASE:    
-        default: // error, cmd not handled
-            return NULL;
-    }
-}
-
 int main(int argc, char *argv[]) {
-
     hz_setup(0);
     // hz_set_alloc_func(&my_allocation_func, NULL);
 
     stbtt_fontinfo fontinfo;
-    load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Regular.ttf");
+    // load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Regular.ttf");
+    load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Italic.ttf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-    const char *text = "Software is GREAT";
+    char *text = "Software Craft first sift";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
@@ -311,7 +295,14 @@ int main(int argc, char *argv[]) {
     hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
 
     hz_feature_t features[] = {
-        HZ_FEATURE_C2SC
+        HZ_FEATURE_ISOL,
+        HZ_FEATURE_FINA,
+        HZ_FEATURE_MEDI,
+        HZ_FEATURE_INIT,
+        HZ_FEATURE_RLIG,
+        HZ_FEATURE_DLIG,
+        HZ_FEATURE_LIGA,
+        HZ_FEATURE_C2SC,
     };
 
     printf("first\n");
@@ -324,8 +315,6 @@ int main(int argc, char *argv[]) {
     render_text_to_png("out.png", &fontinfo, buffer);
     hz_segment_destroy(seg);
     hz_cleanup();
-
-    system("pause");
 
     return EXIT_SUCCESS;
 }

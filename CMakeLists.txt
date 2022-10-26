@@ -55,7 +55,8 @@ endif()
 
 file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}" LUNARG_SDK_ROOT)
 
-add_executable(hamza_demo "hz/backends/hz_renderer_vulkan.c" "hz/backends/hz_renderer_vulkan.h" "demo/hz_demo.c" "demo/stb_image_write.h")
+add_executable(hamza_demo
+"demo/hz_demo.c")
 
 if (PLATFORM_WINDOWS)
     set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")

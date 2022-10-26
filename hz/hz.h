@@ -191,6 +191,8 @@ memcpy((__ARR) + hz_vector_header(__ARR)->size, __PTR, (__LEN) * sizeof((__ARR)[
 hz_vector_header(__ARR)->size += (__LEN);\
 } while(0)
 
+#define hz_vector_pop(__ARR) hz_vector_resize(__ARR, hz_vector_size(__ARR)-1)
+
 
 typedef struct {
     hz_position_t x0, y0, x1, y1;
@@ -325,9 +327,9 @@ HZDECL const hz_buffer_t* hz_segment_get_buffer(hz_segment_t *seg);
 
 /* enum: hz_shape_flags_t */
 typedef enum hz_shape_flags_t {
-    HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES = 0x00000001,
-    HZ_SHAPE_FLAG_REMOVE_MARKS = 0x00000002,
-    HZ_SHAPE_FLAG_REMOVE_BASES = 0x00000004
+    HZ_AUTO_LOAD_FEATURES = 0x00000001,
+    HZ_CULL_MARKS = 0x00000002,
+    HZ_CULL_BASES = 0x00000004
 } hz_shape_flags_t;
 
 /*  enum: hz_setup_flags_t
@@ -443,8 +445,31 @@ hz_shape(hz_font_t *font,
          unsigned int num_features,
          hz_shape_flags_t flags);
 
+
+HZDECL void
+hz_shape_arabic_presentation_form_b(hz_font_t *font, hz_segment_t *seg);
+
+// set a custom generic allocator function to override malloc and free use within Hamza.
+typedef enum {
+    HZ_CMD_ALLOC,
+    HZ_CMD_DEALLOC,
+    HZ_CMD_REALLOC,
+    HZ_CMD_RELEASE
+} hz_allocation_cmd_t;
+
+// if align argument is 0, then the allocator should try and align the data optimally
+// in the way it sees best fit the block size.
+typedef void* (hz_allocate_func_t)(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment);
+
+typedef struct {
+    hz_allocate_func_t *allocate;
+    void *user;
+} hz_allocator_t;
+
+void hz_set_custom_allocator(hz_allocator_t allocator);
+
 #ifdef __cplusplus
 };
 #endif
 
-#endif /* HZ_H */
+#endif // HZ_H

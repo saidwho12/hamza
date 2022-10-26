@@ -6,9 +6,10 @@
 #include <assert.h>
 #include <stdarg.h>
 
+#define SIZEOF_VOIDPTR sizeof(void*)
+
 #define KIB 1024
-#define MIB 1048576
-#define GIB 1073741824
+
 
 #define UTF_FAILED (-1)
 #define UTF_END_OF_BUFFER (-2)
@@ -20,10 +21,10 @@
 #define HZ_USE_ISO639_1_2002_TAGS HZ_FALSE
 
 // Max depth of nested OpenType lookups
-#define HZ_OT_MAX_RECURSE_DEPTH 16
+#define HZ_MAX_RECURSE_DEPTH 16
 
-#define HZ_MIN(x, y) ((x) < (y) ? (x) : (y))
-#define HZ_MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 #if HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
 #define likely(x) __builtin_expect(!!(x), 1)
@@ -162,48 +163,73 @@ typedef uint32_t Offset32;
 typedef uint32_t Version16Dot16;
 typedef uint16_t F2DOT14, FWORD, UFWORD;
 
-HZ_STATIC void *hz_malloc(size_t size)
-{
-    return malloc(size);
-}
-
-HZ_STATIC void *hz_realloc(void *ptr, size_t size)
-{
-    return realloc(ptr,size);
-}
-
-HZ_STATIC void hz_free(void *ptr)
-{
-    free(ptr);
-}
-
-
-
-#define HZ_LOOP_OVER_UNIGNORED(T, CODE)\
-T *subtable = (T *)base;\
-for (size_t r = 0; r < hz_vector_size(rangeList->ranges); ++r) {\
-    hz_range_t *range = &rangeList->ranges[r];\
-    if (range->is_ignored) {\
-        hz_buffer_add_range(b2, b1, range->mn, range->mx);\
-    } else {\
-        for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) { CODE }\
-    }\
-}
-
-
-static void
-log_impl(const char *filename,
-         int line,
-         const char *fmt,
-         ...)
-{
-
-}
 
 #define DEBUG_MSG(msg) fprintf(stdout,"[DEBUG:%s:%d]: %s\n",__FILE__,__LINE__,msg)
 #define ERROR_MSG(msg) fprintf(stderr,"[ERROR: %s:%d]: %s\n",__FILE__,__LINE__,msg)
 #define QUIT_MSG(msg) { ERROR_MSG(msg); exit(-1); }
 #define ASSERT_MSG(cond, msg) assert((cond) && message)
+
+
+
+void *hz_allocate(hz_allocator_t *allocator, size_t size)
+{
+    return allocator->allocate(allocator->user, HZ_CMD_ALLOC, NULL, size, 1);
+}
+
+void hz_deallocate(hz_allocator_t *allocator, void *pointer)
+{
+    allocator->allocate(allocator->user, HZ_CMD_DEALLOC, pointer, 0, 0);
+}
+
+void hz_reallocate(hz_allocator_t *allocator, void *pointer, size_t new_size)
+{
+    allocator->allocate(allocator->user, HZ_CMD_REALLOC, pointer, new_size, 1);
+}
+
+void hz_release(hz_allocator_t *allocator)
+{
+    allocator->allocate(allocator->user, HZ_CMD_RELEASE,NULL,0,0);
+}
+
+//////////////////////////////// main allocator ////////////////////////////////////////
+void *hz_standard_c_allocate_func(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment)
+{
+    HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(alignment);
+    
+    switch (cmd) {
+        case HZ_CMD_ALLOC:
+            return malloc(size);
+        case HZ_CMD_REALLOC: // no-op
+            return realloc(pointer, size);
+        case HZ_CMD_DEALLOC:
+            free(pointer);
+        case HZ_CMD_RELEASE:    
+        default: // error, cmd not handled
+            return NULL;
+    }
+}
+
+static hz_allocator_t _allocator = { .allocate = hz_standard_c_allocate_func, .user = NULL };
+
+void *hz_malloc(size_t size)
+{
+    return _allocator.allocate(_allocator.user,HZ_CMD_ALLOC,NULL,size,1);
+}
+
+void *hz_realloc(void *pointer, size_t size)
+{
+    return _allocator.allocate(_allocator.user,HZ_CMD_REALLOC,pointer,size,1);
+}
+
+void hz_free(void *pointer)
+{
+    _allocator.allocate(_allocator.user,HZ_CMD_DEALLOC,pointer,0,1);
+}
+
+// void hz_override_lib_allocator(hz_allocator_t allocator)
+// {
+//     _allocator = allocator;
+// }
 
 HZ_STATIC uint16_t
 bswap16(uint16_t x)
@@ -279,16 +305,16 @@ typedef struct {
     size_t size;
     uintptr_t offset;
     int alignment;
-} hz_linear_allocator_t;
+} hz_memory_arena_t;
 
-static hz_linear_allocator_t hz_linear_allocator_create(void *mem, size_t size)
+static hz_memory_arena_t hz_memory_arena_create(void *mem, size_t size)
 {
-    hz_linear_allocator_t la;
-    la.data = mem;
-    la.size = size;
-    la.offset = 0;
-    la.alignment = 8;
-    return la;
+    hz_memory_arena_t arena;
+    arena.data = mem;
+    arena.size = size;
+    arena.offset = 0;
+    arena.alignment = 8;
+    return arena;
 }
 
 static uint64_t Minll(uint64_t x, uint64_t y)
@@ -323,27 +349,33 @@ static uint64_t Align(uint64_t x, uint64_t n)
     return x + ((~x + 1) & m);
 }
 
+// Assume alignment is a power of two
+uint64_t compute_memory_alignment(uint64_t memptr, uint64_t alignment)
+{
+    return (~memptr + 1) & Ftzll(alignment);
+}
+
 // The following is a linear allocation function optimized for allocation of integers and integer arrays
 // since this is what it's mostly used for realistically in the code.
-static void* hz_alloc_linear(hz_linear_allocator_t *la, size_t size)
+static void* hz_memory_arena_allocate(hz_memory_arena_t *arena, size_t size)
 {
-    if (size > 0 && size < la->size) {
-        uint64_t p = la->offset;
+    if (size > 0 && size < arena->size) {
+        uint64_t p = arena->offset;
 
         p = Align(p,size);
 
-        if (p + size <= la->size) {
-            la->offset = p + size;
-            return la->data + p;
+        if (p + size <= arena->size) {
+            arena->offset = p + size;
+            return arena->data + p;
         }
     }
 
     return NULL;
 }
 
-static void hz_reset_linear_allocator(hz_linear_allocator_t *la)
+static void hz_memory_arena_reset(hz_memory_arena_t *arena)
 {
-    la->offset = 0;
+    arena->offset = 0;
 }
 
 
@@ -375,6 +407,7 @@ hz_chunk_t *hz_memory_pool_create_chunk(size_t size)
     return chunk;
 }
 
+// alignment is absolute
 void* hz_memory_pool_allocate_aligned(hz_memory_pool_t *pool, size_t size, size_t alignment)
 {
     HZ_ASSERT(hz_check_power_of_two(alignment));
@@ -397,8 +430,11 @@ void* hz_memory_pool_allocate_aligned(hz_memory_pool_t *pool, size_t size, size_
     }
 
     uint8_t *mem = (uint8_t *)(pool->curr_chunk + 1) + pool->curr_chunk->cursor;
-    pool->curr_chunk->cursor += size;
-    return mem;
+    uint64_t align = MAX(alignment,1);
+    uint64_t memptr = (uint64_t)mem;
+    uint64_t alignment_offset = compute_memory_alignment(memptr, align);
+    pool->curr_chunk->cursor += size + alignment_offset;
+    return mem + alignment_offset;
 }
 
 void* hz_memory_pool_allocate(hz_memory_pool_t *pool, size_t size)
@@ -413,6 +449,21 @@ void hz_memory_pool_release(hz_memory_pool_t *pool) {
         hz_chunk_t *prev_chunk = chunk->prev;
         hz_free(chunk);
         chunk = prev_chunk;
+    }
+}
+
+void *hz_memory_pool_allocate_func(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment)
+{
+    hz_memory_pool_t *thiz = (hz_memory_pool_t *)user;
+
+    switch (cmd) {
+        case HZ_CMD_ALLOC:
+            return hz_memory_pool_allocate_aligned(thiz, size, alignment);
+        case HZ_CMD_RELEASE:
+            hz_memory_pool_release(thiz);
+        case HZ_CMD_DEALLOC: case HZ_CMD_REALLOC: // no-op
+        default: // error, cmd not handled
+            return NULL;
     }
 }
 
@@ -476,16 +527,19 @@ stream_tell(hz_stream_t *stream)
 }
 
 /* checks processor endianness, returns 0 if big-endian (be), 1 if little-endian (le) */
-static int checkle(void)
+static int check_cpu_le(void)
 {
     static const int x = 1;
     return (int)(*(unsigned char *)&x);
 }
 
+#define CPU_LITTLE_ENDIAN() (check_cpu_le())
+#define CPU_BIG_ENDIAN() (!check_cpu_le())
+
 HZ_STATIC void UnpackArray16(hz_stream_t *stream, size_t count, uint16_t *dest)
 {
     if (count > 0) {
-        if (checkle()) {
+        if (check_cpu_le()) {
             // TODO: optimize using SSE/AVX
             for (size_t i = 0; i < count; ++i) {
                 uint16_t val = *(uint16_t *)(stream->data + stream->ptr);
@@ -503,7 +557,7 @@ HZ_STATIC void UnpackArray16(hz_stream_t *stream, size_t count, uint16_t *dest)
 HZ_STATIC void UnpackArray32(hz_stream_t *stream, size_t count, uint32_t *dest)
 {
     if (count > 0) {
-        if (checkle()) {
+        if (check_cpu_le()) {
             // TODO: optimize using SSE/AVX
             for (size_t i = 0; i < count; ++i) {
                 uint32_t val = *(uint16_t *)(stream->data + stream->ptr);
@@ -654,31 +708,196 @@ Unpackv(hz_stream_t *bs, const char *f, ...)
     va_end(ap);
 }
 
+typedef struct { uint32_t jump, prev_offset; } hz_deserializer_state_t;
 
-//generic struct to hold data
-//generic function that takes string as argument to know what is in the struct and then parse that
+typedef struct {
+    const uint8_t *mem;
+    int network_order;
+    int bswap_required;
+    size_t start;
+    size_t offset;
+    hz_vector(hz_deserializer_state_t) state;
+} hz_deserializer_t;
 
-//typedef struct hz_token_t {
-//    int l; int r;
-//    struct hz_token_t *next;
-//} hz_token_t;
-//
-//typedef struct hz_deserializer_node_t {
-//
-//} hz_deserializer_node_t;
-//
-//// { u16 x; y u16[x] }
-//int hz_unpack_mmap(const void *sMem,
-//                   void *dMem,
-//                   const char *cmd)
-//{
-//    const char *p = cmd;
-//
-//
-//
-//    return 0;
-//}
+hz_deserializer_t hz_deserializer_create(const uint8_t *mem, int network_order)
+{
+    hz_deserializer_t self;
+    self.mem = mem;
+    self.network_order = network_order;
+    self.bswap_required = (network_order && check_cpu_le()) || (!network_order && !check_cpu_le());
+    self.state = NULL;
+    self.offset = 0;
+    self.start = 0;
+    return self;
+}
 
+hz_deserializer_state_t *hz_deserializer_last_state(hz_deserializer_t *self)
+{
+    return &self->state[hz_vector_size(self->state)-1];
+}
+
+void hz_deserializer_pop_state(hz_deserializer_t *self)
+{
+    hz_deserializer_state_t *state = hz_deserializer_last_state(self);
+    self->offset = state->prev_offset;
+    self->start -= state->jump;
+    if (hz_vector_size(self->state) > 1) {
+        hz_vector_pop(self->state);
+    } else {
+        hz_vector_destroy(self->state);
+    }
+}
+
+void hz_deserializer_push_state(hz_deserializer_t *self, uint32_t jump)
+{
+    hz_deserializer_state_t save;
+    save.jump = jump;
+    save.prev_offset = self->offset;
+    hz_vector_push_back(self->state, save);
+    self->start += jump;
+    self->offset = 0;
+}
+
+static inline void hz_deserializer_advance(hz_deserializer_t *self, size_t count)
+{
+    self->offset += count;
+}
+
+static inline const uint8_t* hz_deserializer_at_cursor(hz_deserializer_t *self)
+{
+    return self->mem + self->start + self->offset;
+}
+
+uint8_t hz_deserializer_read_u8(hz_deserializer_t *self)
+{
+    uint8_t v = *(uint8_t *)hz_deserializer_at_cursor(self);
+    hz_deserializer_advance(self, 1);
+    return v;
+}
+
+uint16_t hz_deserializer_read_u16(hz_deserializer_t *self)
+{
+    uint16_t v = *(uint16_t *)hz_deserializer_at_cursor(self);
+    hz_deserializer_advance(self, 2);   
+    return self->bswap_required ? bswap16(v) : v;
+}
+
+uint32_t hz_deserializer_read_u32(hz_deserializer_t *self)
+{
+    uint32_t v = *(uint32_t *)hz_deserializer_at_cursor(self);
+    hz_deserializer_advance(self, 4);
+    return self->bswap_required ? bswap32(v) : v;
+}
+
+uint64_t hz_deserializer_read_u64(hz_deserializer_t *self)
+{
+    uint64_t v = *(uint64_t *)hz_deserializer_at_cursor(self);
+    hz_deserializer_advance(self, 8);
+    return self->bswap_required ? bswap64(v) : v;
+}
+
+void hz_deserializer_read_block(hz_deserializer_t *self, uint8_t *write_addr, size_t size)
+{
+    memcpy(write_addr, hz_deserializer_at_cursor(self), size);
+    hz_deserializer_advance(self, size);
+}
+
+void hz_deserializer_read_u16_block(hz_deserializer_t *self, uint16_t *write_addr, size_t size)
+{
+    while (size > 0) {
+        *write_addr++ = hz_deserializer_read_u16(self);
+        --size;
+    }
+}
+
+void hz_deserializer_read_u32_block(hz_deserializer_t *self, uint32_t *write_addr, size_t size)
+{
+    while (size > 0) {
+        *write_addr++ = hz_deserializer_read_u32(self);
+        --size;
+    }
+}
+
+void hz_deserializer_read_u64_block(hz_deserializer_t *self, uint64_t *write_addr, size_t size)
+{
+    while (size > 0) {
+        *write_addr++ = hz_deserializer_read_u64(self);
+        --size;
+    }
+}
+
+int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const char *cmd, ...)
+{
+    va_list va; va_start(va, cmd);
+
+    const char *curs = cmd;
+    uint8_t *mem = (uint8_t *)dataptr;
+    size_t member_offset = 0;
+    size_t member_array_count = 1;
+
+    while (*curs != '\0') {
+        switch (*curs) {
+            case '^': {
+                ++curs; // skip '^'
+                member_array_count = 0;
+                while (*curs >= '0' && *curs <= '9') {
+                    member_array_count *= 10;
+                    member_array_count += *curs - '0';
+                    ++curs;
+                }
+
+                break;
+            }
+            case 'b': {
+                ++curs;
+                hz_deserializer_read_block(self, (uint8_t *)mem, member_array_count);
+                member_offset += member_array_count;
+                member_array_count = 1;
+                break;
+            }
+
+            case 'w': {
+                ++curs;
+                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 2 * member_array_count : 1);
+                hz_deserializer_read_u16_block(self,
+                            (uint16_t *)(mem + member_offset),
+                            member_array_count);
+                member_offset += 2 * member_array_count;
+                member_array_count = 1;
+                break;
+            }
+
+            case 'd': {
+                ++curs;
+                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 4 * member_array_count : 1);
+                hz_deserializer_read_u32_block(self,
+                            (uint32_t *)(mem + member_offset),
+                            member_array_count);
+                member_offset += 4 * member_array_count;
+                member_array_count = 1;
+                break;
+            }
+
+            case 'q': {
+                ++curs;
+                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 8 * member_array_count : 1);
+                hz_deserializer_read_u64_block(self,
+                            (uint64_t *)(mem + member_offset),
+                            member_array_count);
+                member_offset += 8 * member_array_count;
+                member_array_count = 1;
+                break;
+            }
+
+            case ' ': default: {
+                ++curs;
+                break;
+            }
+        }
+    }
+
+    va_end(va);
+}
 
 typedef struct hz_array_t {
     size_t size;
@@ -2614,71 +2833,106 @@ hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
     return HZ_FALSE;
 }
 
-typedef struct hz_range_rec_t {
-    hz_index_t start_glyph_id;
-    hz_index_t end_glyph_id;
+typedef struct {
+    uint16_t start_glyph_id;
+    uint16_t end_glyph_id;
     uint16_t start_coverage_index;
-} hz_range_rec_t;
+} hz_coverage_range_t;
 
-hz_bool_t
-hz_read_coverage(const unsigned char *data, hz_map_t *map, hz_array_t *id_arr)
+typedef struct {
+    union {
+        uint16_t* glyph_indices;
+        hz_coverage_range_t* ranges;
+    };
+
+    uint16_t count;
+    uint16_t format;
+} hz_coverage_t;
+
+static inline void
+hz_read_coverage(hz_memory_pool_t *memory_pool, hz_deserializer_t *deserializer, hz_coverage_t *coverage)
 {
-    uint16_t coverage_format;
-    hz_stream_t table = hz_stream_create(data, 0);
+    coverage->format = hz_deserializer_read_u16(deserializer);
+    
+    if (coverage->format == 1) {
+        coverage->count = hz_deserializer_read_u16(deserializer);
+        coverage->glyph_indices = hz_memory_pool_allocate(memory_pool,
+                                                          coverage->count * sizeof(uint16_t));
 
-    coverage_format = Unpack16(&table);
-
-    switch (coverage_format) {
-        case 1: {
-            uint16_t coverage_glyph_count = Unpack16(&table);
-            for (uint16_t coverage_idx = 0; coverage_idx < coverage_glyph_count; ++coverage_idx) {
-                uint16_t glyph_index = Unpack16(&table);
-                if (id_arr != NULL)
-                    hz_map_set_value(map, glyph_index, hz_array_at(id_arr, coverage_idx));
-                else
-                    hz_map_set_value(map, glyph_index, coverage_idx);
-            }
-
-            break;
-        }
-
-        case 2: {
-            uint16_t range_index = 0, range_count = Unpack16(&table);
-
-            /* Assuming ranges are ordered from 0 to glyph_count in order */
-            while (range_index < range_count) {
-                hz_range_rec_t range;
-
-                Unpackv(&table, "hhh",
-                        &range.start_glyph_id,
-                        &range.end_glyph_id,
-                        &range.start_coverage_index);
-
-                for (hz_index_t glyph_id = range.start_glyph_id; glyph_id <= range.end_glyph_id; ++glyph_id) {
-                    uint16_t coverage_index = range.start_coverage_index + glyph_id - range.start_glyph_id;
-                    hz_map_set_value(map, glyph_id, coverage_index);
-                }
-
-                ++range_index;
-            }
-            break;
-        }
-
-        default:
-            /* error */
-            break;
+        hz_deserializer_read_u16_block(deserializer, coverage->glyph_indices, coverage->count);
+    } else if (coverage->format == 2) {
+        coverage->count = hz_deserializer_read_u16(deserializer);
+        coverage->ranges = hz_memory_pool_allocate(memory_pool, coverage->count * sizeof(hz_coverage_range_t));
+        hz_deserializer_read_u16_block(deserializer, (uint16_t*) coverage->ranges,
+                                       coverage->count * 3); // HACK: may cause issues later
+    } else {
+        // error
     }
-
-    return HZ_TRUE;
 }
 
+static inline int32_t
+hz_coverage_search(const hz_coverage_t *coverage, uint16_t glyph_id)
+{
+    if (coverage->format == 1) {
+        int32_t low = 0, high = coverage->count-1, mid = (low+high)/2;
+
+        if (glyph_id < coverage->glyph_indices[low] || glyph_id > coverage->glyph_indices[high]) {
+            // error, glyph not found within coverage
+            return -1;
+        }
+
+        // binary search
+        while (high >= low) {
+            if (glyph_id < coverage->glyph_indices[mid]) {
+                high = mid-1;
+            } else if (glyph_id > coverage->glyph_indices[mid]) {
+                low = mid+1;
+            } else {
+                return mid;
+            }
+
+            mid = (low+high)/2;
+        }
+    } else if (coverage->format == 2) {
+        // Same as format 1, except binary search through the ranges which should be ordered
+        // sequentially when read.
+        int32_t low = 0, high = coverage->count-1, mid = (low+high)/2;
+        hz_coverage_range_t *low_range = &coverage->ranges[low];
+        hz_coverage_range_t *high_range = &coverage->ranges[high];
+        hz_coverage_range_t *mid_range = &coverage->ranges[mid];
+
+        if (glyph_id < low_range->start_glyph_id || glyph_id > high_range->end_glyph_id) {
+            // early return as glyph cannot possibly be in this coverage.
+            return -1;
+        }
+
+        while (high >= low) {
+            low_range = &coverage->ranges[low];
+            high_range = &coverage->ranges[high];
+            mid_range = &coverage->ranges[mid];
+
+            if (glyph_id < mid_range->start_glyph_id) {
+                high = mid-1;
+            } else if (glyph_id > mid_range->end_glyph_id) {
+                low = mid+1;
+            } else {
+                // found the glyph range, compute coverage index
+                return mid_range->start_coverage_index + glyph_id - mid_range->start_glyph_id;
+            }
+
+            mid = (low+high)/2;
+        }
+    }
+
+    return -1;
+}
+
+#define hz_coverage_contains(c,g) (hz_coverage_search(c,g) != -1)
 
 typedef enum hz_joining_dir_t {
     JOINING_NEXT,
     JOINING_PREV
 } hz_joining_dir_t;
-
-
 
 struct hz_face_t {
     unsigned char *data;
@@ -2695,9 +2949,10 @@ struct hz_face_t {
 
     uint16_t upem;
 
+    hz_memory_pool_t memory_pool;
     hz_map_t *class_map;
     hz_map_t *attach_class_map;
-    hz_vector(hz_map_t*) mark_glyph_set;
+    hz_coverage_t *mark_glyph_set;
 };
 
 hz_face_t *
@@ -2712,6 +2967,7 @@ hz_face_create()
     face->descender = 0;
     face->linegap = 0;
     face->upem = 0;
+    face->memory_pool = hz_memory_pool_create(8192);
     face->class_map = hz_map_create();
     face->attach_class_map = hz_map_create();
     face->mark_glyph_set = NULL;
@@ -2723,6 +2979,7 @@ hz_face_destroy(hz_face_t *face)
 {
     hz_map_destroy(face->class_map);
     hz_map_destroy(face->attach_class_map);
+    hz_memory_pool_release(&face->memory_pool);
     hz_free(face);
 }
 
@@ -2797,60 +3054,55 @@ hz_face_load_num_glyphs(hz_face_t *face)
 void
 hz_face_load_class_maps(hz_face_t *face)
 {
+    uint8_t arenamem[4096];
+    hz_memory_arena_t arena = hz_memory_arena_create(arenamem, sizeof arenamem);
     if (face->gdef) {
-        hz_stream_t bs = hz_stream_create(face->data + face->gdef, 0);
-        Version16Dot16 version;
+        hz_deserializer_t deserializer = hz_deserializer_create(face->data, 1);
+        hz_deserializer_push_state(&deserializer, face->gdef);
 
-        Offset16 glyph_class_def_offset;
-        Offset16 attach_list_offset;
-        Offset16 lig_caret_list_offset;
-        Offset16 mark_attach_class_def_offset;
-        Offset16 mark_glyph_sets_def_offset;
+        struct { 
+            Offset16 glyph_class_def_offset,
+                     attach_list_offset,
+                     lig_caret_list_offset,
+                     mark_attach_class_def_offset,
+                     mark_glyph_sets_def_offset; } hdr;
 
-        version = Unpack32(&bs);
+        Version16Dot16 version = hz_deserializer_read_u32(&deserializer);
 
         switch (version) {
-            case 0x00010000: /* 1.0 */
-                Unpackv(&bs, "hhhh",
-                        &glyph_class_def_offset,
-                        &attach_list_offset,
-                        &lig_caret_list_offset,
-                        &mark_attach_class_def_offset);
+            case 0x00010000: // 1.0
+                cmdread(&deserializer, 1, &hdr, "wwww");
                 break;
-            case 0x00010002: /* 1.2 */
-                Unpackv(&bs, "hhhhh",
-                        &glyph_class_def_offset,
-                        &attach_list_offset,
-                        &lig_caret_list_offset,
-                        &mark_attach_class_def_offset,
-                        &mark_glyph_sets_def_offset);
+            case 0x00010002: // 1.2
+                cmdread(&deserializer, 1, &hdr, "wwwww");
                 break;
-            case 0x00010003: /* 1.3 */
+            case 0x00010003: // 1.3
                 break;
-            default: /* error */
+            default: // error
                 break;
         }
 
-        if (glyph_class_def_offset) {
-            /* glyph class def isn't nil */
-            hz_stream_t subtable = hz_stream_create(bs.data + glyph_class_def_offset, 0);
-            uint16_t class_format = Unpack16(&subtable);
+        if (hdr.glyph_class_def_offset) {
+            // glyph class def isn't nil
+            hz_deserializer_push_state(&deserializer, hdr.glyph_class_def_offset);
+            uint16_t class_format = hz_deserializer_read_u16(&deserializer);
             switch (class_format) {
                 case 1:
                     break;
                 case 2: {
                     uint16_t range_index = 0, class_range_count;
-                    class_range_count = Unpack16(&subtable);
+                    class_range_count = hz_deserializer_read_u16(&deserializer);
 
                     while (range_index < class_range_count) {
-                        uint16_t start_glyph_id, end_glyph_id, glyph_class;
-                        Unpackv(&subtable, "hhh",
-                                &start_glyph_id,
-                                &end_glyph_id,
-                                &glyph_class);
+                        struct {
+                            uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                        } range;
 
-                        HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
-                        hz_map_set_value_for_keys(face->class_map, start_glyph_id, end_glyph_id, 1 << (glyph_class - 1));
+                        cmdread(&deserializer, 1, &range, "www");
+
+                        hz_map_set_value_for_keys(face->class_map,
+                                                  range.start_glyph_id,
+                                                  range.end_glyph_id, 1 << (range.glyph_class - 1));
                         ++range_index;
                     }
                     break;
@@ -2858,28 +3110,30 @@ hz_face_load_class_maps(hz_face_t *face)
                 default:
                     break;
             }
+            hz_deserializer_pop_state(&deserializer);
         }
 
-        if (mark_attach_class_def_offset) {
-            hz_stream_t subtable = hz_stream_create(bs.data + mark_attach_class_def_offset, 0);
+        if (hdr.mark_attach_class_def_offset) {
+            hz_deserializer_push_state(&deserializer, hdr.mark_attach_class_def_offset);
             uint16_t class_format;
-            class_format = Unpack16(&subtable);
+            class_format = hz_deserializer_read_u16(&deserializer);
             switch (class_format) {
                 case 1:
                     break;
                 case 2: {
                     uint16_t range_index = 0, class_range_count;
-                    class_range_count = Unpack16(&subtable);
+                    class_range_count = hz_deserializer_read_u16(&deserializer);
 
                     while (range_index < class_range_count) {
-                        uint16_t start_glyph_id, end_glyph_id, glyph_class;
-                        Unpackv(&subtable, "hhh",
-                                &start_glyph_id,
-                                &end_glyph_id,
-                                &glyph_class);
+                        struct {
+                            uint16_t start_glyph_id, end_glyph_id, glyph_class;
+                        } range;
 
-                        HZ_ASSERT(glyph_class >= 1 && glyph_class <= 4);
-                        hz_map_set_value_for_keys(face->attach_class_map, start_glyph_id, end_glyph_id, 1 << (glyph_class - 1));
+                        cmdread(&deserializer, 1, &range, "hhh");
+
+                        hz_map_set_value_for_keys(face->attach_class_map,
+                                                  range.start_glyph_id,
+                                                  range.end_glyph_id, 1 << (range.glyph_class - 1));
                         ++range_index;
                     }
                     break;
@@ -2887,28 +3141,32 @@ hz_face_load_class_maps(hz_face_t *face)
                 default:
                     break;
             }
+            hz_deserializer_pop_state(&deserializer);
         }
 
-        if (mark_glyph_sets_def_offset) {
-            hz_stream_t subtable = hz_stream_create(bs.data + mark_glyph_sets_def_offset, 0);
-            uint16_t format = Unpack16(&subtable);
+        if (hdr.mark_glyph_sets_def_offset) {
+            hz_deserializer_push_state(&deserializer, hdr.mark_glyph_sets_def_offset);
+            uint16_t format = hz_deserializer_read_u16(&deserializer);
             if (format == 1) {
-                uint16_t mark_glyph_set_count = Unpack16(&subtable);
+                uint16_t mark_glyph_set_count = hz_deserializer_read_u16(&deserializer);
                 if (mark_glyph_set_count) {
-                    Offset32 *mark_glyph_set_offsets = hz_malloc(sizeof(Offset32) * mark_glyph_set_count);
-                    UnpackArray32(&subtable, mark_glyph_set_count, mark_glyph_set_offsets);
+                    Offset32 *mark_glyph_set_offsets = hz_memory_arena_allocate(&arena, mark_glyph_set_count * sizeof(Offset32));
+                    hz_deserializer_read_u16_block(&deserializer, mark_glyph_set_offsets, mark_glyph_set_count);
+
+                    face->mark_glyph_set = hz_memory_pool_allocate(&face->memory_pool, mark_glyph_set_count * sizeof(hz_coverage_t));
 
                     for (int i = 0; i < mark_glyph_set_count; ++i) {
-                        hz_map_t *coverage = hz_map_create();
-                        hz_read_coverage(subtable.data + mark_glyph_set_offsets[i], coverage, NULL);
-                        hz_vector_push_back(face->mark_glyph_set, coverage);
+                        hz_coverage_t *coverage = &face->mark_glyph_set[i];
+                        hz_deserializer_push_state(&deserializer, mark_glyph_set_offsets[i]);
+                        hz_read_coverage(&face->memory_pool, &deserializer, coverage);
+                        hz_deserializer_pop_state(&deserializer);
                     }
-
-                    hz_free(mark_glyph_set_offsets);
                 }
             } else {
                 // error
             }
+
+            hz_deserializer_pop_state(&deserializer);
         }
     }
 }
@@ -3205,7 +3463,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
                              hz_tag_t language)
 {
     uint8_t buffer[4096];
-    hz_linear_allocator_t la = hz_linear_allocator_create(buffer, sizeof(buffer));
+    hz_memory_arena_t la = hz_memory_arena_create(buffer, sizeof(buffer));
 
     hz_stream_t subtable = hz_stream_create(data, 0);
     uint16_t script_count = 0;
@@ -3215,7 +3473,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
     const uint8_t *found_addr;
 
     script_count = Unpack16(&subtable);
-    script_records = hz_alloc_linear(&la, sizeof(Record16) * script_count);
+    script_records = hz_memory_arena_allocate(&la, sizeof(Record16) * script_count);
 
     while (index < script_count) {
         hz_tag_t curr_tag;
@@ -3285,7 +3543,7 @@ typedef struct {
     int16_t xPlacement;
     int16_t yPlacement;
     int16_t xAdvance;
-    int16_t yAdvance ;
+    int16_t yAdvance;
     Offset16 xPlaDeviceOffset;
     Offset16 yPlaDeviceOffset;
     Offset16 xAdvDeviceOffset;
@@ -3482,11 +3740,11 @@ void
 hz_parse_sequence_rule_set(uint8_t *data, hz_sequence_rule_set_t *rule_set)
 {
     uint8_t buffer[4096];
-    hz_linear_allocator_t la = hz_linear_allocator_create(buffer, sizeof buffer);
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
     hz_stream_t bs;
     uint8_t *rule_offsets;
 
-    rule_offsets = hz_alloc_linear(&la,
+    rule_offsets = hz_memory_arena_allocate(&arena,
                                    rule_set->rule_count * sizeof(uint16_t));
 
     bs = hz_stream_create(data, 0);
@@ -3511,7 +3769,7 @@ hz_parse_sequence_rule_set(uint8_t *data, hz_sequence_rule_set_t *rule_set)
 void
 hz_parse_chained_sequence_rule(uint8_t *data, hz_chained_sequence_rule_t *rule) {
     uint8_t buffer[4096];
-    hz_linear_allocator_t la = hz_linear_allocator_create(buffer, sizeof buffer);
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
     hz_stream_t buf;
 
     buf = hz_stream_create(data, 0);
@@ -3713,7 +3971,7 @@ hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
                                            HzReverseChainSingleSubstFormat1 *subst)
 {
     uint8_t buffer[4096];
-    hz_linear_allocator_t la = hz_linear_allocator_create(buffer, sizeof buffer);
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
     Offset16             coverage_offset;
     Offset16            *prefix_coverage_offsets;
     Offset16            *suffix_coverage_offsets;
@@ -3724,25 +3982,21 @@ hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
     hz_read_coverage(buf->data + coverage_offset, subst->coverage, NULL);
 
     subst->prefix_count = Unpack16(buf);
-    prefix_coverage_offsets = hz_alloc_linear(&la, subst->prefix_count * sizeof(uint16_t));
+    prefix_coverage_offsets = hz_memory_arena_allocate(&arena, subst->prefix_count * sizeof(uint16_t));
     Unpackv(buf, "h:*", prefix_coverage_offsets, subst->prefix_count);
     subst->prefix_maps = hz_malloc(sizeof(hz_map_t *) * subst->prefix_count);
     for (i = 0; i < subst->prefix_count; ++i) {
         subst->prefix_maps[i] = hz_map_create();
-        hz_read_coverage(buf->data + prefix_coverage_offsets[i],
-                         subst->prefix_maps[i],
-                         NULL);
+        hz_read_coverage(buf->data + prefix_coverage_offsets[i], subst->prefix_maps[i], NULL);
     }
 
     subst->suffix_count = Unpack16(buf);
-    suffix_coverage_offsets = hz_alloc_linear(&la, subst->suffix_count * sizeof(uint16_t));
+    suffix_coverage_offsets = hz_memory_arena_allocate(&arena, subst->suffix_count * sizeof(uint16_t));
     Unpackv(buf, "h:*", suffix_coverage_offsets, subst->suffix_count);
     subst->suffix_maps = hz_malloc(sizeof(hz_map_t *) * subst->suffix_count);
     for (i = 0; i < subst->suffix_count; ++i) {
         subst->suffix_maps[i] = hz_map_create();
-        hz_read_coverage(buf->data + suffix_coverage_offsets[i],
-                         subst->suffix_maps[i],
-                         NULL);
+        hz_read_coverage(buf->data + suffix_coverage_offsets[i], subst->suffix_maps[i], NULL);
     }
 
     subst->glyph_count = Unpack16(buf);
@@ -3783,8 +4037,8 @@ hz_anchor_pair_t
 hz_ot_layout_read_anchor_pair(const uint8_t *subtable, const hz_entry_exit_record_t *rec) {
     hz_anchor_pair_t anchor_pair;
 
-    anchor_pair.has_entry = rec->entry_anchor_offset ? HZ_TRUE : HZ_FALSE;
-    anchor_pair.has_exit = rec->exit_anchor_offset ? HZ_TRUE : HZ_FALSE;
+    anchor_pair.has_entry = rec->entry_anchor_offset ? 1 : 0;
+    anchor_pair.has_exit = rec->exit_anchor_offset ? 1 : 0;
 
     if (anchor_pair.has_entry)
         anchor_pair.entry = hz_read_anchor(subtable + rec->entry_anchor_offset);
@@ -4104,7 +4358,7 @@ hz_index_t hz_map_unicode_to_id(hz_cmap_format4_subtable_t *subtable, hz_unicode
         if (codepoint >= start_code && codepoint <= end_code) {
             if (id_range_offset != 0) {
                 uint16_t offset = *(subtable->glyphIdArray + (id_range_offset / 2 + (codepoint - start_code) - (segCount - i)));
-                id = checkle() ? bswap16(offset) : offset;
+                id = check_cpu_le() ? bswap16(offset) : offset;
                 if (id != 0) id += id_delta;
             } else {
                 id = codepoint + id_delta;
@@ -4458,7 +4712,7 @@ hz_read_h_metrics(hz_stream_t *table, size_t metrics_count, hz_long_hor_metric_t
 }
 
 HZ_STATIC hz_bool_t
-hz_should_ignore_glyph(hz_buffer_t *buffer, size_t index, uint16_t flags, const hz_map_t *mark_filtering_set) {
+hz_should_ignore_glyph(hz_buffer_t *buffer, size_t index, uint16_t flags, const hz_coverage_t *mark_filtering_set) {
     if (buffer->attrib_flags & (HZ_GLYPH_ATTRIB_GLYPH_CLASS_BIT | HZ_GLYPH_ATTRIB_ATTACHMENT_CLASS_BIT)) {
         uint8_t attach_type = (flags & HZ_LOOKUP_FLAG_MARK_ATTACHMENT_TYPE_MASK) >> 8;
         uint16_t ignored_classes = hz_ignored_classes_from_lookup_flags(flags);
@@ -4467,7 +4721,7 @@ hz_should_ignore_glyph(hz_buffer_t *buffer, size_t index, uint16_t flags, const 
 
         if (buffer->glyph_classes[index] & HZ_GLYPH_CLASS_MARK) {
             if (flags & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET) {
-                if (hz_map_contains(mark_filtering_set, buffer->glyph_indices[index])) {
+                if (hz_coverage_search(mark_filtering_set, buffer->glyph_indices[index]) != -1) {
                     return HZ_TRUE;
                 }
             }
@@ -4648,7 +4902,7 @@ hz_buffer_t *hz_buffer_copy_range(hz_buffer_t *from, int v1, int v2)
     return NULL;
 }
 
-int *hz_buffer_get_unignored_indices(hz_buffer_t *buffer, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+int *hz_buffer_get_unignored_indices(hz_buffer_t *buffer, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     int *index_list = NULL;
 
@@ -4704,15 +4958,15 @@ typedef struct {
     /* Index (base 0) into GDEF mark glyph sets structure.
      * This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
      */
-    hz_map_t *mark_filtering_set;
+    hz_coverage_t mark_filtering_set;
 } hz_lookup_table_t;
 
 typedef struct {
     Version16Dot16 version;
-    uint32_t num_lookups;
-    hz_lookup_table_t *lookups;
-    uint32_t num_features;
+    uint16_t num_features;
     hz_feature_list_item_t *features;
+    uint16_t num_lookups;
+    hz_lookup_table_t *lookups;
 } hz_gsub_table_t;
 
 typedef struct {
@@ -4733,90 +4987,67 @@ typedef struct {
     hz_gsub_table_t gsub_table;
     hz_gpos_table_t gpos_table;
     hz_shape_flags_t shape_flags;
+    hz_deserializer_t *deserializer;
     hz_memory_pool_t memory_pool;
 } hz_shape_plan_t;
 
-//generic struct that holds data
-// typedef struct {
-//     uint8_t *data;
-//     size_t cursor;
-//     hz_memory_pool_t *memory_pool;
-// } hz_binary_parser_t;
-
-// void hz_parse_with_cmd(hz_binary_parser_t *bin, const char *cmd, ...)
-// {
-//     switch (ch) {
-//         case 's': { // short
-
-//         }
-//     }
-// }
-
-// hz_deserialize_with_cmd(&plan->deserializer, "{ s[10], i[25] }", &a)
-//
-//
-// 
-
-
 HZ_STATIC void
-hz_load_feature_table(hz_memory_pool_t *memory_pool, hz_stream_t *stream, hz_feature_table_t *table)
+hz_load_feature_table(hz_memory_pool_t *memory_pool, hz_deserializer_t *deserializer, hz_feature_table_t *table)
 {
-    Unpackv(stream, "hh", &table->feature_params,
-            &table->lookup_index_count);
-
+    table->feature_params = hz_deserializer_read_u16(deserializer);
+    table->lookup_index_count = hz_deserializer_read_u16(deserializer);
     table->lookup_list_indices = hz_memory_pool_allocate(memory_pool, sizeof(uint16_t) * table->lookup_index_count);
-    UnpackArray16(stream, table->lookup_index_count, table->lookup_list_indices);
+    hz_deserializer_read_u16_block(deserializer, table->lookup_list_indices, table->lookup_index_count);
 }
 
 typedef struct hz_single_substitution_format1_subtable_t {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     int16_t delta_glyph_id;
 } hz_single_substitution_format1_subtable_t;
 
 typedef struct {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t glyph_count;
     uint16_t *substitute_glyph_ids;
 } hz_single_substitution_format2_subtable_t;
 
 HZ_STATIC hz_error_t
-hz_load_gsub_single_substitution_subtable(hz_stream_t *stream,
+hz_read_gsub_single_substitution_subtable(hz_memory_pool_t *memory_pool,
+                                          hz_deserializer_t *deserializer,
                                           hz_lookup_table_t *lookup,
                                           uint16_t subtable_index,
                                           uint16_t format)
 {
     switch (format) {
         case 1: {
-            hz_single_substitution_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
-
+            hz_single_substitution_format1_subtable_t *subtable = hz_memory_pool_allocate(memory_pool, sizeof(*subtable));
             subtable->format = format;
-            Offset16 coverage_offset = Unpack16(stream);
-            subtable->coverage = hz_map_create();
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
-            subtable->delta_glyph_id = Unpack16(stream);
+            Offset16 coverage_offset = hz_deserializer_read_u16(deserializer);
 
+            hz_deserializer_push_state(deserializer, coverage_offset);
+            hz_read_coverage(memory_pool, deserializer, &subtable->coverage);
+            hz_deserializer_pop_state(deserializer);
+
+            subtable->delta_glyph_id = hz_deserializer_read_u16(deserializer);
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
         }
 
         case 2: {
-            hz_single_substitution_format2_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_single_substitution_format2_subtable_t *subtable = hz_memory_pool_allocate(memory_pool, sizeof(*subtable));
 
             subtable->format = format;
-            Offset16 coverage_offset = Unpack16(stream);
-            subtable->coverage = hz_map_create();
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
-            subtable->glyph_count = Unpack16(stream);
+            Offset16 coverage_offset = hz_deserializer_read_u16(deserializer);
+            
+            hz_deserializer_push_state(deserializer, coverage_offset);
+            hz_read_coverage(memory_pool, deserializer, &subtable->coverage);
+            hz_deserializer_pop_state(deserializer);
 
-            if (!subtable->glyph_count) {
-                /* error, no glyphs in lookup subtable */
-                subtable->substitute_glyph_ids = NULL;
-            } else {
-                subtable->substitute_glyph_ids = hz_malloc(sizeof(uint16_t) * subtable->glyph_count);
-                UnpackArray16(stream, subtable->glyph_count, subtable->substitute_glyph_ids);
-            }
+            subtable->glyph_count = hz_deserializer_read_u16(deserializer);
+            subtable->substitute_glyph_ids = hz_memory_pool_allocate(memory_pool, subtable->glyph_count * sizeof(uint16_t));
+            hz_deserializer_read_u16_block(deserializer, subtable->substitute_glyph_ids, subtable->glyph_count);
 
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
@@ -5010,51 +5241,52 @@ hz_load_gsub_multiple_substitution_subtable(hz_stream_t *stream,
     return HZ_OK;
 }
 
-HZ_STATIC hz_error_t
-hz_load_gsub_lookup_subtable(const uint8_t *data,
+HZ_STATIC void
+hz_read_gsub_lookup_subtable(hz_memory_pool_t *memory_pool,
+                             hz_deserializer_t *deserializer,
                              hz_lookup_table_t *lookup,
                              uint16_t lookup_type,
                              uint16_t subtable_index)
 {
     uint16_t format;
-    hz_stream_t stream = hz_stream_create(data, 0);
+    int extension = 0;
 
     extension_label:
-    format = Unpack16(&stream);
+    format = hz_deserializer_read_u16(deserializer);
 
     switch (lookup_type) {
         case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION:
-            return hz_load_gsub_single_substitution_subtable(&stream, lookup, subtable_index, format);
+            return hz_read_gsub_single_substitution_subtable(memory_pool, deserializer, lookup, subtable_index, format);
 
         case HZ_GSUB_LOOKUP_TYPE_MULTIPLE_SUBSTITUTION:
-            return hz_load_gsub_multiple_substitution_subtable(&stream, lookup, subtable_index, format);
+            // return hz_load_gsub_multiple_substitution_subtable(&stream, lookup, subtable_index, format);
         case HZ_GSUB_LOOKUP_TYPE_ALTERNATE_SUBSTITUTION: break;
         case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION:
-            return hz_load_gsub_ligature_substitution_subtable(&stream, lookup, subtable_index, format);
+            // return hz_load_gsub_ligature_substitution_subtable(&stream, lookup, subtable_index, format);
 
         case HZ_GSUB_LOOKUP_TYPE_CONTEXTUAL_SUBSTITUTION: break;
-        case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION:
-            return hz_load_gsub_chained_contexts_substitution_subtable(&stream, lookup, subtable_index, format);
+        case HZ_GSUB_LOOKUP_TYPE_CHAINED_CONTEXTS_SUBSTITUTION: break;
+            // return hz_load_gsub_chained_contexts_substitution_subtable(&stream, lookup, subtable_index, format);
         case HZ_GSUB_LOOKUP_TYPE_EXTENSION_SUBSTITUTION: { // implemented inline
-             if (format == 1) {
-                lookup->lookup_type = Unpack16(&stream);
-                lookup_type = lookup->lookup_type;
-                Offset32 extension_offset = Unpack32(&stream);
-                stream.data += extension_offset;
-                stream.ptr = 0;
-                goto extension_label;
+            if (format != 1) {
+            // error
             }
 
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            lookup_type = lookup->lookup_type = hz_deserializer_read_u16(deserializer);
+            Offset32 extension_offset = hz_deserializer_read_u32(deserializer);
+            hz_deserializer_push_state(deserializer, extension_offset);
+            extension = 1;
+            goto extension_label;
         }
 
         case HZ_GSUB_LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE_SUBSTITUTION: break;
 
-        default:
-            return HZ_ERROR_INVALID_LOOKUP_TYPE;
+        default: // error
+            break;
     }
-
-    return HZ_OK;
+    
+    if (extension)
+        hz_deserializer_pop_state(deserializer);
 }
 
 typedef struct hz_mark_array_t {
@@ -5577,121 +5809,49 @@ hz_load_gpos_lookup_subtable(const uint8_t *data,
     }
 
     return HZ_OK;
- }
-
-HZ_STATIC hz_error_t
-hz_unload_gsub_single_substitution_subtable(hz_lookup_subtable_t *base)
-{
-    switch (base->format) {
-        case 1: {
-            hz_single_substitution_format1_subtable_t *subtable = (hz_single_substitution_format1_subtable_t *)base;
-            hz_map_destroy(subtable->coverage);
-            hz_free(subtable);
-            break;
-        }
-
-        case 2: {
-            hz_single_substitution_format2_subtable_t *subtable = (hz_single_substitution_format2_subtable_t *)base;
-            hz_map_destroy(subtable->coverage);
-            if (subtable->glyph_count > 0) hz_free(subtable->substitute_glyph_ids);
-            hz_free(subtable);
-            break;
-        }
-
-        default:
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
-    }
-
-    return HZ_OK;
 }
 
 HZ_STATIC hz_error_t
-hz_unload_gsub_ligature_substitution_subtable(hz_lookup_subtable_t *base)
+hz_load_gsub_lookup_table(hz_memory_pool_t *memory_pool,
+                          hz_deserializer_t *deserializer,
+                          hz_face_t *face,
+                          hz_lookup_table_t *table)
 {
-    switch (base->format) {
-        case 1: {
-            uint16_t i, j;
-            hz_ligature_substitution_format1_subtable_t *subtable = (hz_ligature_substitution_format1_subtable_t *)base;
-            hz_map_destroy(subtable->coverage);
-            for (i = 0; i < subtable->ligature_set_count; ++i) {
-                hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + i;
-                for (j = 0; j < ligature_set->ligature_count; ++j) {
-                    hz_ligature_t *ligature = ligature_set->ligatures + j;
-                    hz_free(ligature->component_glyph_ids);
-                }
-                hz_free(ligature_set->ligatures);
-            }
+    uint8_t buffer[4096];
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
 
-            hz_free(subtable->ligature_sets);
-            hz_free(subtable);
-            break;
-        }
-        default:
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
-    }
-
-    return HZ_OK;
-}
-
-HZ_STATIC void
-hz_unload_gsub_lookup_subtable(hz_lookup_table_t *table, uint16_t subtable_index)
-{
-    if (table->subtables[subtable_index] != NULL) {
-        hz_lookup_subtable_t *base = table->subtables[subtable_index];
-        switch (table->lookup_type) {
-            case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
-                hz_unload_gsub_single_substitution_subtable(base);
-                break;
-            }
-
-            case HZ_GSUB_LOOKUP_TYPE_LIGATURE_SUBSTITUTION: {
-                hz_unload_gsub_ligature_substitution_subtable(base);
-                break;
-            }
-        }
-    }
-}
-
-HZ_STATIC hz_error_t
-hz_load_gsub_lookup_table(const uint8_t *data, hz_face_t *face, hz_lookup_table_t *table)
-{
-    hz_stream_t stream = hz_stream_create(data, 0);
-
-    table->lookup_type = Unpack16(&stream);
-    table->lookup_flags = Unpack16(&stream);
-    table->subtable_count = Unpack16(&stream);
+    table->lookup_type = hz_deserializer_read_u16(deserializer);
+    table->lookup_flags = hz_deserializer_read_u16(deserializer);
+    table->subtable_count = hz_deserializer_read_u16(deserializer);
 
     if (table->subtable_count > 0) {
-        Offset16 *offsets = hz_malloc(sizeof(Offset16) * table->subtable_count);
-        UnpackArray16(&stream, table->subtable_count, offsets);
+        Offset16 *offsets = hz_memory_arena_allocate(&arena, sizeof(Offset16) * table->subtable_count);
+        hz_deserializer_read_u16_block(deserializer, offsets, table->subtable_count);
 
         // Set pointers to NULL by default
-        table->subtables = hz_malloc(sizeof(*table->subtables) * table->subtable_count);
-        for (uint16_t i = 0; i < table->subtable_count; ++i) {
-            table->subtables[i] = NULL;
-        }
+        table->subtables = hz_memory_pool_allocate(memory_pool, SIZEOF_VOIDPTR * table->subtable_count);
+        memset(table->subtables, 0, SIZEOF_VOIDPTR * table->subtable_count); // null-out the subtale pointers
 
         // Load & parse subtables
         uint16_t original_lookup_type = table->lookup_type;
         for (uint16_t i = 0; i < table->subtable_count; ++i) {
-            hz_load_gsub_lookup_subtable(stream.data + offsets[i], table, original_lookup_type, i);
+            hz_deserializer_push_state(deserializer, offsets[i]);
+            hz_read_gsub_lookup_subtable(memory_pool, deserializer, table, original_lookup_type, i);
+            hz_deserializer_pop_state(deserializer);
         }
-
-        hz_free(offsets);
     }
 
     // Only include mark filtering set if flag USE_MARK_FILTERING_SET is enabled
+
     if (table->lookup_flags & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET) {
-        uint16_t mark_filtering_set_index = Unpack16(&stream);
+        uint16_t mark_filtering_set_index = hz_deserializer_read_u16(deserializer);
         table->mark_filtering_set = face->mark_glyph_set[mark_filtering_set_index];
-    } else {
-        table->mark_filtering_set = NULL;
     }
 
     return HZ_OK;
 }
 
-
+#if 0 // GPOS FIXME
 HZ_STATIC hz_error_t
 hz_load_gpos_lookup_table(const uint8_t *data, hz_face_t *face, hz_lookup_table_t *table)
 {
@@ -5729,99 +5889,77 @@ hz_load_gpos_lookup_table(const uint8_t *data, hz_face_t *face, hz_lookup_table_
     }
     return HZ_OK;
 }
+#endif 
 
-HZ_STATIC void
-hz_unload_feature_table(hz_feature_table_t *table)
-{
-    if (table->lookup_index_count > 0)
-        hz_free(table->lookup_list_indices);
-}
-
-HZ_STATIC void
-hz_unload_gsub_lookup_table(hz_lookup_table_t *table)
-{
-    if (table->subtable_count > 0) {
-        for (uint16_t i = 0; i < table->subtable_count; ++i)
-            hz_unload_gsub_lookup_subtable(table, i);
-
-        hz_free(table->subtables);
-    }
-}
-
-HZ_STATIC hz_error_t
-hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
+HZ_STATIC hz_error_t hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 {
     uint8_t buffer[4096];
-    hz_linear_allocator_t linear_allocator = hz_linear_allocator_create(buffer, 4096);
-
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
     hz_face_t *face = hz_font_get_face(plan->font);
+    hz_deserializer_t deserializer = hz_deserializer_create(face->data, 1); 
 
     if (!face->gsub) {
          return HZ_ERROR_TABLE_DOES_NOT_EXIST;
     }
 
-    hz_stream_t table = hz_stream_create(face->data + face->gsub, 0);
     hz_gsub_table_t *gsub_table = &plan->gsub_table;
 
-    uint16_t script_list_offset, feature_list_offset, lookup_list_offset, feature_variations_offset;
-    gsub_table->version = Unpack32(&table);
+    struct { uint16_t script_list_offset,
+                      feature_list_offset,
+                      lookup_list_offset,
+                      feature_variations_offset; } hdr;
+
+    hz_deserializer_push_state(&deserializer, face->gsub);
+    gsub_table->version = hz_deserializer_read_u32(&deserializer);
 
     switch (gsub_table->version) {
-        case 0x00010000: /* 1.0 */
-        Unpackv(&table, "hhh",
-                &script_list_offset,
-                &feature_list_offset,
-                &lookup_list_offset);
-        break;
-        case 0x00010001: /* 1.1 */
-        Unpackv(&table, "hhhi",
-                &script_list_offset,
-                &feature_list_offset,
-                &lookup_list_offset,
-                &feature_variations_offset);
-        break;
-        default: /* error */
-        return HZ_ERROR_INVALID_TABLE_VERSION;
-        break;
+        case 0x00010000: // 1.0
+            cmdread(&deserializer, 1, &hdr, "www");
+            break;
+        case 0x00010001: // 1.1
+            cmdread(&deserializer, 1, &hdr, "wwww");
+            break;
+        default: // error
+            return HZ_ERROR_INVALID_TABLE_VERSION;
+            break;
     }
 
     {
-        // Load feature list table
-        hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
-        uint16_t num_features = Unpack16(&stream);
-        gsub_table->num_features = num_features;
-        gsub_table->features = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_feature_list_item_t) * num_features);
-
-        for (uint16_t i = 0; i < num_features; ++i) {
-            gsub_table->features[i].tag = Unpack32(&stream);
-            Offset16 offset = Unpack16(&stream);
-
-            uintptr_t lastptr = stream_tell(&stream);
-            stream_seek(&stream, offset);
-            hz_load_feature_table(&plan->memory_pool, &stream, &gsub_table->features[i].table);
-            stream_seek(&stream, lastptr);
+        // parse feature list table
+        hz_deserializer_push_state(&deserializer, hdr.feature_list_offset);
+        gsub_table->num_features = hz_deserializer_read_u16(&deserializer);
+        gsub_table->features = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_feature_list_item_t) * gsub_table->num_features);
+        
+        for (int i = 0; i < gsub_table->num_features; ++i) {
+            hz_feature_list_item_t *it = &gsub_table->features[i];
+            it->tag = hz_deserializer_read_u32(&deserializer);
+            Offset16 offset = hz_deserializer_read_u16(&deserializer);
+            hz_deserializer_push_state(&deserializer, offset);
+            hz_load_feature_table(&plan->memory_pool, &deserializer, &it->table);
+            hz_deserializer_pop_state(&deserializer);
         }
+
+        hz_deserializer_pop_state(&deserializer);
     }
 
     {
-        // Load lookups
-        uint16_t i, num_lookups;
-        Offset16 *offsets;
+        // parse lookup list table
+        hz_deserializer_push_state(&deserializer, hdr.lookup_list_offset);
+        gsub_table->num_lookups = hz_deserializer_read_u16(&deserializer);
+        gsub_table->lookups = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_lookup_table_t) * gsub_table->num_lookups);
+        Offset16* offsets = hz_memory_arena_allocate(&arena, sizeof(Offset16) * gsub_table->num_lookups);
+        hz_deserializer_read_u16_block(&deserializer, offsets, gsub_table->num_lookups);
 
-        hz_stream_t stream = hz_stream_create(table.data + lookup_list_offset, 0);
-        num_lookups = Unpack16(&stream);
-
-        gsub_table->num_lookups = num_lookups;
-        gsub_table->lookups = hz_memory_pool_allocate(&plan->memory_pool, sizeof(hz_lookup_table_t) * num_lookups);
-
-        offsets = hz_alloc_linear(&linear_allocator, sizeof(Offset16) * num_lookups);
-        UnpackArray16(&stream, num_lookups, offsets);
-
-        for (i = 0; i < num_lookups; ++i) {
-            hz_load_gsub_lookup_table(stream.data + offsets[i], face, &gsub_table->lookups[i]);
+        for (uint16_t i = 0; i < gsub_table->num_lookups; ++i) {
+            hz_deserializer_push_state(&deserializer, offsets[i]);
+            hz_load_gsub_lookup_table(&plan->memory_pool, &deserializer, face, &gsub_table->lookups[i]);
+            hz_deserializer_pop_state(&deserializer);
         }
+
+        hz_deserializer_pop_state(&deserializer);
     }
 
+    hz_deserializer_pop_state(&deserializer);
     return HZ_OK;
 }
 
@@ -5865,7 +6003,7 @@ hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
         hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
         uint16_t num_features = Unpack16(&stream);
         gpos_table->num_features = num_features;
-        gpos_table->features = hz_memory_pool_allocate(sizeof(hz_feature_list_item_t) * num_features);
+        // gpos_table->features = hz_memory_pool_allocate(sizeof(hz_feature_list_item_t) * num_features);
 
         for (uint16_t i = 0; i < num_features; ++i) {
             gpos_table->features[i].tag = Unpack32(&stream);
@@ -5873,7 +6011,7 @@ hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
 
             uintptr_t lastptr = stream_tell(&stream);
             stream_seek(&stream, offset);
-            hz_load_feature_table(&plan->memory_pool, &stream, &gpos_table->features[i].table);
+            // hz_load_feature_table(&plan->memory_pool, &stream, &gpos_table->features[i].table);
             stream_seek(&stream, lastptr);
         }
     }
@@ -5893,7 +6031,8 @@ hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
         UnpackArray16(&stream, num_lookups, offsets);
 
         for (i = 0; i < num_lookups; ++i) {
-            hz_load_gpos_lookup_table(stream.data + offsets[i], face, &gpos_table->lookups[i]);
+            // GPOS FIXME
+            // hz_load_gpos_lookup_table(stream.data + offsets[i], face, &gpos_table->lookups[i]);
         }
 
         hz_free(offsets);
@@ -5906,28 +6045,28 @@ HZ_STATIC void
 hz_shape_plan_load_tables(hz_shape_plan_t *plan)
 {
     hz_shape_plan_load_gsub_table(plan);
-    hz_shape_plan_load_gpos_table(plan);
+    //hz_shape_plan_load_gpos_table(plan);
 }
 
 HZ_STATIC hz_shape_plan_t *
 hz_shape_plan_create(hz_font_t *font,
-                  hz_segment_t *seg,
-                  const hz_feature_t *features,
-                  unsigned int num_features,
-                  hz_shape_flags_t shape_flags)
+                     hz_segment_t *seg,
+                     const hz_feature_t *features,
+                     unsigned int num_features,
+                     hz_shape_flags_t flags)
 {
     hz_shape_plan_t *plan = hz_malloc(sizeof(hz_shape_plan_t));
     plan->font = font;
     plan->direction = seg->direction;
     plan->script = seg->script;
     plan->language = seg->language;
-    plan->shape_flags = shape_flags;
+    plan->shape_flags = flags;
     plan->memory_pool = hz_memory_pool_create(8192);
 
     plan->features = NULL;
     plan->num_features = 0;
 
-    if (plan->features == NULL && (shape_flags & HZ_SHAPE_FLAG_AUTO_LOAD_FEATURES)) {
+    if (features == NULL && (flags & HZ_AUTO_LOAD_FEATURES)) {
         // no feature list explicitly specified, load standard features for script
         hz_ot_script_load_features(seg->script, &plan->features, &plan->num_features);
     } else {
@@ -5940,27 +6079,6 @@ hz_shape_plan_create(hz_font_t *font,
     return plan;
 }
 
-
-HZ_STATIC void
-hz_shape_plan_unload_gsub_table(hz_shape_plan_t *plan)
-{
-    hz_gsub_table_t *gsub = &plan->gsub_table;
-
-    if (gsub->num_features > 0) {
-        for (uint32_t i = 0; i < gsub->num_features; ++i)
-            hz_unload_feature_table(&gsub->features[i].table);
-
-        hz_free(gsub->features);
-    }
-
-    if (gsub->num_lookups > 0) {
-        for (uint32_t i = 0; i < gsub->num_lookups; ++i)
-            hz_unload_gsub_lookup_table(&gsub->lookups[i]);
-
-        hz_free(gsub->lookups);
-    }
-}
-
 HZ_STATIC size_t
 hz_segment_next_valid_index(hz_segment_t *seg,
                             size_t index,
@@ -5970,7 +6088,7 @@ hz_segment_next_valid_index(hz_segment_t *seg,
 }
 
 
-HZ_STATIC int64_t next_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC int64_t next_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     size_t size = hz_vector_size(buffer->glyph_indices);
     do {
@@ -5982,7 +6100,7 @@ HZ_STATIC int64_t next_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint
     return g;
 }
 
-HZ_STATIC int64_t prev_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC int64_t prev_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     do {
         if (--g < 0)
@@ -6003,15 +6121,13 @@ hz_arabic_joining_triplet_t
 hz_shape_complex_arabic_joining(hz_buffer_t *buffer,
                                 int64_t index,
                                 uint16_t lookup_flag,
-                                hz_map_t *mark_filtering_set)
+                                const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet;
 
     if (hz_shape_complex_arabic_char_joining(buffer->codepoints[index], &triplet.curr_joining)) {
-        int64_t prev_index = prev_joining_arabic_glyph(buffer, index,
-                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS,mark_filtering_set);
-        int64_t next_index = next_joining_arabic_glyph(buffer, index,
-                                                       HZ_LOOKUP_FLAG_IGNORE_MARKS,mark_filtering_set);
+        int64_t prev_index = prev_joining_arabic_glyph(buffer, index, HZ_LOOKUP_FLAG_IGNORE_MARKS, mark_filtering_set);
+        int64_t next_index = next_joining_arabic_glyph(buffer, index, HZ_LOOKUP_FLAG_IGNORE_MARKS, mark_filtering_set);
 
         if (prev_index == -1) {
             triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
@@ -6045,25 +6161,25 @@ hz_shape_complex_arabic_joining(hz_buffer_t *buffer,
     return triplet;
 }
 
-HZ_STATIC hz_bool_t hz_shape_complex_arabic_init(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC hz_bool_t hz_shape_complex_arabic_init(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(buffer,index,lookup_flag, mark_filtering_set);
     return triplet.does_apply ? triplet.init && !(triplet.medi || triplet.fina) : HZ_FALSE;
 }
 
-HZ_STATIC hz_bool_t hz_shape_complex_arabic_medi(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC hz_bool_t hz_shape_complex_arabic_medi(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(buffer,index,lookup_flag, mark_filtering_set);
     return triplet.does_apply ? triplet.medi : HZ_FALSE;
 }
 
-HZ_STATIC hz_bool_t hz_shape_complex_arabic_fina(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC hz_bool_t hz_shape_complex_arabic_fina(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(buffer,index,lookup_flag,mark_filtering_set);
     return triplet.does_apply ? triplet.fina && !(triplet.medi || triplet.init) : HZ_FALSE;
 }
 
-HZ_STATIC hz_bool_t hz_shape_complex_arabic_isol(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+HZ_STATIC hz_bool_t hz_shape_complex_arabic_isol(hz_buffer_t *buffer, int64_t index, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet = hz_shape_complex_arabic_joining(buffer,index,lookup_flag,mark_filtering_set);
     return triplet.does_apply ? !(triplet.fina || triplet.medi || triplet.init) : HZ_FALSE;
@@ -6074,7 +6190,7 @@ hz_should_replace(hz_buffer_t *buffer,
                   hz_feature_t feature,
                   uint16_t node_index,
                   uint16_t lookup_flag,
-                  hz_map_t *mark_filtering_set)
+                  const hz_coverage_t *mark_filtering_set)
 {
     if (feature == HZ_FEATURE_INIT) {
         return hz_shape_complex_arabic_init(buffer, node_index, lookup_flag, mark_filtering_set);
@@ -6119,7 +6235,7 @@ void hz_range_list_destroy(hz_range_list_t *list)
 
 // compute range list from buffer
 hz_range_list_t *
-hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag, hz_map_t *mark_filtering_set)
+hz_compute_range_list(hz_buffer_t *buffer, uint16_t lookup_flag, const hz_coverage_t *mark_filtering_set)
 {
     hz_range_list_t *range_list = hz_range_list_create();
 
@@ -6227,30 +6343,27 @@ HZ_STATIC int hz_search_prev_glyph(hz_buffer_t *buffer, int index, uint16_t m1, 
     return -1;
 }
 
-//  function: hz_shape_plan_apply_gsub_lookup
-//      apply GSUB lookup table to glyph range [v1,v2] within the segment buffer.
-//      depth is the current nested lookup depth index, as this can be recursive.
 void
 hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 hz_feature_t feature,
-                                uint16_t lookupIndex,
+                                uint16_t lookup_index,
                                 hz_buffer_t *in, hz_buffer_t *out,
                                 int v1, int v2, int depth)
 {
-    hz_byte_t temp[4096];
-    hz_linear_allocator_t arena = hz_linear_allocator_create(temp, sizeof temp);
+    uint8_t temp[4096];
+    hz_memory_arena_t arena = hz_memory_arena_create(temp, sizeof temp);
 
     HZ_ASSERT(in != NULL && out != NULL);
     HZ_ASSERT(in != out);
     HZ_ASSERT(hz_buffer_contains_range(in,v1,v2));
 
-    if (depth >= HZ_OT_MAX_RECURSE_DEPTH) {
+    if (depth >= HZ_MAX_RECURSE_DEPTH) {
         // hit max recurse depth, wind back up the call stack
         return;
     }
 
     hz_gsub_table_t *gsub_table = &plan->gsub_table;
-    hz_lookup_table_t *table = &gsub_table->lookups[lookupIndex];
+    hz_lookup_table_t *table = &gsub_table->lookups[lookup_index];
     hz_face_t *face = hz_font_get_face(plan->font);
 
     // copy segment glyph ids and info into a read-only buffer
@@ -6269,13 +6382,13 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
         // to be exactly the size of the first buffer in case where we know the size won't change.
         if (likely(base != NULL)) {
             // subtable requested is loaded
-            hz_reset_linear_allocator(&arena);
+            hz_memory_arena_reset(&arena);
             hz_buffer_compute_info(b1, face);
             // reserve second buffer with size of first buffer as the result of the substitution is likely going to be
             // around the size of the first buffer in most cases.
             hz_buffer_reserve(b2, hz_vector_size(b1->glyph_indices));
 
-            hz_range_list_t *range_list = hz_compute_range_list(b1, table->lookup_flags, table->mark_filtering_set);
+            hz_range_list_t *range_list = hz_compute_range_list(b1, table->lookup_flags, &table->mark_filtering_set);
 
             switch (table->lookup_type) {
                 case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
@@ -6291,8 +6404,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     // unignored
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                        int32_t index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                            && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                     .id = b1->glyph_indices[g] + subtable->delta_glyph_id,
                                                     .codepoint = b1->codepoints[g],
@@ -6318,10 +6432,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
-                                            uint16_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[g]);
+                                        int32_t index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                            && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                     .id = subtable->substitute_glyph_ids[index],
                                                     .codepoint = b1->codepoints[g],
@@ -6353,10 +6466,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
-                                            uint32_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[g]);
+                                        int32_t index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                            && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             const hz_sequence_table_t *sequence = &subtable->sequences[index];
 
                                             for (uint16_t w = 0; w < sequence->glyph_count; ++w) {
@@ -6397,10 +6509,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t matched = HZ_FALSE;
 
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
-                                            uint16_t index = hz_map_get_value(subtable->coverage, b1->glyph_indices[g]);
+                                        int32_t index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                            && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             const hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + index;
 
                                             // compare ligatures in ligature set to following unignored nodes for match
@@ -6415,8 +6526,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         // There are enough unignored glyphs until the end of the buffer
                                                         // to load component glyphs. This could be possibly optimized later with
                                                         // SSE/AVX2 (gather,cmp,shuffle)
-                                                        hz_reset_linear_allocator(&arena);
-                                                        hz_index_t *block = hz_alloc_linear(&arena, (component_count - 1) * 2);
+                                                        hz_memory_arena_reset(&arena);
+                                                        hz_index_t *block = hz_memory_arena_allocate(&arena, (component_count - 1) * 2);
                                                         for (uint16_t k = 0; k < component_count-1; ++k) {
                                                             block[k] = b1->glyph_indices[range_list->unignored_indices[s1 + k + 1]];
                                                         }
@@ -6489,9 +6600,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t match = HZ_FALSE;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g]))  {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                            && hz_coverage_contains(&subtable->coverage, b1->glyph_indices[g])) {
                                             for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                                 hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
                                                 for (uint16_t n = 0; n < rs->count; ++n) {
@@ -6504,8 +6614,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     if (u1 >= 0 && u2 <= hz_vector_size(range_list->unignored_indices) - 1 && u2 >= u1) {
                                                         int context_len = (u2-u1)+1;
-                                                        uint16_t *sequence = hz_alloc_linear(&arena, context_len * 2);
-                                                        uint16_t *context = hz_alloc_linear(&arena, context_len * 2);
+                                                        uint16_t *sequence = hz_memory_arena_allocate(&arena, context_len * 2);
+                                                        uint16_t *context = hz_memory_arena_allocate(&arena, context_len * 2);
                                                         {
                                                             // load sequence
                                                             for (int k = 0; k < context_len; ++k) {
@@ -6548,7 +6658,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                             for (uint16_t z = 0; z < rule->lookup_count; ++z) {
                                                                 hz_buffer_compute_info(ctx1, face);
-                                                                int *context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, table->mark_filtering_set);
+                                                                int *context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, &table->mark_filtering_set);
                                                                 int sequence_idx = context_index_list[rule->lookup_records[z].sequence_index];
 
                                                                 hz_shape_plan_apply_gsub_lookup(plan, feature,
@@ -6610,8 +6720,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     // unignored
                                     for (short g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t match = HZ_FALSE;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)) {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)) {
                                             // context bounds check, if this doesn't fit inside the original range
                                             // this context is impossible to match
                                             int u = range->base + (g - range->mn);
@@ -6666,7 +6775,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     for (uint16_t z = 0; z < subtable->lookup_count; ++z) {
                                                         hz_buffer_compute_info(ctx1, face);
-                                                        hz_vector(int) context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, table->mark_filtering_set);
+                                                        hz_vector(int) context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, &table->mark_filtering_set);
                                                         int sequence_idx = context_index_list[subtable->lookup_records[z].sequence_index];
                                                         hz_vector_destroy(context_index_list);
 
@@ -6747,6 +6856,7 @@ void hz_apply_value_record_adjustments(hz_glyph_metrics_t *metrics,
         metrics->yOffset += value_record->yPlacement;
 }
 
+#if 0 // GPOS FIXME
 void
 hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 hz_feature_t feature,
@@ -6755,13 +6865,13 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 int v1, int v2, int depth)
 {
     uint8_t temp[4096];
-    hz_linear_allocator_t la = hz_linear_allocator_create(temp, sizeof temp);
+    hz_memory_arena_t arena = hz_memory_arena_create(temp, sizeof temp);
 
     HZ_ASSERT(in != NULL && out != NULL);
     HZ_ASSERT(in != out);
     HZ_ASSERT(hz_buffer_contains_range(in,v1,v2));
 
-    if (depth >= HZ_OT_MAX_RECURSE_DEPTH) {
+    if (depth >= HZ_MAX_RECURSE_DEPTH) {
         // hit max recurse depth, wind back up the call stack
         return;
     }
@@ -6781,7 +6891,7 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
         hz_lookup_subtable_t *base = table->subtables[i];
         if (likely(base != NULL)) {
             // subtable requested is loaded
-            hz_reset_linear_allocator(&la);
+            hz_memory_arena_reset(&arena);
             hz_buffer_compute_info(b1, face);
             hz_range_list_t *rangeList = hz_compute_range_list(b1, table->lookup_flags, table->mark_filtering_set);
 
@@ -7159,8 +7269,8 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
 
                                                     if (u1 >= 0 && u2 <= hz_vector_size(rangeList->unignored_indices) - 1 && u2 >= u1) {
                                                         int context_len = (u2-u1)+1;
-                                                        uint16_t *sequence = hz_alloc_linear(&la, context_len * 2);
-                                                        uint16_t *context = hz_alloc_linear(&la, context_len * 2);
+                                                        uint16_t *sequence = hz_memory_arena_allocate(&arena, context_len * 2);
+                                                        uint16_t *context = hz_memory_arena_allocate(&arena, context_len * 2);
                                                         {
                                                             // load sequence
                                                             for (int k = 0; k < context_len; ++k) {
@@ -7392,13 +7502,17 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
     hz_buffer_destroy(b1);
     hz_buffer_destroy(b2);
 }
+#endif
 
 HZ_STATIC int
 hz_feature_list_search(hz_feature_list_item_t *features, uint16_t num_features, hz_feature_t feature)
 {
     const hz_feature_info_t *feature_info = hz_ot_get_feature_info(feature);
-    for (int i = 0; i < num_features; ++i) {
-        if (unlikely(features[i].tag == feature_info->tag)) { return i; }
+
+    if (feature_info != NULL) {
+        for (int i = 0; i < num_features; ++i) {
+            if (unlikely(features[i].tag == feature_info->tag)) { return i; }
+        }
     }
 
     return -1;
@@ -7508,7 +7622,8 @@ hz_shape_plan_apply_gpos_features(hz_shape_plan_t *plan, hz_segment_t *seg)
 
     for (size_t i = 0; i < hz_vector_size(lookup_refs); ++i) {
         hz_lookup_reference_t *ref = &lookup_refs[i];
-        hz_shape_plan_apply_gpos_lookup(plan, ref->feature, ref->index, seg->in, seg->out, 0, seg->in->glyph_count - 1, 0);
+        // GPOS FIXME
+        // hz_shape_plan_apply_gpos_lookup(plan, ref->feature, ref->index, seg->in, seg->out, 0, seg->in->glyph_count - 1, 0);
         hz_segment_swap_buffers(seg, face);
     }
 
@@ -7519,7 +7634,7 @@ HZ_STATIC void
 hz_shape_plan_destroy(hz_shape_plan_t *plan)
 {
     hz_memory_pool_release(&plan->memory_pool);
-
+    
     // hz_shape_plan_unload_gsub_table(plan);
     hz_free(plan);
 }
@@ -7539,11 +7654,11 @@ hz_shape_plan_execute(hz_shape_plan_t *plan, hz_segment_t *seg)
             tmp->attrib_flags = seg->in->attrib_flags;
 
             uint16_t ignored_classes = 0;
-            if (plan->shape_flags & HZ_SHAPE_FLAG_REMOVE_MARKS) {
+            if (plan->shape_flags & HZ_CULL_MARKS) {
                 ignored_classes |= HZ_GLYPH_CLASS_MARK;
             }
 
-            if (plan->shape_flags & HZ_SHAPE_FLAG_REMOVE_BASES) {
+            if (plan->shape_flags & HZ_CULL_BASES) {
                 ignored_classes |= HZ_GLYPH_CLASS_BASE;
             }
 
@@ -7552,14 +7667,15 @@ hz_shape_plan_execute(hz_shape_plan_t *plan, hz_segment_t *seg)
                     hz_buffer_add_glyph(tmp, hz_buffer_get_glyph(seg->in, i));
                 }
             }
+
             hz_buffer_destroy(seg->in);
             seg->in = tmp;
         }
 
         hz_shape_plan_apply_gsub_features(plan, seg);
         hz_segment_setup_metrics(seg,face);
-        hz_shape_plan_apply_gpos_features(plan, seg);
-        hz_buffer_compute_info(seg->in, face);
+        // hz_shape_plan_apply_gpos_features(plan, seg);
+        // hz_buffer_compute_info(seg->in, face);
 
         if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT) {
             hz_buffer_flip_direction(seg->in);

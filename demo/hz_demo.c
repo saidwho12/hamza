@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include <hz/hz.h>
-#include <hz/backends/hz_renderer_vulkan.h>
+// #include "../hz/backends/hz_renderer_vulkan.h"
 #include <errno.h>
 #include <limits.h>
 
@@ -11,38 +11,38 @@
 
 #define ARRAYSIZE(x) (sizeof(x)/sizeof((x)[0]))
 
-typedef struct {
-    GLFWwindow *window;
-    hz_vk_renderer_t *vk_renderer;
-    stbtt_fontinfo fontinfo;
-} App;
+// typedef struct {
+//     GLFWwindow *window;
+//     hz_vk_renderer_t *vk_renderer;
+//     stbtt_fontinfo fontinfo;
+// } App;
 
-static void exitApp(App *app)
-{
-    glfwDestroyWindow(app->window);
-    glfwTerminate();
-    hz_cleanup();
-}
+// static void exitApp(App *app)
+// {
+//     glfwDestroyWindow(app->window);
+//     glfwTerminate();
+//     hz_cleanup();
+// }
 
-static void initApp(App *app)
-{
-    if (!glfwInit()) {
-        printf("Failed to initialize GLFW!");
-    }
+// static void initApp(App *app)
+// {
+//     if (!glfwInit()) {
+//         printf("Failed to initialize GLFW!");
+//     }
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
+//     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+//     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 
-    app->window = glfwCreateWindow(800, 800, "Hamza Demo", NULL, NULL);
+//     app->window = glfwCreateWindow(800, 800, "Hamza Demo", NULL, NULL);
 
-    if (app->window == NULL) {
-        fprintf(stderr, "%s\n", "Failed to create window!");
-    }
+//     if (app->window == NULL) {
+//         fprintf(stderr, "%s\n", "Failed to create window!");
+//     }
 
-    glfwSwapInterval(0);
+//     glfwSwapInterval(0);
 
-    app->vk_renderer = hz_vk_create_renderer(app->window, 1);
-}
+//     app->vk_renderer = hz_vk_create_renderer(app->window, 1);
+// }
 
 static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
 {
@@ -70,16 +70,16 @@ static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
     return 1;
 }
 
-static void mainLoop(App *app)
-{
-    while (!glfwWindowShouldClose(app->window)) {
-        glfwPollEvents();
-        hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 'a');
-        hz_vk_render_frame(app->vk_renderer, &app->fontinfo, gid);
-    }
+// static void mainLoop(App *app)
+// {
+//     while (!glfwWindowShouldClose(app->window)) {
+//         glfwPollEvents();
+//         hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 'a');
+//         hz_vk_render_frame(app->vk_renderer, &app->fontinfo, gid);
+//     }
 
-    hz_vk_wait_idle(app->vk_renderer);
-}
+//     hz_vk_wait_idle(app->vk_renderer);
+// }
 
 typedef struct {
     float red,green,blue,alpha;
@@ -278,15 +278,31 @@ void render_text_to_png(const char *filename,
     free(pixels);
 }
 
+void *my_allocation_func(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment)
+{   
+    switch (cmd) {
+        case HZ_CMD_ALLOC:
+            return malloc(size);
+        case HZ_CMD_REALLOC: // no-op
+            return realloc(pointer, size);
+        case HZ_CMD_DEALLOC:
+            free(pointer);
+        case HZ_CMD_RELEASE:    
+        default: // error, cmd not handled
+            return NULL;
+    }
+}
+
 int main(int argc, char *argv[]) {
 
-    hz_setup(HZ_USE_CPUID_FOR_SIMD_CHECKS);
+    hz_setup(0);
+    // hz_set_alloc_func(&my_allocation_func, NULL);
 
     stbtt_fontinfo fontinfo;
-    load_font_face(&fontinfo, "../data/fonts/TimesNewRoman.ttf");
+    load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Regular.ttf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-    const char *text = "Hello, World!";
+    const char *text = "Software is GREAT";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
@@ -295,32 +311,21 @@ int main(int argc, char *argv[]) {
     hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
 
     hz_feature_t features[] = {
-            HZ_FEATURE_CCMP,
-            HZ_FEATURE_LOCL,
-            HZ_FEATURE_RCLT,
-            HZ_FEATURE_CALT,
-            HZ_FEATURE_RLIG,
-            HZ_FEATURE_MSET,
-            HZ_FEATURE_CLIG,
-            HZ_FEATURE_LIGA,
-            HZ_FEATURE_KERN,
-            HZ_FEATURE_CURS,
-            HZ_FEATURE_MARK,
-            HZ_FEATURE_MKMK
+        HZ_FEATURE_C2SC
     };
 
-    hz_shape(font, seg, features, ARRAYSIZE(features), 0);
+    printf("first\n");
+    for (int i = 0; i < 1; ++i) {
+        hz_shape(font, seg, features, ARRAYSIZE(features), 0);
+    }
+    printf("second\n");
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
     render_text_to_png("out.png", &fontinfo, buffer);
     hz_segment_destroy(seg);
-
-    // App app;
-    // initApp(&app);
-    // app.fontinfo = fontinfo;
-    // mainLoop(&app);
-
     hz_cleanup();
+
+    system("pause");
 
     return EXIT_SUCCESS;
 }

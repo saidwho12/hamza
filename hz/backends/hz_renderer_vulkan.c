@@ -1319,7 +1319,7 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
         VkVertexInputBindingDescription vertex_bindings[] = {
             { 0, sizeof(hz_bezier_vertex_t), VK_VERTEX_INPUT_RATE_INSTANCE } // Buffer
         };
-        
+
         VkVertexInputAttributeDescription vertex_attribs[] = {
             { 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_bezier_vertex_t, v1) }, // v1
             { 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(hz_bezier_vertex_t, v2) }, // v2
@@ -1337,7 +1337,7 @@ hz_vk_create_renderer(GLFWwindow *window, int enableDebug)
         colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
-        
+
         VkPipelineDepthStencilStateCreateInfo depthStencilState = {0};
 
 

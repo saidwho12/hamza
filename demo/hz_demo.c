@@ -282,33 +282,38 @@ int main(int argc, char *argv[]) {
     // hz_set_alloc_func(&my_allocation_func, NULL);
 
     stbtt_fontinfo fontinfo;
-    // load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Regular.ttf");
-    load_font_face(&fontinfo, "../data/fonts/Adobe Garamond Pro Italic.ttf");
+    // load_font_face(&fontinfo, "../data/fonts/Times New Roman.ttf");
+    // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
+    // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
+    load_font_face(&fontinfo, "../data/fonts/Quran/OmarNaskh-Light.ttf");
+    // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-    char *text = "Software Craft first sift";
+    char *text = "عبس و تولى أن جآئه الأعمى وما يدريك لعله يزكى أو يذكر فتنفعه الذكرى";
+    // char *text = "sift through tj fi";
+    // char *text = "Слава Україні";
+    // char *text = "मुझे कोई हिंदी नहीं आती";
+    // char *text = "من گیاهخوارم";
 
     hz_segment_t *seg = hz_segment_create();
     hz_segment_load_utf8(seg, text);
-    hz_segment_set_direction(seg, HZ_DIRECTION_LTR);
-    hz_segment_set_script(seg, HZ_SCRIPT_LATIN);
-    hz_segment_set_language(seg, HZ_LANGUAGE_ENGLISH);
+    hz_segment_set_direction(seg, HZ_DIRECTION_RTL);
+    hz_segment_set_script(seg, HZ_SCRIPT_ARABIC);
+    hz_segment_set_language(seg, HZ_LANGUAGE_ARABIC);
 
     hz_feature_t features[] = {
+        HZ_FEATURE_CCMP,
+        HZ_FEATURE_CALT,
         HZ_FEATURE_ISOL,
-        HZ_FEATURE_FINA,
         HZ_FEATURE_MEDI,
         HZ_FEATURE_INIT,
-        HZ_FEATURE_RLIG,
+        HZ_FEATURE_FINA,
         HZ_FEATURE_DLIG,
-        HZ_FEATURE_LIGA,
-        HZ_FEATURE_C2SC,
+        HZ_FEATURE_LIGA
     };
 
     printf("first\n");
-    for (int i = 0; i < 1; ++i) {
-        hz_shape(font, seg, features, ARRAYSIZE(features), 0);
-    }
+    hz_shape(font, seg, features, ARRAYSIZE(features), 0);
     printf("second\n");
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);

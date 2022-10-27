@@ -282,15 +282,15 @@ int main(int argc, char *argv[]) {
     // hz_set_alloc_func(&my_allocation_func, NULL);
 
     stbtt_fontinfo fontinfo;
+    // load_font_face(&fontinfo, "../data/fonts/FajerNooriNastalique.ttf");
     // load_font_face(&fontinfo, "../data/fonts/Times New Roman.ttf");
     // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
     // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
-    load_font_face(&fontinfo, "../data/fonts/Quran/OmarNaskh-Light.ttf");
-    // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
+    load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
     char *text = "عبس و تولى أن جآئه الأعمى وما يدريك لعله يزكى أو يذكر فتنفعه الذكرى";
-    // char *text = "sift through tj fi";
+    // char *text = "sift through tj fi fj ct stop";
     // char *text = "Слава Україні";
     // char *text = "मुझे कोई हिंदी नहीं आती";
     // char *text = "من گیاهخوارم";
@@ -303,11 +303,12 @@ int main(int argc, char *argv[]) {
 
     hz_feature_t features[] = {
         HZ_FEATURE_CCMP,
-        HZ_FEATURE_CALT,
         HZ_FEATURE_ISOL,
-        HZ_FEATURE_MEDI,
         HZ_FEATURE_INIT,
+        HZ_FEATURE_MEDI,
         HZ_FEATURE_FINA,
+        HZ_FEATURE_CALT,
+        HZ_FEATURE_RLIG,
         HZ_FEATURE_DLIG,
         HZ_FEATURE_LIGA
     };

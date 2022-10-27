@@ -459,14 +459,15 @@ typedef enum {
 
 // if align argument is 0, then the allocator should try and align the data optimally
 // in the way it sees best fit the block size.
-typedef void* (hz_allocate_func_t)(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment);
+typedef void* (*hz_allocator_fn_t)(void *user, hz_allocation_cmd_t cmd, void *ptr, size_t size, size_t alignment);
 
 typedef struct {
-    hz_allocate_func_t *allocate;
+    hz_allocator_fn_t allocfn;
     void *user;
 } hz_allocator_t;
 
-void hz_set_custom_allocator(hz_allocator_t allocator);
+void hz_set_allocator_fn(hz_allocator_fn_t allocfn);
+void hz_set_allocator_user_pointer(void *user);
 
 #ifdef __cplusplus
 };

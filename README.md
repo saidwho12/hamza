@@ -51,6 +51,3 @@ Later, with much research and work I have only developed more fascination with t
 
 ## Usage
 For usage of API functions, check `hz.h` and respective files. There is also documentation at <https://saidwho12.github.io/hamza/>.
-
-## Misc
-Developed and maintained by Saïd Metiche.

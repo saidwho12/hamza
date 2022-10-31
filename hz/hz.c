@@ -7,6 +7,7 @@
 #include <stdarg.h>
 
 #define SIZEOF_VOIDPTR sizeof(void*)
+#define DEFAULT_ALIGNMENT (2*sizeof(void*))
 
 #define KIB 1024
 
@@ -147,8 +148,6 @@ typedef enum {
     HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING = 9
 } hz_gpos_lookup_type_t;
 
-#define HZ_IGNORE_ARG(x) (void)(x)
-
 #define UTF_CACHE_LINE_SIZE 128
 #define UTF_TINY_CHUNK_SIZE (1 * KIB)
 #define UTF_SMALL_CHUNK_SIZE (4 * KIB)
@@ -170,17 +169,17 @@ typedef uint16_t F2DOT14, FWORD, UFWORD;
 
 void *hz_allocate(hz_allocator_t *alctr, size_t size)
 {
-    return alctr->allocfn(alctr->user, HZ_CMD_ALLOC, NULL, size, 1);
+    return alctr->allocfn(alctr->user, HZ_CMD_ALLOC, NULL, size, DEFAULT_ALIGNMENT);
 }
 
 void hz_deallocate(hz_allocator_t *alctr, void *ptr)
 {
-    alctr->allocfn(alctr->user, HZ_CMD_DEALLOC, ptr, 0, 0);
+    alctr->allocfn(alctr->user, HZ_CMD_FREE, ptr, 0, 0);
 }
 
 void *hz_reallocate(hz_allocator_t *alctr, void *ptr, size_t size)
 {
-    return alctr->allocfn(alctr->user, HZ_CMD_REALLOC, ptr, size, 1);
+    return alctr->allocfn(alctr->user, HZ_CMD_REALLOC, ptr, size, DEFAULT_ALIGNMENT);
 }
 
 void hz_release(hz_allocator_t *alctr)
@@ -189,16 +188,16 @@ void hz_release(hz_allocator_t *alctr)
 }
 
 //////////////////////////////// main allocator ////////////////////////////////////////
-void *hz_standard_c_allocate_func(void *user, hz_allocation_cmd_t cmd, void *ptr, size_t size, size_t alignment)
+void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, size_t size, size_t align)
 {
-    HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(alignment);
+    HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(align);
     
     switch (cmd) {
         case HZ_CMD_ALLOC:
             return malloc(size);
         case HZ_CMD_REALLOC: // no-op
             return realloc(ptr, size);
-        case HZ_CMD_DEALLOC:
+        case HZ_CMD_FREE:
             free(ptr);
         case HZ_CMD_RELEASE:    
         default: // error, cmd not handled
@@ -206,7 +205,7 @@ void *hz_standard_c_allocate_func(void *user, hz_allocation_cmd_t cmd, void *ptr
     }
 }
 
-static hz_allocator_t _alctr = { .allocfn = hz_standard_c_allocate_func, .user = NULL };
+static hz_allocator_t _alctr = { .allocfn = hz_standard_c_allocator_fn, .user = NULL };
 
 void hz_set_allocator_fn(hz_allocator_fn_t allocfn)
 {
@@ -230,7 +229,7 @@ void *hz_realloc(void *pointer, size_t size)
 
 void hz_free(void *pointer)
 {
-    _alctr.allocfn(_alctr.user,HZ_CMD_DEALLOC,pointer,0,1);
+    _alctr.allocfn(_alctr.user,HZ_CMD_FREE,pointer,0,1);
 }
 
 HZ_STATIC uint16_t
@@ -299,175 +298,182 @@ fastlog2l(uint64_t n)
     #endif
 }
 
-#define LINEAR_ALLOCATOR_MAX_ALIGNED_SIZE 512
-#define LINEAR_ALLOCATOR_ALIGN_TO_POWER_OF_TWO_BOUNDARY 1
+uint64_t clzll(uint64_t x)
+{
+    uint64_t r = 0;
+    while (!(x & ((uint64_t)1 << (uint64_t)63))) {
+        x <<= 1;
+        ++r;
+    }
+
+    return r;
+}
+
+int is_power_of_two(uint64_t val)
+{
+    return ~(val & (val-1));
+}
 
 typedef struct {
-    uint8_t *data;
+    uint8_t *mem;
     size_t size;
-    uintptr_t offset;
-    int alignment;
+    uintptr_t pos;
 } hz_memory_arena_t;
 
-static hz_memory_arena_t hz_memory_arena_create(void *mem, size_t size)
+hz_memory_arena_t hz_memory_arena_create(uint8_t *mem, size_t size)
 {
-    hz_memory_arena_t arena;
-    arena.data = mem;
-    arena.size = size;
-    arena.offset = 0;
-    arena.alignment = 8;
-    return arena;
+    return (hz_memory_arena_t){.mem = mem, .size = size, .pos = 0};
 }
 
-static uint64_t Minll(uint64_t x, uint64_t y)
+void hz_memory_arena_init(hz_memory_arena_t *arena, uint8_t *mem, size_t size)
 {
-    return x<y?x:y;
+    arena->mem = mem; arena->size = size; arena->pos = 0;
 }
 
-static int hz_check_power_of_two(uint64_t v)
+uintptr_t align_forward(uintptr_t addr, uintptr_t align)
 {
-    return v && ~(v & (v-1));
+    return (~addr+1) & (align-1);
 }
 
-static int Ctzll(uint64_t x)
+uint64_t next_power_of_two_size(uint64_t size)
 {
-#if HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
-    return __builtin_ctzll(x);
-#else
-    return _tzcnt_u64(x);
-#endif
+    return ((uint64_t)1 << 63) >> (clzll(size)-1);
 }
 
-static uint64_t Ftzll(uint64_t x)
+void *hz_memory_arena_alloc_aligned(hz_memory_arena_t *arena, size_t size, size_t align)
 {
-    return (1 << Ctzll(x)) - 1;
+    HZ_ASSERT(align > 0);
+    HZ_ASSERT(is_power_of_two(align));
+    uintptr_t ptr = (uintptr_t)(arena->mem + arena->pos);
+    uintptr_t padd = align_forward(ptr, align);
+
+    // do we have enough memory for this allocation?
+    uintptr_t start = arena->pos + padd, end = start + size;
+    if (end > arena->size) {
+        return NULL;
+    }
+
+    arena->pos = end;
+    return arena->mem + start;
 }
 
-static uint64_t Align(uint64_t x, uint64_t n)
+void *hz_memory_arena_alloc(hz_memory_arena_t *arena, size_t size)
 {
-    // Aligns on largest power of two divisor of allocation size
-    assert(hz_check_power_of_two(n)); // n must be a power of two
-    uint64_t m = (x && n) ? Ftzll(n) & 0x1f : 0;
-    return x + ((~x + 1) & m);
+    return hz_memory_arena_alloc_aligned(arena, size, DEFAULT_ALIGNMENT);
 }
 
-// Assume alignment is a power of two
-uint64_t compute_memory_alignment(uint64_t memptr, uint64_t alignment)
+void hz_memory_arena_release(hz_memory_arena_t *arena) {}
+
+void hz_memory_arena_reset(hz_memory_arena_t *arena)
 {
-    return (~memptr + 1) & Ftzll(alignment);
+    arena->pos = 0;
 }
 
-// The following is a linear allocation function optimized for allocation of integers and integer arrays
-// since this is what it's mostly used for realistically in the code.
-static void* hz_memory_arena_allocate(hz_memory_arena_t *arena, size_t size)
+void *hz_memory_arena_alloc_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, size_t size, size_t align)
 {
-    if (size > 0 && size < arena->size) {
-        uint64_t p = arena->offset;
+    HZ_IGNORE_ARG(ptr);
+    hz_memory_arena_t *arena = (hz_memory_arena_t *)user;
 
-        p = Align(p,size);
-
-        if (p + size <= arena->size) {
-            arena->offset = p + size;
-            return arena->data + p;
-        }
+    switch (cmd) {
+        case HZ_CMD_ALLOC:
+            return hz_memory_arena_alloc_aligned(arena, size, align);
+        case HZ_CMD_RELEASE:
+            hz_memory_arena_release(arena);
+        case HZ_CMD_RESET:
+            hz_memory_arena_reset(arena);
+        case HZ_CMD_FREE: default:
+            break;
     }
 
     return NULL;
 }
 
-static void hz_memory_arena_reset(hz_memory_arena_t *arena)
-{
-    arena->offset = 0;
-}
-
+//////////////////////////// stack allocator //////////////////////////////////
+typedef struct {
+    uint8_t *mem;
+    size_t size;
+    uintptr_t pos;
+    size_t last_alloc_size;
+} hz_stack_allocator_t;
 
 typedef struct {
-    void *prev;
-    uint64_t cursor;
-} hz_chunk_t;
+    uint8_t padding;
+    size_t prev_size;
+} hz_stack_allocator_header_t;
 
-typedef struct {
-    size_t chunk_size;
-    size_t chunk_capacity;
-    hz_chunk_t *curr_chunk;
-} hz_memory_pool_t;
-
-hz_memory_pool_t hz_memory_pool_create(size_t chunk_size)
+hz_stack_allocator_t hz_stack_create(uint8_t *mem, size_t size)
 {
-    hz_memory_pool_t pool;
-    pool.chunk_size = chunk_size;
-    pool.chunk_capacity = chunk_size - sizeof(hz_chunk_t);
-    pool.curr_chunk = NULL;
-    return pool;
+    return (hz_stack_allocator_t){.mem=mem,.size=size,.pos=0};
 }
 
-hz_chunk_t *hz_memory_pool_create_chunk(size_t size)
+void hz_stack_init(hz_stack_allocator_t *stack, uint8_t *mem, size_t size)
 {
-    hz_chunk_t* chunk = hz_malloc(size);
-    chunk->prev = NULL;
-    chunk->cursor = 0;
-    return chunk;
+    stack->mem = mem;
+    stack->size = size;
+    stack->pos = 0;
+    stack->last_alloc_size = 0;
 }
 
-// alignment is absolute
-void* hz_memory_pool_allocate_aligned(hz_memory_pool_t *pool, size_t size, size_t alignment)
+void *hz_stack_alloc_align(hz_stack_allocator_t *stack, size_t size, size_t align)
 {
-    HZ_ASSERT(hz_check_power_of_two(alignment));
-    
-    // Requested size is larger than the chunk's capacity, cannot allocate.
-    if (size > pool->chunk_capacity) {
+    HZ_ASSERT(align > 0);
+    HZ_ASSERT(is_power_of_two(align));
+
+    uintptr_t ptr = (uintptr_t)(stack->mem + stack->pos);
+    size_t hdr_size = sizeof(hz_stack_allocator_header_t);
+    size_t padd = hdr_size;// + align_forward(hdr_size + ptr, align);
+
+    uintptr_t start = stack->pos + padd, end = start + size;
+
+    if (end > stack->size) { // out of memory error
         return NULL;
     }
 
-    // Check if first chunk exists, otherwise allocate it.
-    if (pool->curr_chunk == NULL) {
-        pool->curr_chunk = hz_memory_pool_create_chunk(pool->chunk_size);
-    }
-    
-    // Not enough room in chunk, allocate other chunk:
-    if (pool->curr_chunk->cursor + size > pool->chunk_capacity) {
-        hz_chunk_t *chunk = hz_memory_pool_create_chunk(pool->chunk_size);
-        chunk->prev = pool->curr_chunk;
-        pool->curr_chunk = chunk;
-    }
+    hz_stack_allocator_header_t *hdr = (hz_stack_allocator_header_t *)(stack->mem + start) - 1;
+    hdr->padding = padd;
+    hdr->prev_size = stack->last_alloc_size;
 
-    uint8_t *mem = (uint8_t *)(pool->curr_chunk + 1) + pool->curr_chunk->cursor;
-    uint64_t align = MAX(alignment,1);
-    uint64_t memptr = (uint64_t)mem;
-    uint64_t alignment_offset = compute_memory_alignment(memptr, align);
-    pool->curr_chunk->cursor += size + alignment_offset;
-    return mem + alignment_offset;
+    stack->last_alloc_size = size;
+    stack->pos = end;
+
+    return stack->mem + start;
 }
 
-void* hz_memory_pool_allocate(hz_memory_pool_t *pool, size_t size)
+void *hz_stack_alloc(hz_stack_allocator_t *stack, size_t size)
 {
-    hz_memory_pool_allocate_aligned(pool,size,1);
+    return hz_stack_alloc_align(stack, size, DEFAULT_ALIGNMENT);
 }
 
-void hz_memory_pool_release(hz_memory_pool_t *pool) {
-    hz_chunk_t *chunk = pool->curr_chunk;
-
-    while(chunk != NULL) {
-        hz_chunk_t *prev_chunk = chunk->prev;
-        hz_free(chunk);
-        chunk = prev_chunk;
-    }
-}
-
-void *hz_memory_pool_allocate_func(void *user, hz_allocation_cmd_t cmd, void *pointer, size_t size, size_t alignment)
+void *hz_stack_free(hz_stack_allocator_t *stack, void *ptr)
 {
-    hz_memory_pool_t *pool = (hz_memory_pool_t *)user;
+    if (!ptr) return NULL;
 
-    switch (cmd) {
-        case HZ_CMD_ALLOC:
-            return hz_memory_pool_allocate_aligned(pool, size, alignment);
-        case HZ_CMD_RELEASE:
-            hz_memory_pool_release(pool);
-        case HZ_CMD_DEALLOC: case HZ_CMD_REALLOC: // no-op
-        default: // error, cmd not handled
-            return NULL;
+    uintptr_t start = (uintptr_t)stack->mem, end = (uintptr_t)(start + stack->size);
+    uintptr_t curr = (uintptr_t)ptr;
+
+    if (curr >= start + stack->pos)
+        return NULL;
+
+    hz_stack_allocator_header_t *hdr = (hz_stack_allocator_header_t *)ptr - 1;
+    uintptr_t prev_pos = curr - start - hdr->padding;
+    stack->pos = prev_pos;
+    stack->last_alloc_size = hdr->prev_size;
+
+    if (hdr->prev_size) {
+        return (stack->mem + stack->pos) - hdr->prev_size;
     }
+
+    return NULL;
 }
+
+void hz_stack_reset(hz_stack_allocator_t *stack)
+{
+    stack->pos = 0;
+    stack->last_alloc_size = 0;
+}
+
+void hz_stack_release(hz_stack_allocator_t *stack) {}
+
 
 /* no bound for buffer */
 #define BNDCHECK 0x00000001
@@ -718,117 +724,110 @@ typedef struct {
     int bswap_required;
     size_t start;
     size_t offset;
-    hz_vector(hz_deserializer_state_t) state;
+    uint8_t stackmem[4000];
+    hz_stack_allocator_t stack;
+    hz_deserializer_state_t *curr_state;
 } hz_deserializer_t;
 
 hz_deserializer_t hz_deserializer_create(const uint8_t *mem, int network_order)
 {
-    hz_deserializer_t self;
-    self.mem = mem;
-    self.network_order = network_order;
-    self.bswap_required = (network_order && check_cpu_le()) || (!network_order && !check_cpu_le());
-    self.state = NULL;
-    self.offset = 0;
-    self.start = 0;
-    return self;
+    hz_deserializer_t ds;
+    ds.mem = mem;
+    ds.network_order = network_order;
+    ds.bswap_required = (network_order && check_cpu_le()) || (!network_order && !check_cpu_le());
+    ds.curr_state = NULL;
+    ds.offset = 0;
+    ds.start = 0;
+    hz_stack_init(&ds.stack, ds.stackmem, sizeof ds.stackmem);
+    return ds;
 }
 
-hz_deserializer_state_t *hz_deserializer_last_state(hz_deserializer_t *self)
+void hz_deserializer_pop_state(hz_deserializer_t *ds)
 {
-    return &self->state[hz_vector_size(self->state)-1];
+    ds->offset = ds->curr_state->prev_offset;
+    ds->start -= ds->curr_state->jump;
+    ds->curr_state = hz_stack_free(&ds->stack, ds->curr_state);
 }
 
-void hz_deserializer_pop_state(hz_deserializer_t *self)
-{
-    hz_deserializer_state_t *state = hz_deserializer_last_state(self);
-    self->offset = state->prev_offset;
-    self->start -= state->jump;
-    if (hz_vector_size(self->state) > 1) {
-        hz_vector_pop(self->state);
-    } else {
-        hz_vector_destroy(self->state);
-    }
+void hz_deserializer_push_state(hz_deserializer_t *ds, uint32_t jump)
+{   
+    ds->curr_state = hz_stack_alloc(&ds->stack, sizeof(hz_deserializer_state_t));
+    ds->curr_state->jump = jump;
+    ds->curr_state->prev_offset = ds->offset;
+
+    ds->start += jump;
+    ds->offset = 0;
 }
 
-void hz_deserializer_push_state(hz_deserializer_t *self, uint32_t jump)
+static inline void hz_deserializer_advance(hz_deserializer_t *ds, size_t count)
 {
-    hz_deserializer_state_t save;
-    save.jump = jump;
-    save.prev_offset = self->offset;
-    hz_vector_push_back(self->state, save);
-    self->start += jump;
-    self->offset = 0;
+    ds->offset += count;
 }
 
-static inline void hz_deserializer_advance(hz_deserializer_t *self, size_t count)
+static inline const uint8_t* hz_deserializer_at_cursor(hz_deserializer_t *ds)
 {
-    self->offset += count;
+    return ds->mem + ds->start + ds->offset;
 }
 
-static inline const uint8_t* hz_deserializer_at_cursor(hz_deserializer_t *self)
+uint8_t hz_deserializer_read_u8(hz_deserializer_t *ds)
 {
-    return self->mem + self->start + self->offset;
-}
-
-uint8_t hz_deserializer_read_u8(hz_deserializer_t *self)
-{
-    uint8_t v = *(uint8_t *)hz_deserializer_at_cursor(self);
-    hz_deserializer_advance(self, 1);
+    uint8_t v = *(uint8_t *)hz_deserializer_at_cursor(ds);
+    hz_deserializer_advance(ds, 1);
     return v;
 }
 
-uint16_t hz_deserializer_read_u16(hz_deserializer_t *self)
+uint16_t hz_deserializer_read_u16(hz_deserializer_t *ds)
 {
-    uint16_t v = *(uint16_t *)hz_deserializer_at_cursor(self);
-    hz_deserializer_advance(self, 2);   
-    return self->bswap_required ? bswap16(v) : v;
+    uint16_t v = *(uint16_t *)hz_deserializer_at_cursor(ds);
+    hz_deserializer_advance(ds, 2);   
+    return ds->bswap_required ? bswap16(v) : v;
 }
 
-uint32_t hz_deserializer_read_u32(hz_deserializer_t *self)
+uint32_t hz_deserializer_read_u32(hz_deserializer_t *ds)
 {
-    uint32_t v = *(uint32_t *)hz_deserializer_at_cursor(self);
-    hz_deserializer_advance(self, 4);
-    return self->bswap_required ? bswap32(v) : v;
+    uint32_t v = *(uint32_t *)hz_deserializer_at_cursor(ds);
+    hz_deserializer_advance(ds, 4);
+    return ds->bswap_required ? bswap32(v) : v;
 }
 
-uint64_t hz_deserializer_read_u64(hz_deserializer_t *self)
+uint64_t hz_deserializer_read_u64(hz_deserializer_t *ds)
 {
-    uint64_t v = *(uint64_t *)hz_deserializer_at_cursor(self);
-    hz_deserializer_advance(self, 8);
-    return self->bswap_required ? bswap64(v) : v;
+    uint64_t v = *(uint64_t *)hz_deserializer_at_cursor(ds);
+    hz_deserializer_advance(ds, 8);
+    return ds->bswap_required ? bswap64(v) : v;
 }
 
-void hz_deserializer_read_block(hz_deserializer_t *self, uint8_t *write_addr, size_t size)
+void hz_deserializer_read_block(hz_deserializer_t *ds, uint8_t *write_addr, size_t size)
 {
-    memcpy(write_addr, hz_deserializer_at_cursor(self), size);
-    hz_deserializer_advance(self, size);
+    memcpy(write_addr, hz_deserializer_at_cursor(ds), size);
+    hz_deserializer_advance(ds, size);
 }
 
-void hz_deserializer_read_u16_block(hz_deserializer_t *self, uint16_t *write_addr, size_t size)
+void hz_deserializer_read_u16_block(hz_deserializer_t *ds, uint16_t *write_addr, size_t size)
 {
     while (size > 0) {
-        *write_addr++ = hz_deserializer_read_u16(self);
+        *write_addr++ = hz_deserializer_read_u16(ds);
         --size;
     }
 }
 
-void hz_deserializer_read_u32_block(hz_deserializer_t *self, uint32_t *write_addr, size_t size)
+void hz_deserializer_read_u32_block(hz_deserializer_t *ds, uint32_t *write_addr, size_t size)
 {
     while (size > 0) {
-        *write_addr++ = hz_deserializer_read_u32(self);
+        *write_addr++ = hz_deserializer_read_u32(ds);
         --size;
     }
 }
 
-void hz_deserializer_read_u64_block(hz_deserializer_t *self, uint64_t *write_addr, size_t size)
+void hz_deserializer_read_u64_block(hz_deserializer_t *ds, uint64_t *write_addr, size_t size)
 {
     while (size > 0) {
-        *write_addr++ = hz_deserializer_read_u64(self);
+        *write_addr++ = hz_deserializer_read_u64(ds);
         --size;
     }
 }
 
-int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const char *cmd, ...)
+int cmdread(hz_deserializer_t *ds, int c_struct_align, void *dataptr, const char *cmd, ...)
 {
     va_list va; va_start(va, cmd);
 
@@ -852,7 +851,7 @@ int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const ch
             }
             case 'b': {
                 ++curs;
-                hz_deserializer_read_block(self, (uint8_t *)mem, member_array_count);
+                hz_deserializer_read_block(ds, (uint8_t *)mem, member_array_count);
                 member_offset += member_array_count;
                 member_array_count = 1;
                 break;
@@ -860,8 +859,8 @@ int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const ch
 
             case 'w': {
                 ++curs;
-                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 2 * member_array_count : 1);
-                hz_deserializer_read_u16_block(self,
+                member_offset += align_forward(member_offset, c_struct_align ? 2 * member_array_count : 1);
+                hz_deserializer_read_u16_block(ds,
                             (uint16_t *)(mem + member_offset),
                             member_array_count);
                 member_offset += 2 * member_array_count;
@@ -871,8 +870,8 @@ int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const ch
 
             case 'd': {
                 ++curs;
-                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 4 * member_array_count : 1);
-                hz_deserializer_read_u32_block(self,
+                member_offset += align_forward(member_offset, c_struct_align ? 4 * member_array_count : 1);
+                hz_deserializer_read_u32_block(ds,
                             (uint32_t *)(mem + member_offset),
                             member_array_count);
                 member_offset += 4 * member_array_count;
@@ -882,8 +881,8 @@ int cmdread(hz_deserializer_t *self, int c_struct_align, void *dataptr, const ch
 
             case 'q': {
                 ++curs;
-                member_offset += compute_memory_alignment(member_offset, c_struct_align ? 8 * member_array_count : 1);
-                hz_deserializer_read_u64_block(self,
+                member_offset += align_forward(member_offset, c_struct_align ? 8 * member_array_count : 1);
+                hz_deserializer_read_u64_block(ds,
                             (uint64_t *)(mem + member_offset),
                             member_array_count);
                 member_offset += 8 * member_array_count;
@@ -2114,7 +2113,8 @@ struct hz_face_t {
 
     uint16_t upem;
 
-    hz_memory_pool_t memory_pool;
+    uint8_t *arenamem;
+    hz_memory_arena_t arena;
     hz_allocator_t allocator;
     hz_map_t *class_map;
     hz_map_t *attach_class_map;
@@ -2133,9 +2133,11 @@ hz_face_create()
     face->descender = 0;
     face->linegap = 0;
     face->upem = 0;
-    face->memory_pool = hz_memory_pool_create(500000);
-    face->allocator.allocfn = &hz_memory_pool_allocate_func;
-    face->allocator.user = &face->memory_pool;
+
+    face->arenamem = hz_malloc(500000);
+    hz_memory_arena_init(&face->arena, face->arenamem, 500000);
+    face->allocator.allocfn = &hz_memory_arena_alloc_fn;
+    face->allocator.user = &face->arena;
     face->class_map = hz_map_create();
     face->attach_class_map = hz_map_create();
     face->mark_glyph_set = NULL;
@@ -2147,7 +2149,7 @@ hz_face_destroy(hz_face_t *face)
 {
     hz_map_destroy(face->class_map);
     hz_map_destroy(face->attach_class_map);
-    hz_memory_pool_release(&face->memory_pool);
+    hz_memory_arena_release(&face->arena);
     hz_free(face);
 }
 
@@ -2224,6 +2226,7 @@ hz_face_load_class_maps(hz_face_t *face)
 {
     uint8_t arenamem[4096];
     hz_memory_arena_t arena = hz_memory_arena_create(arenamem, sizeof arenamem);
+
     if (face->gdef) {
         hz_deserializer_t ds = hz_deserializer_create(face->data, 1);
         hz_deserializer_push_state(&ds, face->gdef);
@@ -2318,7 +2321,7 @@ hz_face_load_class_maps(hz_face_t *face)
             if (format == 1) {
                 uint16_t mark_glyph_set_count = hz_deserializer_read_u16(&ds);
                 if (mark_glyph_set_count) {
-                    Offset32 *mark_glyph_set_offsets = hz_memory_arena_allocate(&arena, mark_glyph_set_count * sizeof(Offset32));
+                    Offset32 *mark_glyph_set_offsets = hz_memory_arena_alloc(&arena, mark_glyph_set_count * sizeof(Offset32));
                     hz_deserializer_read_u32_block(&ds, mark_glyph_set_offsets, mark_glyph_set_count);
 
                     face->mark_glyph_set = hz_allocate(&face->allocator, mark_glyph_set_count * sizeof(hz_coverage_t));
@@ -2643,7 +2646,7 @@ hz_ot_layout_choose_lang_sys(hz_face_t *face,
     const uint8_t *found_addr;
 
     script_count = Unpack16(&subtable);
-    script_records = hz_memory_arena_allocate(&la, sizeof(Record16) * script_count);
+    script_records = hz_memory_arena_alloc(&la, sizeof(Record16) * script_count);
 
     while (index < script_count) {
         hz_tag_t curr_tag;
@@ -2914,7 +2917,7 @@ hz_parse_sequence_rule_set(uint8_t *data, hz_sequence_rule_set_t *rule_set)
     hz_stream_t bs;
     uint8_t *rule_offsets;
 
-    rule_offsets = hz_memory_arena_allocate(&arena,
+    rule_offsets = hz_memory_arena_alloc(&arena,
                                    rule_set->rule_count * sizeof(uint16_t));
 
     bs = hz_stream_create(data, 0);
@@ -3003,7 +3006,7 @@ hz_ot_load_chained_sequence_context_format3_subtable(hz_allocator_t *alctr,
 
     // Read prefix glyph coverages
     table->prefix_count = hz_deserializer_read_u16(ds);
-    Offset16 *prefix_offsets = hz_memory_arena_allocate(&arena, table->prefix_count * sizeof(Offset16));
+    Offset16 *prefix_offsets = hz_memory_arena_alloc(&arena, table->prefix_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, prefix_offsets, table->prefix_count);
 
     table->prefix_coverages = hz_allocate(alctr, sizeof(hz_coverage_t) * table->prefix_count);
@@ -3018,7 +3021,7 @@ hz_ot_load_chained_sequence_context_format3_subtable(hz_allocator_t *alctr,
 
     // Read input glyph coverages
     table->input_count = hz_deserializer_read_u16(ds);
-    Offset16 *input_offsets = hz_memory_arena_allocate(&arena, table->input_count * sizeof(Offset16));
+    Offset16 *input_offsets = hz_memory_arena_alloc(&arena, table->input_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, input_offsets, table->input_count);
 
     table->input_coverages = hz_allocate(alctr, sizeof(hz_coverage_t) * table->input_count);
@@ -3033,7 +3036,7 @@ hz_ot_load_chained_sequence_context_format3_subtable(hz_allocator_t *alctr,
 
     // Read suffix glyph coverages
     table->suffix_count = hz_deserializer_read_u16(ds);
-    Offset16 *suffix_offsets = hz_memory_arena_allocate(&arena, table->suffix_count * sizeof(Offset16));
+    Offset16 *suffix_offsets = hz_memory_arena_alloc(&arena, table->suffix_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, suffix_offsets, table->suffix_count);
 
     table->suffix_coverages = hz_allocate(alctr, sizeof(hz_coverage_t) * table->suffix_count);
@@ -3087,7 +3090,7 @@ hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
     hz_read_coverage(buf->data + coverage_offset, subst->coverage, NULL);
 
     subst->prefix_count = Unpack16(buf);
-    prefix_coverage_offsets = hz_memory_arena_allocate(&arena, subst->prefix_count * sizeof(uint16_t));
+    prefix_coverage_offsets = hz_memory_arena_alloc(&arena, subst->prefix_count * sizeof(uint16_t));
     Unpackv(buf, "h:*", prefix_coverage_offsets, subst->prefix_count);
     subst->prefix_maps = hz_malloc(sizeof(hz_map_t *) * subst->prefix_count);
     for (i = 0; i < subst->prefix_count; ++i) {
@@ -3096,7 +3099,7 @@ hz_read_reverse_chain_single_subst_format1(hz_stream_t *buf,
     }
 
     subst->suffix_count = Unpack16(buf);
-    suffix_coverage_offsets = hz_memory_arena_allocate(&arena, subst->suffix_count * sizeof(uint16_t));
+    suffix_coverage_offsets = hz_memory_arena_alloc(&arena, subst->suffix_count * sizeof(uint16_t));
     Unpackv(buf, "h:*", suffix_coverage_offsets, subst->suffix_count);
     subst->suffix_maps = hz_malloc(sizeof(hz_map_t *) * subst->suffix_count);
     for (i = 0; i < subst->suffix_count; ++i) {
@@ -4091,7 +4094,8 @@ typedef struct {
     hz_gpos_table_t gpos_table;
     hz_shape_flags_t shape_flags;
     hz_deserializer_t *deserializer;
-    hz_memory_pool_t memory_pool;
+    uint8_t *arenamem;
+    hz_memory_arena_t arena;
     hz_allocator_t allocator;
 } hz_shape_plan_t;
 
@@ -4215,7 +4219,7 @@ hz_read_gsub_ligature_substitution_subtable(hz_allocator_t *alctr,
     subtable->ligature_set_count = hz_deserializer_read_u16(ds);
     subtable->ligature_sets = hz_allocate(alctr, sizeof(hz_ligature_set_table_t) * subtable->ligature_set_count);
 
-    Offset16 *ligature_set_offsets = hz_memory_arena_allocate(&arena, subtable->ligature_set_count * sizeof(Offset16));
+    Offset16 *ligature_set_offsets = hz_memory_arena_alloc(&arena, subtable->ligature_set_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, ligature_set_offsets, subtable->ligature_set_count);
 
     for (uint16_t i = 0; i < subtable->ligature_set_count; ++i) {
@@ -4225,7 +4229,7 @@ hz_read_gsub_ligature_substitution_subtable(hz_allocator_t *alctr,
         ligature_set->ligature_count = hz_deserializer_read_u16(ds);
         ligature_set->ligatures = hz_allocate(alctr, sizeof(hz_ligature_t) * ligature_set->ligature_count);
         
-        Offset16 *ligature_offsets = hz_memory_arena_allocate(&arena, ligature_set->ligature_count * sizeof(Offset16));
+        Offset16 *ligature_offsets = hz_memory_arena_alloc(&arena, ligature_set->ligature_count * sizeof(Offset16));
         hz_deserializer_read_u16_block(ds, ligature_offsets, ligature_set->ligature_count);
 
         for (uint16_t j = 0; j < ligature_set->ligature_count; ++j) {
@@ -4281,7 +4285,7 @@ hz_read_gsub_chained_contexts_substitution_subtable(hz_allocator_t *alctr,
 
             subtable->rule_set_count = hz_deserializer_read_u16(ds);
 
-            Offset16 *rule_set_offsets = hz_memory_arena_allocate(&arena, sizeof(Offset16) * subtable->rule_set_count);
+            Offset16 *rule_set_offsets = hz_memory_arena_alloc(&arena, sizeof(Offset16) * subtable->rule_set_count);
             hz_deserializer_read_u16_block(ds, rule_set_offsets, subtable->rule_set_count);
 
             subtable->rule_sets = hz_allocate(alctr, sizeof(*subtable->rule_sets) * subtable->rule_set_count);
@@ -4324,7 +4328,7 @@ hz_read_gsub_multiple_substitution_subtable(hz_allocator_t *alctr,
                                             uint16_t subtable_index,
                                             uint16_t format)
 {
-    uint8_t arenamem[4000];
+    uint8_t arenamem[1024];
     hz_memory_arena_t arena = hz_memory_arena_create(arenamem, sizeof arenamem);
 
     if (format != 1) {
@@ -4335,24 +4339,25 @@ hz_read_gsub_multiple_substitution_subtable(hz_allocator_t *alctr,
 
     subtable->format = format;
     Offset16 coverage_offset = hz_deserializer_read_u16(ds);
-    
+    subtable->sequence_count = hz_deserializer_read_u16(ds);
+
     hz_deserializer_push_state(ds, coverage_offset);
     hz_read_coverage(alctr, ds, &subtable->coverage);
     hz_deserializer_pop_state(ds);
 
-    subtable->sequence_count = hz_deserializer_read_u16(ds);
-
     subtable->sequences = hz_allocate(alctr, subtable->sequence_count * sizeof(hz_sequence_table_t));
-    Offset16 *sequence_offsets = hz_memory_arena_allocate(&arena, subtable->sequence_count * sizeof(Offset16));
+    Offset16 *sequence_offsets = hz_memory_arena_alloc(&arena, subtable->sequence_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, sequence_offsets, subtable->sequence_count);
 
     for (uint16_t i = 0 ; i < subtable->sequence_count; ++i) {
         hz_sequence_table_t *seq = &subtable->sequences[i];
-        hz_deserializer_push_state(ds, sequence_offsets[i]);
-        seq->glyph_count = hz_deserializer_read_u16(ds);
-        seq->glyphs = hz_allocate(alctr, seq->glyph_count * sizeof(uint16_t));
-        hz_deserializer_read_u16_block(ds, seq->glyphs, seq->glyph_count);
-        hz_deserializer_pop_state(ds);
+        if (sequence_offsets[i]) {
+            hz_deserializer_push_state(ds, sequence_offsets[i]);
+            seq->glyph_count = hz_deserializer_read_u16(ds);
+            seq->glyphs = hz_allocate(alctr, seq->glyph_count * sizeof(uint16_t));
+            hz_deserializer_read_u16_block(ds, seq->glyphs, seq->glyph_count);
+            hz_deserializer_pop_state(ds);
+        }
     }
 
     lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
@@ -5079,7 +5084,7 @@ HZ_STATIC hz_error_t hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
         hz_deserializer_push_state(&ds, hdr.lookup_list_offset);
         gsub_table->num_lookups = hz_deserializer_read_u16(&ds);
         gsub_table->lookups = hz_allocate(&plan->allocator, sizeof(hz_lookup_table_t) * gsub_table->num_lookups);
-        Offset16* offsets = hz_memory_arena_allocate(&arena, sizeof(Offset16) * gsub_table->num_lookups);
+        Offset16* offsets = hz_memory_arena_alloc(&arena, sizeof(Offset16) * gsub_table->num_lookups);
         hz_deserializer_read_u16_block(&ds, offsets, gsub_table->num_lookups);
 
         for (uint16_t i = 0; i < gsub_table->num_lookups; ++i) {
@@ -5193,9 +5198,12 @@ hz_shape_plan_create(hz_font_t *font,
     plan->script = seg->script;
     plan->language = seg->language;
     plan->shape_flags = flags;
-    plan->memory_pool = hz_memory_pool_create(500000);
-    plan->allocator.allocfn = &hz_memory_pool_allocate_func;
-    plan->allocator.user = &plan->memory_pool;
+    
+    plan->arenamem = hz_malloc(500000);
+    hz_memory_arena_init(&plan->arena, plan->arenamem, 500000);
+
+    plan->allocator.allocfn = &hz_memory_arena_alloc_fn;
+    plan->allocator.user = &plan->arena;
 
     plan->features = NULL;
     plan->num_features = 0;
@@ -5661,13 +5669,14 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                         // to load component glyphs. This could be possibly optimized later with
                                                         // SSE/AVX2 (gather,cmp,shuffle)
                                                         hz_memory_arena_reset(&arena);
-                                                        hz_index_t *block = hz_memory_arena_allocate(&arena, (component_count - 1) * 2);
+                                                        hz_index_t *block = hz_memory_arena_alloc(&arena, (component_count - 1) * 2);
                                                         
                                                         for (uint16_t k = 0; k < component_count-1; ++k) {
                                                             block[k] = b1->glyph_indices[range_list->unignored_indices[s1 + k + 1]];
                                                         }
 
                                                         test = !memcmp(ligature->component_glyph_ids, block, (component_count-1)*2);
+
                                                     }
 
                                                     if (test) {
@@ -5748,8 +5757,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     if (u1 >= 0 && u2 <= hz_vector_size(range_list->unignored_indices) - 1 && u2 >= u1) {
                                                         int context_len = (u2-u1)+1;
-                                                        uint16_t *sequence = hz_memory_arena_allocate(&arena, context_len * 2);
-                                                        uint16_t *context = hz_memory_arena_allocate(&arena, context_len * 2);
+                                                        uint16_t *sequence = hz_memory_arena_alloc(&arena, context_len * 2);
+                                                        uint16_t *context = hz_memory_arena_alloc(&arena, context_len * 2);
                                                         {
                                                             // load sequence
                                                             for (int k = 0; k < context_len; ++k) {
@@ -6402,8 +6411,8 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
 
                                                     if (u1 >= 0 && u2 <= hz_vector_size(rangeList->unignored_indices) - 1 && u2 >= u1) {
                                                         int context_len = (u2-u1)+1;
-                                                        uint16_t *sequence = hz_memory_arena_allocate(&arena, context_len * 2);
-                                                        uint16_t *context = hz_memory_arena_allocate(&arena, context_len * 2);
+                                                        uint16_t *sequence = hz_memory_arena_alloc(&arena, context_len * 2);
+                                                        uint16_t *context = hz_memory_arena_alloc(&arena, context_len * 2);
                                                         {
                                                             // load sequence
                                                             for (int k = 0; k < context_len; ++k) {
@@ -6766,7 +6775,8 @@ hz_shape_plan_apply_gpos_features(hz_shape_plan_t *plan, hz_segment_t *seg)
 HZ_STATIC void
 hz_shape_plan_destroy(hz_shape_plan_t *plan)
 {
-    hz_memory_pool_release(&plan->memory_pool);
+    hz_memory_arena_release(&plan->arena);
+    hz_free(plan->arenamem);
     hz_free(plan);
 }
 
@@ -6798,10 +6808,10 @@ hz_shape(hz_font_t *font,
          hz_shape_flags_t flags)
 {
     hz_shape_plan_t *plan = hz_shape_plan_create(font, seg, features, num_features, flags);
+    printf("arena size: %d\n", plan->arena.size);
     hz_shape_plan_execute(plan, seg);
     hz_shape_plan_destroy(plan);
 }
-
 
 HZ_STATIC const HzLanguageMap *
 hz_get_language_map(hz_language_t lang) {

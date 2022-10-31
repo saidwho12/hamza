@@ -134,6 +134,8 @@
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_TAG_NONE ((hz_tag_t)0)
 
+#define HZ_IGNORE_ARG(x) (void)(x)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -452,14 +454,15 @@ hz_shape_arabic_presentation_form_b(hz_font_t *font, hz_segment_t *seg);
 // set a custom generic allocator function to override malloc and free use within Hamza.
 typedef enum {
     HZ_CMD_ALLOC,
-    HZ_CMD_DEALLOC,
+    HZ_CMD_FREE,
     HZ_CMD_REALLOC,
+    HZ_CMD_RESET,
     HZ_CMD_RELEASE
-} hz_allocation_cmd_t;
+} hz_allocator_cmd_t;
 
 // if align argument is 0, then the allocator should try and align the data optimally
 // in the way it sees best fit the block size.
-typedef void* (*hz_allocator_fn_t)(void *user, hz_allocation_cmd_t cmd, void *ptr, size_t size, size_t alignment);
+typedef void* (*hz_allocator_fn_t)(void *user, hz_allocator_cmd_t cmd, void *ptr, size_t size, size_t align);
 
 typedef struct {
     hz_allocator_fn_t allocfn;

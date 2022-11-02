@@ -10,8 +10,6 @@ Later, with much research and work I have only developed more fascination with t
 * The goal is a non-pessimized, small and simple shaping library that can easily be included into any existing project.    
 * The intent is to optimize lookup application slow paths using SIMD + multi-threading while keeping the code as simple and clear as possible.  Many think that shaping is a linear process and very difficult to multi-thread, this couldn't be further from the truth. GSUB table single substitution as an example is a perfect use-case for multi-threading, Unicode parsing can be vectorized and ligature matching can be optimized with SSE.
 * Support for ASCII, Latin1, UTF-8, UTF-16, UTF-32, UCS2 and Johab encodings.
-* For the renderer; an efficient MSDF dynamic cache on GPU using compute.
-* Ability to render semi-transparent cursive text, soft shadows as well as proper outlining.
 
 ## Features
 - [x] Joining script support and RTL writing

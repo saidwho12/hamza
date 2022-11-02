@@ -421,7 +421,7 @@ void *hz_stack_alloc_align(hz_stack_allocator_t *stack, size_t size, size_t alig
 
     uintptr_t ptr = (uintptr_t)(stack->mem + stack->pos);
     size_t hdr_size = sizeof(hz_stack_allocator_header_t);
-    size_t padd = hdr_size;// + align_forward(hdr_size + ptr, align);
+    size_t padd = hdr_size + align_forward(hdr_size + ptr, align);
 
     uintptr_t start = stack->pos + padd, end = start + size;
 
@@ -724,7 +724,7 @@ typedef struct {
     int bswap_required;
     size_t start;
     size_t offset;
-    uint8_t stackmem[4000];
+    uint8_t stackmem[2000];
     hz_stack_allocator_t stack;
     hz_deserializer_state_t *curr_state;
 } hz_deserializer_t;
@@ -754,7 +754,6 @@ void hz_deserializer_push_state(hz_deserializer_t *ds, uint32_t jump)
     ds->curr_state = hz_stack_alloc(&ds->stack, sizeof(hz_deserializer_state_t));
     ds->curr_state->jump = jump;
     ds->curr_state->prev_offset = ds->offset;
-
     ds->start += jump;
     ds->offset = 0;
 }
@@ -6792,7 +6791,8 @@ hz_shape_plan_execute(hz_shape_plan_t *plan, hz_segment_t *seg)
         hz_shape_plan_apply_gsub_features(plan, seg);
         hz_segment_setup_metrics(seg,face);
         // hz_shape_plan_apply_gpos_features(plan, seg);
-        // hz_buffer_compute_info(seg->in, face);
+
+        hz_buffer_compute_info(seg->in, face);
 
         if (seg->direction == HZ_DIRECTION_RTL || seg->direction == HZ_DIRECTION_BTT) {
             hz_buffer_flip_direction(seg->in);

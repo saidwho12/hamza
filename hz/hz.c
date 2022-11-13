@@ -11,14 +11,13 @@
 
 #define KIB 1024
 
-
 #define UTF_FAILED (-1)
 #define UTF_END_OF_BUFFER (-2)
 #define UTF_OK 1
 
 // Configuration macros
 #define HZ_RELY_ON_UNSAFE_CMAP_CONSTANTS HZ_TRUE
-#define HZ_CONFIG_USE_SIMD HZ_FALSE
+#define HZ_ENABLE_SIMD 0
 #define HZ_USE_ISO639_1_2002_TAGS HZ_FALSE
 
 // Max depth of nested OpenType lookups
@@ -28,12 +27,16 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 #if HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
+#define hz_unreachable() __builtin_unreachable()
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #else
+#define hz_unreachable() __assume(0)
 #define likely(x) (x)
 #define unlikely(x) (x)
 #endif
+
+
 
 typedef int16_t hz_segment_sz_t;
 
@@ -167,6 +170,40 @@ typedef uint16_t F2DOT14, FWORD, UFWORD;
 #define QUIT_MSG(msg) { ERROR_MSG(msg); exit(-1); }
 #define ASSERT_MSG(cond, msg) assert((cond) && message)
 
+typedef enum {
+    HZ_LOG_INFO,
+    HZ_LOG_DEBUG,
+    HZ_LOG_WARNING,
+    HZ_LOG_ERROR,
+    HZ_LOG_FATAL
+} hz_severity_t;
+
+static FILE *_logfile = NULL;
+
+void hz_flog(hz_severity_t severity, const char *filename, const char *func, int linenum, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap,fmt);
+    FILE *output = stdout;
+    if (_logfile != NULL) {
+        output = _logfile;
+    }
+    const char *severity_titles[] = { "INFO", "DEBUG", "WARNING", "ERROR", "FATAL ERROR"};
+    fprintf(output, "[%s][%s:%d <%s>] ",severity_titles[severity], filename, linenum, func);
+    vfprintf(output, fmt, ap);
+    fflush(output);
+
+    va_end(ap);
+}
+
+#ifdef HZ_DEBUG_LOGGING
+#define hz_logf(Severity, ...) hz_flog(Severity, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define hz_logln(Severity,Msg) hz_flog(Severity,__FILE__, __FUNCTION__, __LINE__,"%s\n",Msg)
+#else
+#define hz_logf(Severity, ...) 
+#define hz_logln(Severity,Msg)
+#endif
+
 void *hz_allocate(hz_allocator_t *alctr, size_t size)
 {
     return alctr->allocfn(alctr->user, HZ_CMD_ALLOC, NULL, size, DEFAULT_ALIGNMENT);
@@ -298,8 +335,7 @@ fastlog2l(uint64_t n)
     #endif
 }
 
-uint64_t clzll(uint64_t x)
-{
+uint64_t clzll(uint64_t x) {
     uint64_t r = 0;
     while (!(x & ((uint64_t)1 << (uint64_t)63))) {
         x <<= 1;
@@ -309,8 +345,7 @@ uint64_t clzll(uint64_t x)
     return r;
 }
 
-int is_power_of_two(uint64_t val)
-{
+int is_power_of_two(uint64_t val) {
     return ~(val & (val-1));
 }
 
@@ -344,11 +379,11 @@ void *hz_memory_arena_alloc_aligned(hz_memory_arena_t *arena, size_t size, size_
 {
     HZ_ASSERT(align > 0);
     HZ_ASSERT(is_power_of_two(align));
-    uintptr_t ptr = (uintptr_t)(arena->mem + arena->pos);
-    uintptr_t padd = align_forward(ptr, align);
+    uint64_t ptr = (uint64_t)(arena->mem + arena->pos);
+    uint64_t padd = align_forward(ptr, align);
 
     // do we have enough memory for this allocation?
-    uintptr_t start = arena->pos + padd, end = start + size;
+    uint64_t start = arena->pos + padd, end = start + size;
     if (end > arena->size) {
         return NULL;
     }
@@ -364,8 +399,7 @@ void *hz_memory_arena_alloc(hz_memory_arena_t *arena, size_t size)
 
 void hz_memory_arena_release(hz_memory_arena_t *arena) {}
 
-void hz_memory_arena_reset(hz_memory_arena_t *arena)
-{
+void hz_memory_arena_reset(hz_memory_arena_t *arena) {
     arena->pos = 0;
 }
 
@@ -397,8 +431,8 @@ typedef struct {
 } hz_stack_allocator_t;
 
 typedef struct {
+    uint32_t prev_size;
     uint8_t padding;
-    size_t prev_size;
 } hz_stack_allocator_header_t;
 
 hz_stack_allocator_t hz_stack_create(uint8_t *mem, size_t size)
@@ -414,20 +448,17 @@ void hz_stack_init(hz_stack_allocator_t *stack, uint8_t *mem, size_t size)
     stack->last_alloc_size = 0;
 }
 
-void *hz_stack_alloc_align(hz_stack_allocator_t *stack, size_t size, size_t align)
-{
+void *hz_stack_alloc_align(hz_stack_allocator_t *stack, size_t size, size_t align) {
     HZ_ASSERT(align > 0);
     HZ_ASSERT(is_power_of_two(align));
 
     uintptr_t ptr = (uintptr_t)(stack->mem + stack->pos);
     size_t hdr_size = sizeof(hz_stack_allocator_header_t);
     size_t padd = hdr_size + align_forward(hdr_size + ptr, align);
-
     uintptr_t start = stack->pos + padd, end = start + size;
 
-    if (end > stack->size) { // out of memory error
-        return NULL;
-    }
+    if (end > stack->size)
+        return NULL; // out of memory error
 
     hz_stack_allocator_header_t *hdr = (hz_stack_allocator_header_t *)(stack->mem + start) - 1;
     hdr->padding = padd;
@@ -439,13 +470,11 @@ void *hz_stack_alloc_align(hz_stack_allocator_t *stack, size_t size, size_t alig
     return stack->mem + start;
 }
 
-void *hz_stack_alloc(hz_stack_allocator_t *stack, size_t size)
-{
+void *hz_stack_alloc(hz_stack_allocator_t *stack, size_t size) {
     return hz_stack_alloc_align(stack, size, DEFAULT_ALIGNMENT);
 }
 
-void *hz_stack_free(hz_stack_allocator_t *stack, void *ptr)
-{
+void *hz_stack_free(hz_stack_allocator_t *stack, void *ptr) {
     if (!ptr) return NULL;
 
     uintptr_t start = (uintptr_t)stack->mem, end = (uintptr_t)(start + stack->size);
@@ -459,15 +488,13 @@ void *hz_stack_free(hz_stack_allocator_t *stack, void *ptr)
     stack->pos = prev_pos;
     stack->last_alloc_size = hdr->prev_size;
 
-    if (hdr->prev_size) {
+    if (hdr->prev_size)
         return (stack->mem + stack->pos) - hdr->prev_size;
-    }
 
     return NULL;
 }
 
-void hz_stack_reset(hz_stack_allocator_t *stack)
-{
+void hz_stack_reset(hz_stack_allocator_t *stack) {
     stack->pos = 0;
     stack->last_alloc_size = 0;
 }
@@ -720,8 +747,7 @@ typedef struct { uint32_t jump, prev_offset; } hz_deserializer_state_t;
 
 typedef struct {
     const uint8_t *mem;
-    int network_order;
-    int bswap_required;
+    int nw, swapbytes;
     size_t start;
     size_t offset;
     uint8_t stackmem[2000];
@@ -729,12 +755,12 @@ typedef struct {
     hz_deserializer_state_t *curr_state;
 } hz_deserializer_t;
 
-hz_deserializer_t hz_deserializer_create(const uint8_t *mem, int network_order)
+hz_deserializer_t hz_deserializer_create(const uint8_t *mem, int nw)
 {
     hz_deserializer_t ds;
     ds.mem = mem;
-    ds.network_order = network_order;
-    ds.bswap_required = (network_order && check_cpu_le()) || (!network_order && !check_cpu_le());
+    ds.nw = nw;
+    ds.swapbytes = (nw && check_cpu_le()) || (!nw && !check_cpu_le());
     ds.curr_state = NULL;
     ds.offset = 0;
     ds.start = 0;
@@ -779,21 +805,21 @@ uint16_t hz_deserializer_read_u16(hz_deserializer_t *ds)
 {
     uint16_t v = *(uint16_t *)hz_deserializer_at_cursor(ds);
     hz_deserializer_advance(ds, 2);   
-    return ds->bswap_required ? bswap16(v) : v;
+    return ds->swapbytes ? bswap16(v) : v;
 }
 
 uint32_t hz_deserializer_read_u32(hz_deserializer_t *ds)
 {
     uint32_t v = *(uint32_t *)hz_deserializer_at_cursor(ds);
     hz_deserializer_advance(ds, 4);
-    return ds->bswap_required ? bswap32(v) : v;
+    return ds->swapbytes ? bswap32(v) : v;
 }
 
 uint64_t hz_deserializer_read_u64(hz_deserializer_t *ds)
 {
     uint64_t v = *(uint64_t *)hz_deserializer_at_cursor(ds);
     hz_deserializer_advance(ds, 8);
-    return ds->bswap_required ? bswap64(v) : v;
+    return ds->swapbytes ? bswap64(v) : v;
 }
 
 void hz_deserializer_read_block(hz_deserializer_t *ds, uint8_t *write_addr, size_t size)
@@ -1465,14 +1491,14 @@ HZ_STATIC hz_mph_map_t *hz_mph_map_create(hz_map_t *from)
     return map;
 }
 
-typedef struct hz_optimized_lib_t {
+typedef struct {
     hz_mph_map_t *arabic_joining;
-} hz_optimized_lib_t;
+} hz_oz_lib_t;
 
-static int oz_lib_initialized = 0;
-static hz_optimized_lib_t oz_lib;
+static int _oz_lib_initialized = 0;
+static hz_oz_lib_t _oz_lib;
 
-void hz_optimize(void)
+void hz_build_luts(void)
 {
     {
         hz_map_t *arabic_joining_tmp = hz_map_create();
@@ -1481,12 +1507,12 @@ void hz_optimize(void)
                              hz_arabic_joining_list[i].joining);
         }
 
-        oz_lib.arabic_joining = hz_mph_map_create(arabic_joining_tmp);
+        _oz_lib.arabic_joining = hz_mph_map_create(arabic_joining_tmp);
 
         hz_map_destroy(arabic_joining_tmp);
     }
 
-    oz_lib_initialized = 1;
+    _oz_lib_initialized = 1;
 }
 
 typedef struct hz_glyph_position_t {
@@ -1636,7 +1662,7 @@ void hz_buffer_clear(hz_buffer_t *buffer)
     hz_buffer_clear_attribs(buffer, buffer->attrib_flags);
 }
 
-typedef struct hz_glyph_object_t {
+typedef struct {
     hz_glyph_metrics_t metrics; // 16 bytes
     hz_unicode_t codepoint; // 4 bytes
     hz_index_t id; // 2 bytes
@@ -1962,8 +1988,8 @@ HZ_STATIC hz_bool_t
 hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
                                      uint16_t *joining)
 {
-    if (oz_lib_initialized) {
-        hz_mph_map_t *lut = oz_lib.arabic_joining;
+    if (_oz_lib_initialized) {
+        hz_mph_map_t *lut = _oz_lib.arabic_joining;
         uint32_t key = codepoint;
 
         uint32_t h1 = HashUInt32(0,key) % lut->N;
@@ -2000,97 +2026,177 @@ hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint,
 typedef struct {
     uint16_t start_glyph_id;
     uint16_t end_glyph_id;
-    uint16_t start_coverage_index;
+    union {
+        uint16_t start_coverage_index;
+        uint16_t glyph_class;
+    }; 
 } hz_coverage_range_t;
 
 typedef struct {
     union {
-        uint16_t* glyph_indices;
+        uint16_t* values;
         hz_coverage_range_t* ranges;
     };
 
-    uint16_t count;
     uint16_t format;
+    uint16_t count;
 } hz_coverage_t;
 
-static inline void
+typedef struct {
+    union {
+        uint16_t* values;
+        hz_coverage_range_t* ranges;
+    };
+    uint16_t start_glyph_id;
+    uint16_t count;
+    uint16_t format;
+} hz_class_def_t;
+
+HZ_STATIC void
 hz_read_coverage(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_coverage_t *cov)
 {
     cov->format = hz_deserializer_read_u16(ds);
+    cov->count = 0;
+    cov->values = NULL;
 
-    if (cov->format == 1) {
+    switch (cov->format) {
+        default: break;
+        case 1:
         cov->count = hz_deserializer_read_u16(ds);
-        cov->glyph_indices = hz_allocate(alctr, cov->count * sizeof(uint16_t));
-        hz_deserializer_read_u16_block(ds, cov->glyph_indices, cov->count);
-    } else if (cov->format == 2) {
+        cov->values = hz_allocate(alctr, cov->count * sizeof(uint16_t));
+        hz_deserializer_read_u16_block(ds, cov->values, cov->count);
+        break;
+        case 2:
         cov->count = hz_deserializer_read_u16(ds);
         cov->ranges = hz_allocate(alctr, cov->count * sizeof(hz_coverage_range_t));
         hz_deserializer_read_u16_block(ds, (uint16_t*) cov->ranges, cov->count * 3);
-    } else {
-        // error
-        cov->count = 0;
-        cov->glyph_indices = NULL;
+        break;
     }
 }
 
-static inline int32_t
+HZ_FORCEINLINE int32_t hz_coverage_scalar_search(uint16_t *array, uint16_t size, uint16_t val)
+{
+    int32_t low = 0, high = size-1, mid = (low+high)/2;
+
+    if (val < array[low] || val > array[high]) {
+        // error, glyph not found within coverage
+        return -1;
+    }
+
+    // binary search
+    while (high >= low) {
+        if (val < array[mid]) {
+            high = mid-1;
+        } else if (val > array[mid]) {
+            low = mid+1;
+        } else {
+            return mid;
+        }
+
+        mid = (low+high)/2;
+    }
+
+    return -1;
+}
+
+HZ_FORCEINLINE int32_t hz_coverage_range_search(hz_coverage_range_t *ranges, uint16_t size, uint16_t val)
+{
+    int32_t low = 0, high = size-1, mid = (low+high)/2;
+    hz_coverage_range_t *low_range = &ranges[low];
+    hz_coverage_range_t *high_range = &ranges[high];
+    hz_coverage_range_t *mid_range = &ranges[mid];
+
+    if (val < low_range->start_glyph_id || val > high_range->end_glyph_id) {
+        // early return as glyph cannot possibly be in this coverage.
+        return -1;
+    }
+
+    while (high >= low) {
+        low_range = &ranges[low];
+        high_range = &ranges[high];
+        mid_range = &ranges[mid];
+
+        if (val < mid_range->start_glyph_id) {
+            high = mid-1;
+        } else if (val > mid_range->end_glyph_id) {
+            low = mid+1;
+        } else {
+            return mid;
+        }
+
+        mid = (low+high)/2;
+    }
+
+    return -1;
+}
+
+HZ_FORCEINLINE int32_t
 hz_coverage_search(const hz_coverage_t *coverage, uint16_t glyph_id)
 {
-    if (coverage->format == 1) {
-        int32_t low = 0, high = coverage->count-1, mid = (low+high)/2;
-
-        if (glyph_id < coverage->glyph_indices[low] || glyph_id > coverage->glyph_indices[high]) {
-            // error, glyph not found within coverage
-            return -1;
+    switch (coverage->format) {
+        default: break;
+        case 1:
+        return hz_coverage_scalar_search(coverage->values, coverage->count, glyph_id);
+        case 2:
+        int32_t index = hz_coverage_range_search(coverage->ranges, coverage->count, glyph_id);
+        if (index != -1) {
+            hz_coverage_range_t const *range = &coverage->ranges[index];
+            index = range->start_coverage_index + glyph_id - range->start_glyph_id;
         }
+        return index;
+    }
+}
 
-        // binary search
-        while (high >= low) {
-            if (glyph_id < coverage->glyph_indices[mid]) {
-                high = mid-1;
-            } else if (glyph_id > coverage->glyph_indices[mid]) {
-                low = mid+1;
-            } else {
-                return mid;
+#define hz_coverage_contains(c,g) (hz_coverage_search(c,g) != -1)
+
+HZ_FORCEINLINE int32_t hz_class_def_search(hz_class_def_t *class_def, uint16_t glyph_id) {
+    switch (class_def->format) {
+        default: break;
+        case 1: {
+            if (glyph_id >= class_def->start_glyph_id && glyph_id < class_def->start_glyph_id + class_def->count)
+                return class_def->values[glyph_id - class_def->start_glyph_id];
+            
+            break;
+        }
+        
+        case 2: {
+            int32_t index = hz_coverage_range_search(class_def->ranges, class_def->count, glyph_id);
+            if (index != -1) {
+                const hz_coverage_range_t *range = &class_def->ranges[index];
+                return range->glyph_class;
             }
-
-            mid = (low+high)/2;
-        }
-    } else if (coverage->format == 2) {
-        // Same as format 1, except binary search through the ranges which should be ordered
-        // sequentially when read.
-        int32_t low = 0, high = coverage->count-1, mid = (low+high)/2;
-        hz_coverage_range_t *low_range = &coverage->ranges[low];
-        hz_coverage_range_t *high_range = &coverage->ranges[high];
-        hz_coverage_range_t *mid_range = &coverage->ranges[mid];
-
-        if (glyph_id < low_range->start_glyph_id || glyph_id > high_range->end_glyph_id) {
-            // early return as glyph cannot possibly be in this coverage.
-            return -1;
-        }
-
-        while (high >= low) {
-            low_range = &coverage->ranges[low];
-            high_range = &coverage->ranges[high];
-            mid_range = &coverage->ranges[mid];
-
-            if (glyph_id < mid_range->start_glyph_id) {
-                high = mid-1;
-            } else if (glyph_id > mid_range->end_glyph_id) {
-                low = mid+1;
-            } else {
-                // found the glyph range, compute coverage index
-                return mid_range->start_coverage_index + glyph_id - mid_range->start_glyph_id;
-            }
-
-            mid = (low+high)/2;
+            
+            break;
         }
     }
 
     return -1;
 }
 
-#define hz_coverage_contains(c,g) (hz_coverage_search(c,g) != -1)
+#define hz_class_def_contains(c,g) (hz_class_def_search(c,g) != -1)
+
+HZ_STATIC hz_error_t hz_read_class_def_table(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_class_def_t *class_def) {
+    class_def->format = hz_deserializer_read_u16(ds);
+    switch (class_def->format) {
+        default: break;
+        case 1: {
+            class_def->start_glyph_id = hz_deserializer_read_u16(ds);
+            class_def->count = hz_deserializer_read_u16(ds);
+            class_def->values = hz_allocate(alctr, class_def->count * sizeof(uint16_t));
+            hz_deserializer_read_u16_block(ds, class_def->values, class_def->count);
+            break;
+        }
+
+        case 2: {
+            class_def->count = hz_deserializer_read_u16(ds);
+            class_def->ranges = hz_allocate(alctr, class_def->count * sizeof(hz_coverage_range_t));
+            hz_deserializer_read_u16_block(ds, (uint16_t*)class_def->ranges, 3*class_def->count);
+            break;
+        }
+    }
+
+    return HZ_OK;
+}
 
 typedef enum hz_joining_dir_t {
     JOINING_NEXT,
@@ -2115,8 +2221,8 @@ struct hz_face_t {
     uint8_t *arenamem;
     hz_memory_arena_t arena;
     hz_allocator_t allocator;
-    hz_map_t *class_map;
-    hz_map_t *attach_class_map;
+    hz_class_def_t class_def;
+    hz_class_def_t attach_class_def;
     hz_coverage_t *mark_glyph_set;
 };
 
@@ -2137,8 +2243,6 @@ hz_face_create()
     hz_memory_arena_init(&face->arena, face->arenamem, 500000);
     face->allocator.allocfn = &hz_memory_arena_alloc_fn;
     face->allocator.user = &face->arena;
-    face->class_map = hz_map_create();
-    face->attach_class_map = hz_map_create();
     face->mark_glyph_set = NULL;
     return face;
 }
@@ -2146,8 +2250,6 @@ hz_face_create()
 void
 hz_face_destroy(hz_face_t *face)
 {
-    hz_map_destroy(face->class_map);
-    hz_map_destroy(face->attach_class_map);
     hz_memory_arena_release(&face->arena);
     hz_free(face);
 }
@@ -2223,7 +2325,7 @@ hz_face_load_num_glyphs(hz_face_t *face)
 void
 hz_face_load_class_maps(hz_face_t *face)
 {
-    uint8_t arenamem[4096];
+    uint8_t arenamem[8000];
     hz_memory_arena_t arena = hz_memory_arena_create(arenamem, sizeof arenamem);
 
     if (face->gdef) {
@@ -2255,62 +2357,13 @@ hz_face_load_class_maps(hz_face_t *face)
         if (hdr.glyph_class_def_offset) {
             // glyph class def isn't nil
             hz_deserializer_push_state(&ds, hdr.glyph_class_def_offset);
-            uint16_t class_format = hz_deserializer_read_u16(&ds);
-            switch (class_format) {
-                case 1:
-                    break;
-                case 2: {
-                    uint16_t range_index = 0, class_range_count;
-                    class_range_count = hz_deserializer_read_u16(&ds);
-
-                    while (range_index < class_range_count) {
-                        struct {
-                            uint16_t start_glyph_id, end_glyph_id, glyph_class;
-                        } range;
-
-                        cmdread(&ds, 1, &range, "www");
-
-                        hz_map_set_value_for_keys(face->class_map,
-                                                  range.start_glyph_id,
-                                                  range.end_glyph_id, 1 << (range.glyph_class - 1));
-                        ++range_index;
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
+            hz_read_class_def_table(&face->allocator, &ds, &face->class_def);
             hz_deserializer_pop_state(&ds);
         }
 
         if (hdr.mark_attach_class_def_offset) {
             hz_deserializer_push_state(&ds, hdr.mark_attach_class_def_offset);
-            uint16_t class_format;
-            class_format = hz_deserializer_read_u16(&ds);
-            switch (class_format) {
-                case 1:
-                    break;
-                case 2: {
-                    uint16_t range_index = 0, class_range_count;
-                    class_range_count = hz_deserializer_read_u16(&ds);
-
-                    while (range_index < class_range_count) {
-                        struct {
-                            uint16_t start_glyph_id, end_glyph_id, glyph_class;
-                        } range;
-
-                        cmdread(&ds, 1, &range, "hhh");
-
-                        hz_map_set_value_for_keys(face->attach_class_map,
-                                                  range.start_glyph_id,
-                                                  range.end_glyph_id, 1 << (range.glyph_class - 1));
-                        ++range_index;
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
+            hz_read_class_def_table(&face->allocator, &ds, &face->attach_class_def);
             hz_deserializer_pop_state(&ds);
         }
 
@@ -2396,9 +2449,9 @@ hz_face_load_kerning_pairs(hz_face_t *face)
 hz_glyph_class_t
 hz_face_get_glyph_class(hz_face_t *face, hz_index_t id)
 {
-    /* TODO: This is slow, implement faster hash table */
-    if (hz_map_contains(face->class_map, id)) {
-        return hz_map_get_value(face->class_map, id);
+    int32_t index;
+    if ((index = hz_class_def_search(&face->class_def, id)) != -1) {
+        return 1 << (index-1);
     }
 
     return HZ_GLYPH_CLASS_BASE;
@@ -2406,8 +2459,9 @@ hz_face_get_glyph_class(hz_face_t *face, hz_index_t id)
 
 uint8_t
 hz_face_get_glyph_attach_class(hz_face_t *face, hz_index_t id) {
-    if (hz_map_contains(face->attach_class_map, id)) {
-        return hz_map_get_value(face->attach_class_map, id);
+    int32_t index;
+    if ((index = hz_class_def_search(&face->attach_class_def, id)) != -1) {
+        return index;
     }
 
     return 0;
@@ -2724,41 +2778,41 @@ typedef struct {
 
 
 static void
-hz_read_value_record(hz_stream_t *stream, hz_value_record_t *record, uint16_t valueFormat) {
+hz_read_value_record(hz_deserializer_t *ds, hz_value_record_t *record, uint16_t valueFormat) {
 
     if (valueFormat & HZ_VALUE_FORMAT_X_PLACEMENT)
-        record->xPlacement = (int16_t) Unpack16(stream);
+        record->xPlacement = (int16_t) hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_Y_PLACEMENT)
-        record->yPlacement = (int16_t) Unpack16(stream);
+        record->yPlacement = (int16_t) hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_X_ADVANCE)
-        record->xAdvance = (int16_t) Unpack16(stream);
+        record->xAdvance = (int16_t) hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_Y_ADVANCE)
-        record->yAdvance  = (int16_t) Unpack16(stream);
+        record->yAdvance  = (int16_t) hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_X_PLACEMENT_DEVICE)
-        record->xPlaDeviceOffset = Unpack16(stream);
+        record->xPlaDeviceOffset = hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_Y_PLACEMENT_DEVICE)
-        record->yPlaDeviceOffset = Unpack16(stream);
+        record->yPlaDeviceOffset = hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_X_ADVANCE_DEVICE)
-        record->xAdvDeviceOffset = Unpack16(stream);
+        record->xAdvDeviceOffset = hz_deserializer_read_u16(ds);
 
     if (valueFormat & HZ_VALUE_FORMAT_Y_ADVANCE_DEVICE)
-        record->yAdvDeviceOffset = Unpack16(stream);
+        record->yAdvDeviceOffset = hz_deserializer_read_u16(ds);
 }
 
 typedef struct hz_ot_single_pos_format1_table_t {
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format;
     hz_value_record_t value_record;
 } hz_ot_single_pos_format1_table_t;
 
 typedef struct hz_ot_single_pos_format2_table_t {
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format;
     uint16_t value_count;
     hz_value_record_t *value_records;
@@ -2804,7 +2858,7 @@ typedef struct {
 
 typedef struct {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format1;
     uint16_t value_format2;
     uint16_t pair_set_count;
@@ -2813,58 +2867,15 @@ typedef struct {
 
 typedef struct {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format1;
     uint16_t value_format2;
-    hz_map_t *class_def1;
-    hz_map_t *class_def2;
+    hz_class_def_t class_def1;
+    hz_class_def_t class_def2;
     uint16_t class1_count;
     uint16_t class2_count;
     hz_class1_record_t *class1_records;
 } hz_pair_pos_format2_subtable_t;
-
-void
-hz_ot_read_single_pos_format1_table(hz_stream_t *stream, hz_ot_single_pos_format1_table_t *table) {
-    Offset16 coverage_offset = Unpack16(stream);
-    table->coverage = hz_map_create();
-    table->value_format = Unpack16(stream);
-
-    hz_read_coverage(stream->data + coverage_offset,
-                     table->coverage,
-                     NULL);
-
-    hz_read_value_record(stream, &table->value_record, table->value_format);
-}
-
-void
-hz_ot_free_single_pos_format1_table(hz_ot_single_pos_format1_table_t *table) {
-    hz_map_destroy(table->coverage);
-}
-
-void
-hz_ot_read_single_pos_format2_table(hz_stream_t *stream, hz_ot_single_pos_format2_table_t *table) {
-    uint16_t i;
-    Offset16 coverage_offset = Unpack16(stream);
-    table->value_format = Unpack16(stream);
-    table->value_count = Unpack16(stream);
-    table->coverage = hz_map_create();
-
-    hz_read_coverage(stream->data + coverage_offset,
-                     table->coverage,
-                     NULL);
-
-    table->value_records = hz_malloc(sizeof(hz_value_record_t) * table->value_count);
-
-    for (i = 0; i < table->value_count; ++i) {
-        hz_read_value_record(stream, &table->value_records[i], table->value_format);
-    }
-}
-
-void
-hz_ot_free_single_pos_format2_table(hz_ot_single_pos_format2_table_t *table) {
-    hz_map_destroy(table->coverage);
-    hz_free(table->value_records);
-}
 
 hz_sequence_rule_t
 hz_sequence_rule_create(void)
@@ -2963,7 +2974,7 @@ hz_parse_chained_sequence_rule(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_
 
     rule->lookup_count = hz_deserializer_read_u16(ds);
     rule->lookup_records = hz_allocate(alctr, sizeof(hz_sequence_lookup_record_t) * rule->lookup_count);
-    hz_deserializer_read_u16_block(ds, rule->lookup_records, rule->lookup_count*2);
+    hz_deserializer_read_u16_block(ds, (uint16_t *)rule->lookup_records, rule->lookup_count*2);
 }
 
 void
@@ -3131,56 +3142,13 @@ hz_free_reverse_chain_single_subst_format1(HzReverseChainSingleSubstFormat1 *sub
 }
 
 hz_anchor_t
-hz_read_anchor(const unsigned char *data) {
-    hz_stream_t stream = hz_stream_create(data, 0);
+hz_read_anchor(hz_deserializer_t *ds) {
     hz_anchor_t anchor;
-    uint16_t format = Unpack16(&stream);
+    uint16_t format = hz_deserializer_read_u16(ds);
     HZ_ASSERT(format >= 1 && format <= 3);
-    Unpackv(&stream, "hh", &anchor.xCoord, &anchor.yCoord);
+    anchor.xCoord = hz_deserializer_read_u16(ds);
+    anchor.yCoord = hz_deserializer_read_u16(ds);
     return anchor;
-}
-
-hz_anchor_pair_t
-hz_ot_layout_read_anchor_pair(const uint8_t *subtable, const hz_entry_exit_record_t *rec) {
-    hz_anchor_pair_t anchor_pair;
-
-    anchor_pair.has_entry = rec->entry_anchor_offset ? 1 : 0;
-    anchor_pair.has_exit = rec->exit_anchor_offset ? 1 : 0;
-
-    if (anchor_pair.has_entry)
-        anchor_pair.entry = hz_read_anchor(subtable + rec->entry_anchor_offset);
-
-    if (anchor_pair.has_exit)
-        anchor_pair.exit = hz_read_anchor(subtable + rec->exit_anchor_offset);
-
-    return anchor_pair;
-}
-
-static hz_error_t
-hz_read_class_def_table(const uint8_t *data, hz_map_t *class_map) {
-    hz_stream_t table = hz_stream_create(data, 0);
-    uint16_t class_format;
-    class_format = Unpack16(&table);
-    switch (class_format) {
-        case 1:
-            break;
-        case 2: {
-            uint16_t range_index = 0, class_range_count;
-            class_range_count = Unpack16(&table);
-
-            while (range_index < class_range_count) {
-                uint16_t start_glyph_id, end_glyph_id, glyph_class;
-                Unpackv(&table, "hhh", &start_glyph_id, &end_glyph_id, &glyph_class);
-                hz_map_set_value_for_keys(class_map, start_glyph_id, end_glyph_id, glyph_class);
-                ++range_index;
-            }
-            break;
-        }
-        default:
-            return HZ_ERROR_INVALID_FORMAT;
-    }
-
-    return HZ_OK;
 }
 
 static const hz_script_t complex_script_list[] = {
@@ -3550,22 +3518,72 @@ HZ_STATIC void setup_armcpu (void)
 
 hz_error_t hz_setup (hz_setup_flags_t flags)
 {
-    if (flags & HZ_USE_CPUID_FOR_SIMD_CHECKS) {
-#if  (HZ_ARCH & HZ_ARCH_X86)
+#if HZ_CONFIG_USE_SIMD
+    #if HZ_COMPILER & HZ_COMPILER_VC
+    hz_logln(HZ_LOG_WARNING, "Hamza doesn't support assembly-level optimization for MSVC compiler.");
+    #elif HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
+    hz_logln(HZ_LOG_INFO, "Hamza compiled with GCC/Clang, enabling assembly-level optimization.");
+    if (flags & HZ_QUERY_CPU_FOR_SIMD) {
+        #if HZ_ARCH & HZ_ARCH_X86
         setup_x86cpu();
-#elif (HZ_ARCH & HZ_ARCH_ARM_BIT)
+        #elif HZ_ARCH & HZ_ARCH_ARM_BIT
         setup_armcpu();
-#endif
+        #endif
     } else {
         // use standard #ifdef checks to determining CPU capabilities
     }
-
-    hz_optimize();
+    #endif
+#endif
+    hz_build_luts();
 }
 
 void hz_cleanup(void)
 {
 }
+
+#if HZ_COMPILER & HZ_COMPILER_GCC
+#define HZ_NAKEDFN __attribute__((naked))
+#elif HZ_COMPILER & HZ_COMPILER_VC
+#define HZ_NAKEDFN __declspec(naked)
+#else
+#define HZ_NAKEDFN
+#endif
+
+typedef struct {
+    _Alignas(16) uint32_t sse_data[4];
+} XMM_REGISTER;
+
+// This routine is optimized with avx2 on inline assembly Intel syntax.
+// When defining HZ_ENABLE_SIMD, Hamza should be compiled with the "-masm=att" flag as
+// the library uses Intel syntax rather than AT&T.
+// NOTE: This works with GCC itself and ICC, but for clang only clang 14 and later.
+// gids and codepoints memory must be aligned on a 32-byte boundary.
+void 
+hz_apply_cmap_format4_avx2_aligned(const hz_cmap_format4_subtable_t *restrict subtable,
+                                   register uint32_t *restrict gids,
+                                   register const uint32_t *restrict u32string,
+                                   register size_t size)
+{
+    register size_t v __asm__("%r8") = 0;
+
+    #pragma GCC ivdep
+    while (v + 8 < size) {
+        // load 8 unicode chars into ymm1
+        asm volatile ("vmovntdqa (%0), %%ymm1\n\t" :: "r" (u32string + v));
+
+        // set low and high variables for binary search algo
+        // lo: ymm2 hi: ymm3
+        asm ("vpxor %ymm2, %ymm2, %ymm2\n\t");
+        asm ("vpbroadcastd (%0),%%ymm3\n\t" :: "r" (size));
+        
+        // compute mid, shift right by 1
+        asm ("vpaddd %ymm3, %ymm5, %ymm2\n\t");
+        asm ("vpsrad 1, %ymm5, %ymm4\n\t");
+
+        v += 8;
+    }
+}
+
 
 #if HZ_ARCH & HZ_ARCH_AVX2_BIT
 // AVX2 codepoint to glyph index convert function using TrueType's cmap format 4 subtable
@@ -3730,10 +3748,9 @@ hz_apply_cmap_encoding(hz_stream_t *table,
             UnpackArray16(&subtable, numSegments, cmapSubtable.idRangeOffsets);
             cmapSubtable.glyphIdArray = (uint16_t *)(subtable.data + subtable.ptr);
 
-#if HZ_CONFIG_USE_SIMD
-            #if HZ_ARCH & HZ_ARCH_AVX2_BIT
-            hz_apply_cmap_format4_encoding_unaligned_avx2(&cmapSubtable, seg->glyph_indices, seg->codepoints, seg->num_codepoints);
-            #else
+#if HZ_ENABLE_SIMD
+            #if (HZ_ARCH & HZ_ARCH_X86) && (HZ_ARCH & HZ_ARCH_AVX2)
+                hz_apply_cmap_format4_avx2_aligned(&cmapSubtable, glyphIndices, codepoints, size);
             #endif
 #else
             hz_apply_cmap_format4_subtable(&cmapSubtable, glyphIndices, codepoints, size);
@@ -3826,7 +3843,7 @@ hz_should_ignore_glyph(hz_buffer_t *buffer, size_t index, uint16_t flags, const 
 
         if (buffer->glyph_classes[index] & HZ_GLYPH_CLASS_MARK) {
             if (flags & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET) {
-                if (hz_coverage_search(mark_filtering_set, buffer->glyph_indices[index]) != -1) {
+                if (hz_coverage_search(mark_filtering_set, buffer->glyph_indices[index]) == -1) {
                     return HZ_TRUE;
                 }
             }
@@ -4063,7 +4080,7 @@ typedef struct {
     /* Index (base 0) into GDEF mark glyph sets structure.
      * This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
      */
-    hz_coverage_t mark_filtering_set;
+    hz_coverage_t *mark_filtering_set;
 } hz_lookup_table_t;
 
 typedef struct {
@@ -4199,13 +4216,12 @@ hz_read_gsub_ligature_substitution_subtable(hz_allocator_t *alctr,
                                             uint16_t subtable_index,
                                             uint16_t format)
 {
-    uint8_t arenamem[10000];
-    hz_memory_arena_t arena = hz_memory_arena_create(arenamem,sizeof arenamem);
+    char tmp[4000];
+    hz_stack_allocator_t stack = hz_stack_create(tmp,sizeof tmp);
 
     if (format != 1)
         return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
 
-    
     hz_ligature_substitution_format1_subtable_t *subtable = hz_allocate(alctr, sizeof(*subtable));
 
     subtable->format = format;
@@ -4218,23 +4234,23 @@ hz_read_gsub_ligature_substitution_subtable(hz_allocator_t *alctr,
     subtable->ligature_set_count = hz_deserializer_read_u16(ds);
     subtable->ligature_sets = hz_allocate(alctr, sizeof(hz_ligature_set_table_t) * subtable->ligature_set_count);
 
-    Offset16 *ligature_set_offsets = hz_memory_arena_alloc(&arena, subtable->ligature_set_count * sizeof(Offset16));
+    Offset16 *ligature_set_offsets = hz_stack_alloc(&stack, subtable->ligature_set_count * sizeof(Offset16));
     hz_deserializer_read_u16_block(ds, ligature_set_offsets, subtable->ligature_set_count);
 
     for (uint16_t i = 0; i < subtable->ligature_set_count; ++i) {
         hz_deserializer_push_state(ds,ligature_set_offsets[i]);
-        hz_ligature_set_table_t *ligature_set = subtable->ligature_sets+i;
+        hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + i;
 
         ligature_set->ligature_count = hz_deserializer_read_u16(ds);
         ligature_set->ligatures = hz_allocate(alctr, sizeof(hz_ligature_t) * ligature_set->ligature_count);
         
-        Offset16 *ligature_offsets = hz_memory_arena_alloc(&arena, ligature_set->ligature_count * sizeof(Offset16));
+        Offset16 *ligature_offsets = hz_stack_alloc(&stack, ligature_set->ligature_count * sizeof(Offset16));
         hz_deserializer_read_u16_block(ds, ligature_offsets, ligature_set->ligature_count);
 
         for (uint16_t j = 0; j < ligature_set->ligature_count; ++j) {
-            hz_deserializer_push_state(ds,ligature_offsets[j]);
-            
             hz_ligature_t *ligature = ligature_set->ligatures + j;
+
+            hz_deserializer_push_state(ds,ligature_offsets[j]);
             ligature->ligature_glyph = hz_deserializer_read_u16(ds);
             ligature->component_count = hz_deserializer_read_u16(ds);
             if (ligature->component_count > 1) {
@@ -4247,9 +4263,10 @@ hz_read_gsub_ligature_substitution_subtable(hz_allocator_t *alctr,
             hz_deserializer_pop_state(ds);
         }
 
+        hz_stack_free(&stack,ligature_offsets);
         hz_deserializer_pop_state(ds);
     }
-
+    
     lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
     return HZ_OK;
 }
@@ -4435,7 +4452,6 @@ typedef struct hz_mark2_record_t {
     hz_anchor_t *mark2_anchors;
 } hz_mark2_record_t;
 
-
 typedef struct hz_mark2_array_t {
     uint16_t mark2_count;
     hz_mark2_record_t *mark2_records;
@@ -4452,118 +4468,128 @@ typedef struct hz_base_array_t {
 
 typedef struct hz_mark_to_base_attachment_subtable_t {
     uint16_t format;
-    hz_map_t *mark_coverage;
-    hz_map_t *base_coverage;
+    hz_coverage_t mark_coverage;
+    hz_coverage_t base_coverage;
     uint16_t mark_class_count;
     hz_mark_array_t mark_array;
     hz_base_array_t base_array;
 } hz_mark_to_base_attachment_subtable_t;
 
-HZ_STATIC void
-hz_load_base_array(const uint8_t *data, hz_base_array_t *base_array, uint16_t mark_class_count)
+HZ_STATIC void hz_load_base_array(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_base_array_t *base_array, uint16_t mark_class_count)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    base_array->base_count = Unpack16(&stream);
-    base_array->base_records = hz_malloc(base_array->base_count * sizeof(hz_base_record_t));
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp,sizeof tmp);
+    base_array->base_count = hz_deserializer_read_u16(ds);
+    base_array->base_records = hz_allocate(alctr, base_array->base_count * sizeof(hz_base_record_t));
 
     for (size_t i = 0; i < base_array->base_count; ++i) {
         hz_base_record_t *record = &base_array->base_records[i];
-        record->base_anchors = hz_malloc(mark_class_count * sizeof(hz_anchor_t));
-        Offset16 *anchor_offsets = hz_malloc(mark_class_count * sizeof(Offset16));
-        UnpackArray16(&stream, mark_class_count, anchor_offsets);
+        record->base_anchors = hz_allocate(alctr,mark_class_count * sizeof(hz_anchor_t));
+        Offset16 *anchor_offsets = hz_memory_arena_alloc(&arena, mark_class_count * sizeof(Offset16));
+        hz_deserializer_read_u16_block(ds, anchor_offsets, mark_class_count);
 
         for (size_t j = 0; j < mark_class_count; ++j) {
             if (anchor_offsets[j] > 0) {
-                record->base_anchors[j] = hz_read_anchor(data + anchor_offsets[j]);
+                hz_deserializer_push_state(ds, anchor_offsets[j]);
+                record->base_anchors[j] = hz_read_anchor(ds);
+                hz_deserializer_pop_state(ds);
             }
         }
 
-        hz_free(anchor_offsets);
+        hz_memory_arena_reset(&arena);
     }
 }
 
-HZ_STATIC void
-hz_load_mark2_array(const uint8_t *data, hz_mark2_array_t *mark2_array, uint16_t mark_class_count)
+HZ_STATIC void hz_load_mark2_array(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_mark2_array_t *mark2_array, uint16_t mark_class_count)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    mark2_array->mark2_count = Unpack16(&stream);
-    mark2_array->mark2_records = hz_malloc(mark2_array->mark2_count * sizeof(hz_mark2_record_t));
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
+    mark2_array->mark2_count = hz_deserializer_read_u16(ds);
+    mark2_array->mark2_records = hz_allocate(alctr,mark2_array->mark2_count * sizeof(hz_mark2_record_t));
     for (size_t i = 0; i < mark2_array->mark2_count; ++i) {
         hz_mark2_record_t *record = &mark2_array->mark2_records[i];
-        record->mark2_anchors = hz_malloc(mark_class_count * sizeof(hz_anchor_t));
-        Offset16 *anchor_offsets = hz_malloc(mark_class_count * 2);
-        UnpackArray16(&stream, mark_class_count, anchor_offsets);
+        record->mark2_anchors = hz_allocate(alctr,mark_class_count * sizeof(hz_anchor_t));
+        Offset16 *anchor_offsets = hz_memory_arena_alloc(&arena, mark_class_count * 2);
+        hz_deserializer_read_u16_block(ds, anchor_offsets,mark_class_count);
 
         for (size_t j = 0; j < mark_class_count; ++j) {
             if (anchor_offsets[j] > 0) {
-                record->mark2_anchors[j] = hz_read_anchor(data + anchor_offsets[j]);
+                hz_deserializer_push_state(ds, anchor_offsets[j]);
+                record->mark2_anchors[j] = hz_read_anchor(ds);
+                hz_deserializer_pop_state(ds);
             }
         }
 
-        hz_free(anchor_offsets);
+        hz_memory_arena_reset(&arena);
     }
 }
 
 HZ_STATIC void
-hz_load_mark_array(const uint8_t *data, hz_mark_array_t *mark_array)
+hz_read_mark_array(hz_allocator_t *alctr, hz_deserializer_t *ds, hz_mark_array_t *mark_array)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    mark_array->mark_count = Unpack16(&stream);
-    mark_array->mark_records = hz_malloc(mark_array->mark_count * sizeof(hz_mark_record_t));
+    mark_array->mark_count = hz_deserializer_read_u16(ds);
+    mark_array->mark_records = hz_allocate(alctr, mark_array->mark_count * sizeof(hz_mark_record_t));
 
     for (size_t i = 0; i < mark_array->mark_count; ++i) {
         hz_mark_record_t *record = &mark_array->mark_records[i];
-        record->mark_class = Unpack16(&stream);
-        Offset16 mark_anchor_offset = Unpack16(&stream);
-        record->mark_anchor = hz_read_anchor(data + mark_anchor_offset);
+        record->mark_class = hz_deserializer_read_u16(ds);
+        Offset16 mark_anchor_offset = hz_deserializer_read_u16(ds);
+        hz_deserializer_push_state(ds,mark_anchor_offset);
+        record->mark_anchor = hz_read_anchor(ds);
+        hz_deserializer_pop_state(ds);
     }
 }
 
-typedef struct hz_single_adjustment_format1_subtable_t {
+typedef struct {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format;
     hz_value_record_t value_record;
 } hz_single_adjustment_format1_subtable_t;
 
-typedef struct hz_single_adjustment_format2_subtable_t {
+typedef struct {
     uint16_t format;
-    hz_map_t *coverage;
+    hz_coverage_t coverage;
     uint16_t value_format;
     uint16_t value_count;
     hz_value_record_t *value_records;
 } hz_single_adjustment_format2_subtable_t;
 
 HZ_STATIC hz_error_t
-hz_load_gpos_single_adjustment_subtable(hz_stream_t *stream,
+hz_read_gpos_single_adjustment_subtable(hz_allocator_t *alctr,
+                                        hz_deserializer_t *ds,
                                         hz_lookup_table_t *lookup,
                                         uint16_t subtable_index,
                                         uint16_t format)
 {
     switch (format) {
         case 1: {
-            hz_single_adjustment_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_single_adjustment_format1_subtable_t *subtable = hz_allocate(alctr,sizeof(*subtable));
             subtable->format = format;
-            Offset16 coverage_offset = Unpack16(stream);
-            subtable->coverage = hz_map_create();
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
-            subtable->value_format = Unpack16(stream);
-            hz_read_value_record(stream, &subtable->value_record, subtable->value_format);
+            Offset16 coverage_offset = hz_deserializer_read_u16(ds);
+            subtable->value_format = hz_deserializer_read_u16(ds);
+            hz_read_value_record(ds,&subtable->value_record,subtable->value_format);
+            hz_deserializer_push_state(ds, coverage_offset);
+            hz_read_coverage(alctr,ds,&subtable->coverage);
+            hz_deserializer_pop_state(ds);
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
         }
         case 2: {
-            hz_single_adjustment_format2_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_single_adjustment_format2_subtable_t *subtable = hz_allocate(alctr,sizeof(*subtable));
             subtable->format = format;
-            Offset16 coverage_offset = Unpack16(stream);
-            subtable->coverage = hz_map_create();
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
-            subtable->value_format = Unpack16(stream);
-            subtable->value_count = Unpack16(stream);
-            subtable->value_records = hz_malloc(sizeof(hz_value_record_t) * subtable->value_count);
+            Offset16 coverage_offset =  hz_deserializer_read_u16(ds);
+            subtable->value_format = hz_deserializer_read_u16(ds);
+            subtable->value_count = hz_deserializer_read_u16(ds);
+            subtable->value_records = hz_allocate(alctr,sizeof(hz_value_record_t) * subtable->value_count);
+
             for (int i = 0; i < subtable->value_count; ++i) {
-                hz_read_value_record(stream, &subtable->value_records[i], subtable->value_format);
+                hz_read_value_record(ds, &subtable->value_records[i], subtable->value_format);
             }
+
+            hz_deserializer_push_state(ds, coverage_offset);
+            hz_read_coverage(alctr,ds,&subtable->coverage);
+            hz_deserializer_pop_state(ds);
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
         }
@@ -4575,95 +4601,105 @@ hz_load_gpos_single_adjustment_subtable(hz_stream_t *stream,
 }
 
 HZ_STATIC void
-hz_read_pair_value_record(hz_stream_t *stream,
+hz_read_pair_value_record(hz_deserializer_t *ds,
                           hz_pair_value_record_t *pair_value_record,
                           uint16_t v1, uint16_t v2)
 {
-    pair_value_record->second_glyph = Unpack16(stream);
-    hz_read_value_record(stream, &pair_value_record->value_record1, v1);
-    hz_read_value_record(stream, &pair_value_record->value_record2, v2);
+    pair_value_record->second_glyph = hz_deserializer_read_u16(ds);
+    hz_read_value_record(ds, &pair_value_record->value_record1, v1);
+    hz_read_value_record(ds, &pair_value_record->value_record2, v2);
 }
 
 HZ_STATIC void
-hz_read_pair_set(uint8_t *data, hz_pair_set_t *pair_set, uint16_t v1, uint16_t v2)
+hz_read_pair_set(hz_allocator_t *alctr,
+                 hz_deserializer_t *ds,
+                 hz_pair_set_t *pair_set,
+                 uint16_t v1, uint16_t v2)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    pair_set->pair_value_count = Unpack16(&stream);
-    pair_set->pair_value_records = hz_malloc(pair_set->pair_value_count * sizeof(hz_pair_value_record_t));
+    pair_set->pair_value_count = hz_deserializer_read_u16(ds);
+    pair_set->pair_value_records = hz_allocate(alctr, pair_set->pair_value_count * sizeof(hz_pair_value_record_t));
     for (int i = 0; i < pair_set->pair_value_count; ++i) {
-        hz_read_pair_value_record(&stream, &pair_set->pair_value_records[i], v1,v2);
+        hz_read_pair_value_record(ds,&pair_set->pair_value_records[i],v1,v2);
     }
 }
 
 HZ_STATIC hz_error_t
-hz_load_gpos_pair_adjustment_subtable(hz_stream_t *stream,
+hz_read_gpos_pair_adjustment_subtable(hz_allocator_t *alctr,
+                                      hz_deserializer_t *ds,
                                       hz_lookup_table_t *lookup,
                                       uint16_t subtable_index,
                                       uint16_t format)
 {
+    uint8_t arenamem[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(arenamem,sizeof arenamem);
+
     switch (format) {
         case 1: {
             // individual glyphs
-            hz_pair_pos_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_pair_pos_format1_subtable_t *subtable = hz_allocate(alctr,sizeof(*subtable));
             subtable->format = format;
-            subtable->coverage = hz_map_create();
-            Offset16 coverage_offset = Unpack16(stream);
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
-            subtable->value_format1 = Unpack16(stream);
-            subtable->value_format2 = Unpack16(stream);
-            subtable->pair_set_count = Unpack16(stream);
-            Offset16 *pair_set_offsets = hz_malloc(sizeof(Offset16) * subtable->pair_set_count);
-            UnpackArray16(stream, subtable->pair_set_count, pair_set_offsets);
-            subtable->pair_sets = hz_malloc(sizeof(hz_pair_set_t) * subtable->pair_set_count);
+            Offset16 coverage_offset = hz_deserializer_read_u16(ds);
+            subtable->value_format1 = hz_deserializer_read_u16(ds);
+            subtable->value_format2 = hz_deserializer_read_u16(ds);
+            subtable->pair_set_count = hz_deserializer_read_u16(ds);
 
+            Offset16 *pair_set_offsets = hz_memory_arena_alloc(&arena, sizeof(Offset16)*subtable->pair_set_count);
+            hz_deserializer_read_u16_block(ds, pair_set_offsets, subtable->pair_set_count);
+            subtable->pair_sets = hz_allocate(alctr, sizeof(hz_pair_set_t)*subtable->pair_set_count);
 
             for (int i = 0; i < subtable->pair_set_count; ++i) {
-                hz_read_pair_set(stream->data + pair_set_offsets[i],&subtable->pair_sets[i],
-                                 subtable->value_format1,
-                                 subtable->value_format2);
+                hz_deserializer_push_state(ds,pair_set_offsets[i]);
+                hz_read_pair_set(alctr, ds,&subtable->pair_sets[i], subtable->value_format1, subtable->value_format2);
+                hz_deserializer_pop_state(ds);
             }
 
+            hz_deserializer_push_state(ds,coverage_offset);
+            hz_read_coverage(alctr,ds,&subtable->coverage);
+            hz_deserializer_pop_state(ds);
 
-            hz_free(pair_set_offsets);
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
         }
         case 2: {
             // glyph classes
-            hz_pair_pos_format2_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_pair_pos_format2_subtable_t *subtable = hz_allocate(alctr,sizeof(*subtable));
             subtable->format = format;
-            subtable->coverage = hz_map_create();
-            subtable->class_def1 = hz_map_create();
-            subtable->class_def2 = hz_map_create();
 
-            Offset16 coverage_offset, class_def1_offset, class_def2_offset;
+            Offset16 coverage_offset = hz_deserializer_read_u16(ds);
+            
+            subtable->value_format1 = hz_deserializer_read_u16(ds);
+            subtable->value_format2 = hz_deserializer_read_u16(ds);
+            
+            Offset16 class_def1_offset = hz_deserializer_read_u16(ds);
+            Offset16 class_def2_offset = hz_deserializer_read_u16(ds);
 
-            coverage_offset = Unpack16(stream);
-            hz_read_coverage(stream->data + coverage_offset, subtable->coverage, NULL);
+            subtable->class1_count = hz_deserializer_read_u16(ds);
+            subtable->class2_count = hz_deserializer_read_u16(ds);
 
-            subtable->value_format1 = Unpack16(stream);
-            subtable->value_format2 = Unpack16(stream);
-
-            class_def1_offset = Unpack16(stream);
-            class_def2_offset = Unpack16(stream);
-            hz_read_class_def_table(stream->data + class_def1_offset, subtable->class_def1);
-            hz_read_class_def_table(stream->data + class_def2_offset, subtable->class_def2);
-
-            subtable->class1_count = Unpack16(stream);
-            subtable->class2_count = Unpack16(stream);
-
-            subtable->class1_records = hz_malloc(sizeof(hz_class1_record_t) * subtable->class1_count);
+            subtable->class1_records = hz_allocate(alctr,sizeof(hz_class1_record_t) * subtable->class1_count);
 
             for (int i = 0; i < subtable->class1_count; ++i) {
                 hz_class1_record_t  *class1_record = &subtable->class1_records[i];
-                class1_record->class2_records = hz_malloc(sizeof(hz_class2_record_t) * subtable->class2_count);
+                class1_record->class2_records = hz_allocate(alctr,sizeof(hz_class2_record_t) * subtable->class2_count);
                 for (int j = 0; j < subtable->class2_count; ++j) {
                     hz_class2_record_t *class2_record = &class1_record->class2_records[j];
-                    hz_read_value_record(stream,&class2_record->value_record1,subtable->value_format1);
-                    hz_read_value_record(stream,&class2_record->value_record2,subtable->value_format2);
+                    hz_read_value_record(ds,&class2_record->value_record1,subtable->value_format1);
+                    hz_read_value_record(ds,&class2_record->value_record2,subtable->value_format2);
                 }
             }
 
+            hz_deserializer_push_state(ds, coverage_offset);
+            hz_read_coverage(alctr, ds, &subtable->coverage);
+            hz_deserializer_pop_state(ds);
+
+            hz_deserializer_push_state(ds, class_def1_offset);
+            hz_read_class_def_table(alctr, ds, &subtable->class_def1);
+            hz_deserializer_pop_state(ds);
+
+            hz_deserializer_push_state(ds, class_def2_offset);
+            hz_read_class_def_table(alctr, ds, &subtable->class_def2);
+            hz_deserializer_pop_state(ds);
+            
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
         }
@@ -4675,7 +4711,7 @@ hz_load_gpos_pair_adjustment_subtable(hz_stream_t *stream,
 }
 
 HZ_STATIC hz_error_t
-hz_load_gpos_cursive_attachment_subtable(hz_stream_t *stream,
+hz_read_gpos_cursive_attachment_subtable(hz_stream_t *stream,
                                          hz_lookup_table_t *lookup,
                                          uint16_t subtable_index,
                                          uint16_t format)
@@ -4684,78 +4720,93 @@ hz_load_gpos_cursive_attachment_subtable(hz_stream_t *stream,
 }
 
 HZ_STATIC hz_error_t
-hz_load_gpos_mark_to_base_attachment_subtable(hz_stream_t *stream,
+hz_read_gpos_mark_to_base_attachment_subtable(hz_allocator_t *alctr,
+                                              hz_deserializer_t *ds,
                                               hz_lookup_table_t *lookup,
                                               uint16_t subtable_index,
                                               uint16_t format)
 {
-    switch (format) {
-        case 1: {
-            hz_mark_to_base_attachment_subtable_t *subtable = hz_malloc(sizeof (hz_mark_to_base_attachment_subtable_t));
-            subtable->format = format;
-            subtable->mark_coverage = hz_map_create();
-            subtable->base_coverage = hz_map_create();
-            Offset16 mark_coverage_offset = Unpack16(stream);
-            Offset16 base_coverage_offset = Unpack16(stream);
-            hz_read_coverage(stream->data + mark_coverage_offset, subtable->mark_coverage, NULL);
-            hz_read_coverage(stream->data + base_coverage_offset, subtable->base_coverage, NULL);
-            subtable->mark_class_count = Unpack16(stream);
-            Offset16 mark_array_offset = Unpack16(stream);
-            Offset16 base_array_offset = Unpack16(stream);
-            hz_load_mark_array(stream->data + mark_array_offset, &subtable->mark_array);
-            hz_load_base_array(stream->data + base_array_offset, &subtable->base_array, subtable->mark_class_count);
-            lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
-            break;
-        }
-
-        default:
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    if (unlikely(format != 1)) {
+        // error
+        return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
     }
 
+    hz_mark_to_base_attachment_subtable_t *subtable = hz_allocate(alctr,sizeof(hz_mark_to_base_attachment_subtable_t));
+    subtable->format = format;
+
+    Offset16 mark_coverage_offset = hz_deserializer_read_u16(ds);
+    Offset16 base_coverage_offset = hz_deserializer_read_u16(ds);
+    subtable->mark_class_count = hz_deserializer_read_u16(ds);
+    Offset16 mark_array_offset = hz_deserializer_read_u16(ds);
+    Offset16 base_array_offset = hz_deserializer_read_u16(ds);
+    
+    hz_deserializer_push_state(ds,mark_coverage_offset);
+    hz_read_coverage(alctr, ds, &subtable->mark_coverage);
+    hz_deserializer_pop_state(ds);
+
+    hz_deserializer_push_state(ds,base_coverage_offset);
+    hz_read_coverage(alctr, ds, &subtable->base_coverage);
+    hz_deserializer_pop_state(ds);
+
+    hz_deserializer_push_state(ds,mark_array_offset);
+    hz_read_mark_array(alctr, ds, &subtable->mark_array);
+    hz_deserializer_pop_state(ds);
+
+    hz_deserializer_push_state(ds,base_array_offset);
+    hz_load_base_array(alctr, ds, &subtable->base_array, subtable->mark_class_count);
+    hz_deserializer_pop_state(ds);
+    
+    lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
     return HZ_OK;
 }
 
 
 typedef struct hz_mark_to_mark_attachment_format1_subtable_t {
     uint16_t format;
-    hz_map_t *mark1_coverage;
-    hz_map_t *mark2_coverage;
+    hz_coverage_t mark1_coverage;
+    hz_coverage_t mark2_coverage;
     uint16_t mark_class_count;
     hz_mark_array_t mark1_array;
     hz_mark2_array_t mark2_array;
 } hz_mark_to_mark_attachment_format1_subtable_t;
 
 HZ_STATIC hz_error_t
-hz_load_gpos_mark_to_mark_attachment_subtable(hz_stream_t *stream,
+hz_read_gpos_mark_to_mark_attachment_subtable(hz_allocator_t *alctr,
+                                              hz_deserializer_t *ds,
                                               hz_lookup_table_t *lookup,
                                               uint16_t subtable_index,
                                               uint16_t format)
 {
-    switch (format) {
-        case 1 :{
-            hz_mark_to_mark_attachment_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
-            subtable->format = format;
-            subtable->mark1_coverage = hz_map_create();
-            subtable->mark2_coverage = hz_map_create();
-            Offset16 mark1_coverage_offset = Unpack16(stream);
-            Offset16 mark2_coverage_offset = Unpack16(stream);
-            hz_read_coverage(stream->data + mark1_coverage_offset, subtable->mark1_coverage, NULL);
-            hz_read_coverage(stream->data + mark2_coverage_offset, subtable->mark2_coverage, NULL);
-
-            subtable->mark_class_count = Unpack16(stream);
-
-            Offset16 mark1_array_offset = Unpack16(stream);
-            Offset16 mark2_array_offset = Unpack16(stream);
-            hz_load_mark_array(stream->data + mark1_array_offset, &subtable->mark1_array);
-            hz_load_mark2_array(stream->data + mark2_array_offset, &subtable->mark2_array, subtable->mark_class_count);
-
-            lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
-            break;
-        }
-
-        default:
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+    if (unlikely(format != 1)) {
+        // error
+        return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
     }
+
+    hz_mark_to_mark_attachment_format1_subtable_t *subtable = hz_allocate(alctr, sizeof(*subtable));
+    subtable->format = format;
+    Offset16 mark1_coverage_offset = hz_deserializer_read_u16(ds);
+    Offset16 mark2_coverage_offset = hz_deserializer_read_u16(ds);
+    subtable->mark_class_count = hz_deserializer_read_u16(ds);
+    Offset16 mark1_array_offset = hz_deserializer_read_u16(ds);
+    Offset16 mark2_array_offset = hz_deserializer_read_u16(ds);
+    
+    hz_deserializer_push_state(ds, mark1_coverage_offset);
+    hz_read_coverage(alctr, ds, &subtable->mark1_coverage);
+    hz_deserializer_pop_state(ds);
+
+    hz_deserializer_push_state(ds, mark2_coverage_offset);
+    hz_read_coverage(alctr, ds, &subtable->mark2_coverage);
+    hz_deserializer_pop_state(ds);
+    
+    hz_deserializer_push_state(ds, mark1_array_offset);
+    hz_read_mark_array(alctr, ds,  &subtable->mark1_array);
+    hz_deserializer_pop_state(ds);
+    
+    hz_deserializer_push_state(ds, mark2_array_offset);
+    hz_load_mark2_array(alctr, ds, &subtable->mark2_array, subtable->mark_class_count);
+    hz_deserializer_pop_state(ds);
+
+    lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
 
     return HZ_OK;
 }
@@ -4775,80 +4826,92 @@ typedef struct hz_ligature_array_t {
 } hz_ligature_array_t;
 
 HZ_STATIC void
-hz_load_ligature_attachment(const uint8_t *data, uint16_t mark_class_count, hz_ligature_attachment_t *ligature_attachment)
+hz_load_ligature_attachment(hz_allocator_t *alctr, hz_deserializer_t *ds, uint16_t mark_class_count, hz_ligature_attachment_t *ligature_attachment)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    ligature_attachment->component_count = Unpack16(&stream);
-    ligature_attachment->component_records = hz_malloc(sizeof(hz_component_record_t) * ligature_attachment->component_count);
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
+
+    ligature_attachment->component_count = hz_deserializer_read_u16(ds);
+    ligature_attachment->component_records = hz_allocate(alctr, sizeof(hz_component_record_t) * ligature_attachment->component_count);
     
     for (uint16_t i = 0; i < ligature_attachment->component_count; ++i) {
         hz_component_record_t *record = &ligature_attachment->component_records[i];
-        record->ligature_anchors = hz_malloc(mark_class_count * sizeof(hz_anchor_t));
-        Offset16 *offsets = hz_malloc(mark_class_count * sizeof(Offset16));
-        UnpackArray16(&stream, mark_class_count, offsets);
+        record->ligature_anchors = hz_allocate(alctr, mark_class_count * sizeof(hz_anchor_t));
+        Offset16 *offsets = hz_memory_arena_alloc(&arena, mark_class_count * sizeof(Offset16));
+        hz_deserializer_read_u16_block(ds, offsets, mark_class_count);
 
         for (int j = 0; j < mark_class_count; ++j) {
             if (offsets[j]) {
-                hz_anchor_t *anchor = &record->ligature_anchors[j];
-                *anchor = hz_read_anchor(stream.data + offsets[j]);
+                hz_deserializer_push_state(ds,offsets[j]);
+                record->ligature_anchors[j] = hz_read_anchor(ds);
+                hz_deserializer_pop_state(ds);
             }
         }
-
-        hz_free(offsets);
     }
 
 }
 
 HZ_STATIC void
-hz_load_ligature_array(const uint8_t *data, uint16_t mark_class_count, hz_ligature_array_t *ligature_array)
+hz_load_ligature_array(hz_allocator_t *alctr, hz_deserializer_t *ds, uint16_t mark_class_count, hz_ligature_array_t *ligature_array)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-    ligature_array->ligature_count = Unpack16(&stream);
-    ligature_array->ligature_attachments = hz_malloc(sizeof(hz_ligature_attachment_t) * ligature_array->ligature_count);
-    Offset16 *offsets = hz_malloc(sizeof(Offset16) * ligature_array->ligature_count);
-    UnpackArray16(&stream, ligature_array->ligature_count, offsets);
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
+
+    ligature_array->ligature_count = hz_deserializer_read_u16(ds);
+    ligature_array->ligature_attachments = hz_allocate(alctr, sizeof(hz_ligature_attachment_t) * ligature_array->ligature_count);
+    Offset16 *offsets = hz_memory_arena_alloc(&arena, sizeof(Offset16) * ligature_array->ligature_count);
+    hz_deserializer_read_u16_block(ds, offsets, ligature_array->ligature_count);
 
     for (uint16_t i = 0; i < ligature_array->ligature_count; ++i) {
-        hz_load_ligature_attachment(stream.data + offsets[i], mark_class_count, &ligature_array->ligature_attachments[i]);
+        hz_deserializer_push_state(ds, offsets[i]);
+        hz_load_ligature_attachment(alctr, ds, mark_class_count, &ligature_array->ligature_attachments[i]);
+        hz_deserializer_pop_state(ds);
     }
-
-    hz_free(offsets);
 }
 
-typedef struct hz_mark_to_ligature_attachment_format1_subtable_t {
+typedef struct {
     uint16_t format;
-    hz_map_t *mark_coverage;
-    hz_map_t *ligature_coverage;
+    hz_coverage_t mark_coverage;
+    hz_coverage_t ligature_coverage;
     uint16_t mark_class_count;
     hz_mark_array_t mark_array;
     hz_ligature_array_t ligature_array;
 } hz_mark_to_ligature_attachment_format1_subtable_t;
 
 HZ_STATIC hz_error_t
-hz_load_gpos_mark_to_ligature_attachment_subtable(hz_stream_t *stream,
+hz_read_gpos_mark_to_ligature_attachment_subtable(hz_allocator_t *alctr,
+                                                  hz_deserializer_t *ds,
                                                   hz_lookup_table_t *lookup,
                                                   uint16_t subtable_index,
                                                   uint16_t format)
 {
     switch (format) {
         case 1: {
-            hz_mark_to_ligature_attachment_format1_subtable_t *subtable = hz_malloc(sizeof(*subtable));
+            hz_mark_to_ligature_attachment_format1_subtable_t *subtable = hz_allocate(alctr, sizeof(*subtable));
             subtable->format = format;
-            subtable->mark_coverage = hz_map_create();
-            subtable->ligature_coverage = hz_map_create();
 
-            Offset16 mark_coverage_offset = Unpack16(stream);
-            Offset16 ligature_coverage_offset = Unpack16(stream);
-            hz_read_coverage(stream->data + mark_coverage_offset, subtable->mark_coverage, NULL);
-            hz_read_coverage(stream->data + ligature_coverage_offset, subtable->ligature_coverage, NULL);
+            Offset16 mark_coverage_offset = hz_deserializer_read_u16(ds);
+            Offset16 ligature_coverage_offset = hz_deserializer_read_u16(ds);
+            subtable->mark_class_count = hz_deserializer_read_u16(ds);
+            Offset16 mark_array_offset = hz_deserializer_read_u16(ds);
+            Offset16 ligature_array_offset = hz_deserializer_read_u16(ds);
 
-            subtable->mark_class_count = Unpack16(stream);
 
-            Offset16 mark_array_offset = Unpack16(stream);
-            Offset16 ligature_array_offset = Unpack16(stream);
+            hz_deserializer_push_state(ds,mark_coverage_offset);
+            hz_read_coverage(alctr, ds, &subtable->mark_coverage);
+            hz_deserializer_pop_state(ds);
 
-            hz_load_mark_array(stream->data + mark_array_offset, &subtable->mark_array);
-            hz_load_ligature_array(stream->data + ligature_array_offset, subtable->mark_class_count, &subtable->ligature_array);
+            hz_deserializer_push_state(ds,ligature_coverage_offset);
+            hz_read_coverage(alctr, ds, &subtable->ligature_coverage);
+            hz_deserializer_pop_state(ds);
+
+            hz_deserializer_push_state(ds,mark_array_offset);
+            hz_read_mark_array(alctr, ds, &subtable->mark_array);
+            hz_deserializer_pop_state(ds);
+
+            hz_deserializer_push_state(ds,ligature_array_offset);
+            hz_load_ligature_array(alctr, ds, subtable->mark_class_count, &subtable->ligature_array);
+            hz_deserializer_pop_state(ds);
 
             lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
             break;
@@ -4892,61 +4955,72 @@ hz_load_gpos_chained_context_positioning_subtable(hz_allocator_t *alctr,
 }
 
 HZ_STATIC hz_error_t
-hz_load_gpos_lookup_subtable(const uint8_t *data,
+hz_read_gpos_lookup_subtable(hz_allocator_t *alctr,
+                             hz_deserializer_t *ds,
                              hz_lookup_table_t *lookup,
                              uint16_t lookup_type,
                              uint16_t subtable_index)
  {
+    int extension = 0;
+    hz_error_t error = HZ_OK;
     uint16_t format;
-    hz_stream_t stream = hz_stream_create(data, 0);
 
     extension_label:
-    format = Unpack16(&stream);
+    format = hz_deserializer_read_u16(ds);
 
     switch (lookup_type) {
         case HZ_GPOS_LOOKUP_TYPE_SINGLE_ADJUSTMENT:
-            return hz_load_gpos_single_adjustment_subtable(&stream, lookup, subtable_index, format);
-
+            error = hz_read_gpos_single_adjustment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
         case HZ_GPOS_LOOKUP_TYPE_PAIR_ADJUSTMENT:
-            return hz_load_gpos_pair_adjustment_subtable(&stream, lookup, subtable_index, format);
+            error = hz_read_gpos_pair_adjustment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
 
         case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT:
-            return hz_load_gpos_cursive_attachment_subtable(&stream, lookup, subtable_index, format);
+            // error = hz_read_gpos_cursive_attachment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
 
         case HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT:
-            return hz_load_gpos_mark_to_base_attachment_subtable(&stream, lookup, subtable_index, format);
+            error = hz_read_gpos_mark_to_base_attachment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
 
         case HZ_GPOS_LOOKUP_TYPE_MARK_TO_LIGATURE_ATTACHMENT:
-            return hz_load_gpos_mark_to_ligature_attachment_subtable(&stream, lookup, subtable_index, format);
+            error = hz_read_gpos_mark_to_ligature_attachment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
 
         case HZ_GPOS_LOOKUP_TYPE_MARK_TO_MARK_ATTACHMENT:
-            return hz_load_gpos_mark_to_mark_attachment_subtable(&stream, lookup, subtable_index, format);
+            error = hz_read_gpos_mark_to_mark_attachment_subtable(alctr, ds, lookup, subtable_index, format);
+            break;
 
         case HZ_GPOS_LOOKUP_TYPE_CONTEXT_POSITIONING: {
             break;
         }
 
-        case HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING:
-            // return hz_load_gpos_chained_context_positioning_subtable(&stream, lookup, subtable_index, format);
-
+        case HZ_GPOS_LOOKUP_TYPE_CHAINED_CONTEXT_POSITIONING: {
+            error = hz_load_gpos_chained_context_positioning_subtable(alctr,ds, lookup, subtable_index, format);
+            break;
+        }
+        
         case HZ_GPOS_LOOKUP_TYPE_EXTENSION_POSITIONING: { // implemented inline
-            if (format == 1) {
-                lookup->lookup_type = Unpack16(&stream);
-                lookup_type = lookup->lookup_type;
-                Offset32 extension_offset = Unpack32(&stream);
-                stream.data += extension_offset;
-                stream.ptr = 0;
-                goto extension_label;
+            if (format != 1) {
+                // error
             }
 
-            return HZ_ERROR_INVALID_LOOKUP_SUBTABLE_FORMAT;
+            lookup_type = lookup->lookup_type = hz_deserializer_read_u16(ds);
+            Offset32 extension_offset = hz_deserializer_read_u32(ds);
+            hz_deserializer_push_state(ds, extension_offset);
+            extension = 1;
+            goto extension_label;
         }
 
         default:
-            return HZ_ERROR_INVALID_LOOKUP_TYPE;
+            hz_unreachable();
     }
 
-    return HZ_OK;
+    if (extension)
+        hz_deserializer_pop_state( ds );
+
+    return error;
 }
 
 HZ_STATIC hz_error_t
@@ -4955,82 +5029,80 @@ hz_load_gsub_lookup_table(hz_allocator_t *alctr,
                           hz_face_t *face,
                           hz_lookup_table_t *table)
 {
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp,sizeof tmp);
     table->lookup_type = hz_deserializer_read_u16(ds);
     table->lookup_flags = hz_deserializer_read_u16(ds);
     table->subtable_count = hz_deserializer_read_u16(ds);
 
     if (table->subtable_count > 0) {
-        Offset16 *offsets = hz_malloc(sizeof(Offset16) * table->subtable_count);
+        Offset16 *offsets = hz_memory_arena_alloc(&arena, table->subtable_count * sizeof(Offset16));
         hz_deserializer_read_u16_block(ds, offsets, table->subtable_count);
 
-        // Set pointers to NULL by default
-        table->subtables = hz_malloc(SIZEOF_VOIDPTR * table->subtable_count);
+        // set pointers to NULL by default
+        table->subtables = hz_allocate(alctr, SIZEOF_VOIDPTR * table->subtable_count);
         memset(table->subtables, 0, SIZEOF_VOIDPTR * table->subtable_count); // null-out the subtale pointers
 
-        // Load & parse subtables
+        // load & parse subtables
         uint16_t original_lookup_type = table->lookup_type;
         for (uint16_t i = 0; i < table->subtable_count; ++i) {
             hz_deserializer_push_state(ds, offsets[i]);
             hz_read_gsub_lookup_subtable(alctr, ds, table, original_lookup_type, i);
             hz_deserializer_pop_state(ds);
         }
-
-        hz_free(offsets);
     }
 
     // Only include mark filtering set if flag USE_MARK_FILTERING_SET is enabled
     if (table->lookup_flags & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET) {
         uint16_t mark_filtering_set_index = hz_deserializer_read_u16(ds);
-        table->mark_filtering_set = face->mark_glyph_set[mark_filtering_set_index];
+        table->mark_filtering_set = &face->mark_glyph_set[mark_filtering_set_index];
     }
 
     return HZ_OK;
 }
 
-#if 0 // GPOS FIXME
 HZ_STATIC hz_error_t
-hz_load_gpos_lookup_table(const uint8_t *data, hz_face_t *face, hz_lookup_table_t *table)
+hz_load_gpos_lookup_table(hz_allocator_t *alctr,
+                          hz_deserializer_t *ds,
+                          hz_face_t *face,
+                          hz_lookup_table_t *table)
 {
-    hz_stream_t stream = hz_stream_create(data, 0);
-
-    table->lookup_type = Unpack16(&stream);
-    table->lookup_flags = Unpack16(&stream);
-    table->subtable_count = Unpack16(&stream);
+    char tmp[4000];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp,sizeof tmp);
+    table->lookup_type = hz_deserializer_read_u16(ds);
+    table->lookup_flags = hz_deserializer_read_u16(ds);
+    table->subtable_count = hz_deserializer_read_u16(ds);
 
     if (table->subtable_count > 0) {
-        Offset16 *offsets = hz_malloc(sizeof(Offset16) * table->subtable_count);
-        UnpackArray16(&stream, table->subtable_count, offsets);
+        Offset16 *offsets = hz_memory_arena_alloc(&arena, table->subtable_count * sizeof(Offset16));
+        hz_deserializer_read_u16_block(ds, offsets, table->subtable_count);
 
         // Set pointers to NULL by default
-        table->subtables = hz_malloc(sizeof(*table->subtables) * table->subtable_count);
-        for (uint16_t i = 0; i < table->subtable_count; ++i) {
-            table->subtables[i] = NULL;
-        }
+        table->subtables = hz_allocate(alctr, SIZEOF_VOIDPTR * table->subtable_count);
+        memset(table->subtables, 0, SIZEOF_VOIDPTR * table->subtable_count); // null-out the subtale pointers
 
         // Load & parse subtables
         uint16_t original_lookup_type = table->lookup_type;
         for (uint16_t i = 0; i < table->subtable_count; ++i) {
-            hz_load_gpos_lookup_subtable(stream.data + offsets[i], table, original_lookup_type, i);
+            hz_deserializer_push_state(ds, offsets[i]);
+            hz_read_gpos_lookup_subtable(alctr, ds, table, original_lookup_type, i);
+            hz_deserializer_pop_state(ds);
         }
-
-        hz_free(offsets);
     }
 
     // Only include mark filtering set if flag USE_MARK_FILTERING_SET is enabled
     if (table->lookup_flags & HZ_LOOKUP_FLAG_USE_MARK_FILTERING_SET) {
-        uint16_t mark_filtering_set_index = Unpack16(&stream);
-        table->mark_filtering_set = face->mark_glyph_set[mark_filtering_set_index];
-    } else {
-        table->mark_filtering_set = NULL;
+        uint16_t mark_filtering_set_index = hz_deserializer_read_u16(ds);
+        table->mark_filtering_set = &face->mark_glyph_set[mark_filtering_set_index];
     }
+
     return HZ_OK;
 }
-#endif 
 
 HZ_STATIC hz_error_t hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 {
-    uint8_t buffer[4096];
-    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
+    char tmp[4096];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
     hz_face_t *face = hz_font_get_face(plan->font);
     hz_deserializer_t ds = hz_deserializer_create(face->data, 1); 
 
@@ -5049,15 +5121,14 @@ HZ_STATIC hz_error_t hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
     gsub_table->version = hz_deserializer_read_u32(&ds);
 
     switch (gsub_table->version) {
-        case 0x00010000: // 1.0
-            cmdread(&ds, 1, &hdr, "www");
-            break;
-        case 0x00010001: // 1.1
-            cmdread(&ds, 1, &hdr, "wwww");
-            break;
-        default: // error
-            return HZ_ERROR_INVALID_TABLE_VERSION;
-            break;
+    case 0x00010000: // 1.0
+        cmdread(&ds, 1, &hdr, "www");
+        break;
+    case 0x00010001: // 1.1
+        cmdread(&ds, 1, &hdr, "wwww");
+        break;
+    default: // error
+        return HZ_ERROR_INVALID_TABLE_VERSION;
     }
 
     {
@@ -5100,78 +5171,71 @@ HZ_STATIC hz_error_t hz_shape_plan_load_gsub_table(hz_shape_plan_t *plan)
 }
 
 
-HZ_STATIC hz_error_t
-hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
+HZ_STATIC hz_error_t hz_shape_plan_load_gpos_table(hz_shape_plan_t *plan)
 {
+    uint8_t buffer[5000];
+    hz_memory_arena_t arena = hz_memory_arena_create(buffer, sizeof buffer);
     hz_face_t *face = hz_font_get_face(plan->font);
+    hz_deserializer_t ds = hz_deserializer_create(face->data, 1); 
 
     if (!face->gpos) {
-        return HZ_ERROR_TABLE_DOES_NOT_EXIST;
+         return HZ_ERROR_TABLE_DOES_NOT_EXIST;
     }
 
-    hz_stream_t table = hz_stream_create(face->data + face->gpos, 0);
     hz_gpos_table_t *gpos_table = &plan->gpos_table;
 
-    uint16_t script_list_offset, feature_list_offset, lookup_list_offset, feature_variations_offset;
-    gpos_table->version = Unpack32(&table);
+    struct { uint16_t script_list_offset,
+                      feature_list_offset,
+                      lookup_list_offset,
+                      feature_variations_offset; } hdr;
+
+    hz_deserializer_push_state(&ds, face->gpos);
+    gpos_table->version = hz_deserializer_read_u32(&ds);
 
     switch (gpos_table->version) {
-        case 0x00010000: /* 1.0 */
-        Unpackv(&table, "hhh",
-                &script_list_offset,
-                &feature_list_offset,
-                &lookup_list_offset);
+    case 0x00010000: // 1.0
+        cmdread(&ds, 1, &hdr, "www");
         break;
-        case 0x00010001: /* 1.1 */
-        Unpackv(&table, "hhhi",
-                &script_list_offset,
-                &feature_list_offset,
-                &lookup_list_offset,
-                &feature_variations_offset);
+    case 0x00010001: // 1.1
+        cmdread(&ds, 1, &hdr, "wwww");
         break;
-        default: /* error */
+    default: // error
         return HZ_ERROR_INVALID_TABLE_VERSION;
-        break;
     }
 
     {
-        // Load feature list table
-        hz_stream_t stream = hz_stream_create(table.data + feature_list_offset, 0);
-        uint16_t num_features = Unpack16(&stream);
-        gpos_table->num_features = num_features;
-        // gpos_table->features = hz_memory_pool_allocate(sizeof(hz_feature_list_item_t) * num_features);
-
-        for (uint16_t i = 0; i < num_features; ++i) {
-            gpos_table->features[i].tag = Unpack32(&stream);
-            Offset16 offset = Unpack16(&stream);
-
-            uintptr_t lastptr = stream_tell(&stream);
-            stream_seek(&stream, offset);
-            // hz_load_feature_table(&plan->memory_pool, &stream, &gpos_table->features[i].table);
-            stream_seek(&stream, lastptr);
+        // parse feature list table
+        hz_deserializer_push_state(&ds, hdr.feature_list_offset);
+        gpos_table->num_features = hz_deserializer_read_u16(&ds);
+        gpos_table->features = hz_allocate(&plan->allocator, sizeof(hz_feature_list_item_t) * gpos_table->num_features);
+        
+        for (int i = 0; i < gpos_table->num_features; ++i) {
+            hz_feature_list_item_t *it = &gpos_table->features[i];
+            it->tag = hz_deserializer_read_u32(&ds);
+            Offset16 offset = hz_deserializer_read_u16(&ds);
+            hz_deserializer_push_state(&ds, offset);
+            hz_load_feature_table(&plan->allocator, &ds, &it->table);
+            hz_deserializer_pop_state(&ds);
         }
+
+        hz_deserializer_pop_state(&ds);
     }
 
     {
-        // Load lookups
-        uint16_t i, num_lookups;
-        Offset16 *offsets;
+        // parse lookup list table
+        hz_deserializer_push_state(&ds, hdr.lookup_list_offset);
+        gpos_table->num_lookups = hz_deserializer_read_u16(&ds);
+        gpos_table->lookups = hz_allocate(&plan->allocator, sizeof(hz_lookup_table_t) * gpos_table->num_lookups);
+        Offset16* offsets = hz_memory_arena_alloc(&arena, sizeof(Offset16) * gpos_table->num_lookups);
+        hz_deserializer_read_u16_block(&ds, offsets, gpos_table->num_lookups);
 
-        hz_stream_t stream = hz_stream_create(table.data + lookup_list_offset, 0);
-        num_lookups = Unpack16(&stream);
-
-        gpos_table->num_lookups = num_lookups;
-        gpos_table->lookups = hz_malloc(sizeof(hz_lookup_table_t) * num_lookups);
-
-        offsets = hz_malloc(sizeof(Offset16) * num_lookups);
-        UnpackArray16(&stream, num_lookups, offsets);
-
-        for (i = 0; i < num_lookups; ++i) {
-            // GPOS FIXME
-            // hz_load_gpos_lookup_table(stream.data + offsets[i], face, &gpos_table->lookups[i]);
+        for (uint16_t i = 0; i < gpos_table->num_lookups; ++i) {
+            hz_deserializer_push_state(&ds, offsets[i]);
+            hz_load_gpos_lookup_table(&plan->allocator, &ds, face, &gpos_table->lookups[i]);
+            hz_deserializer_pop_state(&ds);
         }
 
-        hz_free(offsets);
+        hz_deserializer_pop_state(&ds);
     }
 
     return HZ_OK;
@@ -5181,7 +5245,7 @@ HZ_STATIC void
 hz_shape_plan_load_tables(hz_shape_plan_t *plan)
 {
     hz_shape_plan_load_gsub_table(plan);
-    //hz_shape_plan_load_gpos_table(plan);
+    hz_shape_plan_load_gpos_table(plan);
 }
 
 HZ_STATIC hz_shape_plan_t *
@@ -5491,8 +5555,8 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 hz_buffer_t *in, hz_buffer_t *out,
                                 int v1, int v2, int depth)
 {
-    uint8_t temp[4096];
-    hz_memory_arena_t arena = hz_memory_arena_create(temp, sizeof temp);
+    char tmp[8192];
+    hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
 
     HZ_ASSERT(in != NULL && out != NULL);
     HZ_ASSERT(in != out);
@@ -5525,11 +5589,11 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
             // subtable requested is loaded
             hz_memory_arena_reset(&arena);
             hz_buffer_compute_info(b1, face);
+
             // reserve second buffer with size of first buffer as the result of the substitution is likely going to be
             // around the size of the first buffer in most cases.
             hz_buffer_reserve(b2, hz_vector_size(b1->glyph_indices));
-
-            hz_range_list_t *range_list = hz_compute_range_list(b1, table->lookup_flags, &table->mark_filtering_set);
+            hz_range_list_t *range_list = hz_compute_range_list(b1, table->lookup_flags, table->mark_filtering_set);
 
             switch (table->lookup_type) {
                 case HZ_GSUB_LOOKUP_TYPE_SINGLE_SUBSTITUTION: {
@@ -5546,7 +5610,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     // unignored
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         int32_t index;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
                                             && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                     .id = b1->glyph_indices[g] + subtable->delta_glyph_id,
@@ -5574,7 +5638,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         int32_t index;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
                                             && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                     .id = subtable->substitute_glyph_ids[index],
@@ -5608,7 +5672,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         int32_t index;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
                                             && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             const hz_sequence_table_t *sequence = &subtable->sequences[index];
 
@@ -5651,7 +5715,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                         hz_bool_t matched = HZ_FALSE;
 
                                         int32_t index;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
                                             && (index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             const hz_ligature_set_table_t *ligature_set = subtable->ligature_sets + index;
 
@@ -5686,10 +5750,10 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                                                 .component_index = b1->component_indices[g]});
 
                                                         // Push ignored glyphs found within the matched range
-                                                        for (int k = s1; k <= s2; ++k) {
+                                                        for (int k = s1; k < s2; ++k) {
                                                             int min_index = range_list->unignored_indices[k];
                                                             int max_index = range_list->unignored_indices[k+1];
-                                                            for (int m = min_index+1; m <= (max_index-1); ++m) {
+                                                            for (int m = min_index+1; m <= max_index-1; ++m) {
                                                                 hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
                                                                     .id = b1->glyph_indices[m],
                                                                     .codepoint = b1->codepoints[m],
@@ -5712,9 +5776,9 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                         check_match_gsub_4_1:
                                         if (!matched) {
                                             hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
-                                                    .id = b1->glyph_indices[g],
-                                                    .codepoint = b1->codepoints[g],
-                                                    .component_index = b1->component_indices[g]});
+                                                .id = b1->glyph_indices[g],
+                                                .codepoint = b1->codepoints[g],
+                                                .component_index = b1->component_indices[g]});
                                         }
                                     }
 
@@ -5742,7 +5806,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t match = HZ_FALSE;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
                                             && hz_coverage_contains(&subtable->coverage, b1->glyph_indices[g])) {
                                             for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                                 hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
@@ -5800,7 +5864,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                             for (uint16_t z = 0; z < rule->lookup_count; ++z) {
                                                                 hz_buffer_compute_info(ctx1, face);
-                                                                int *context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, &table->mark_filtering_set);
+                                                                int *context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, table->mark_filtering_set);
                                                                 int sequence_idx = context_index_list[rule->lookup_records[z].sequence_index];
 
                                                                 hz_shape_plan_apply_gsub_lookup(plan, feature,
@@ -5862,7 +5926,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
                                     // unignored
                                     for (short g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t match = HZ_FALSE;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, &table->mark_filtering_set)) {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)) {
                                             // context bounds check, if this doesn't fit inside the original range
                                             // this context is impossible to match
                                             int u = range->base + (g - range->mn);
@@ -5906,7 +5970,6 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                 if (input_match && suffix_match && prefix_match) {
                                                     // if match, apply nested lookups
-
                                                     hz_segment_sz_t context_low = range_list->unignored_indices[u];
                                                     hz_segment_sz_t context_high = range_list->unignored_indices[u + subtable->input_count - 1];
 
@@ -5917,7 +5980,7 @@ hz_shape_plan_apply_gsub_lookup(hz_shape_plan_t *plan,
 
                                                     for (uint16_t z = 0; z < subtable->lookup_count; ++z) {
                                                         hz_buffer_compute_info(ctx1, face);
-                                                        hz_vector(int) context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, &table->mark_filtering_set);
+                                                        hz_vector(int) context_index_list = hz_buffer_get_unignored_indices(ctx1, table->lookup_flags, table->mark_filtering_set);
                                                         int sequence_idx = context_index_list[subtable->lookup_records[z].sequence_index];
                                                         hz_vector_destroy(context_index_list);
 
@@ -5990,14 +6053,13 @@ void hz_apply_value_record_adjustments(hz_glyph_metrics_t *metrics,
     if (value_format & HZ_VALUE_FORMAT_X_ADVANCE)
         metrics->xAdvance += value_record->xAdvance;
     if (value_format & HZ_VALUE_FORMAT_Y_ADVANCE)
-        metrics->yAdvance  += value_record->yAdvance ;
+        metrics->yAdvance  += value_record->yAdvance;
     if (value_format & HZ_VALUE_FORMAT_X_PLACEMENT)
         metrics->xOffset += value_record->xPlacement;
     if (value_format & HZ_VALUE_FORMAT_Y_PLACEMENT)
         metrics->yOffset += value_record->yPlacement;
 }
 
-#if 0 // GPOS FIXME
 void
 hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 hz_feature_t feature,
@@ -6049,16 +6111,14 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
-
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set) &&
-                                            hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set) &&
+                                            hz_coverage_contains(&subtable->coverage, b1->glyph_indices[g])) {
                                             hz_apply_value_record_adjustments(&metrics, &subtable->value_record,
                                                                               subtable->value_format);
                                         }
-
+                                        
                                         hz_buffer_add_glyph(b2, (hz_glyph_object_t) {
-                                                .metrics = metrics
+                                            .metrics = metrics
                                         });
                                     }
                                 }
@@ -6078,11 +6138,9 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
 
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set) &&
-                                            hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
-                                            uint16_t record_index = hz_map_get_value(subtable->coverage,
-                                                                                     b1->glyph_indices[g]);
+                                        int32_t record_index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set) &&
+                                            (record_index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g]))!= -1 ) {
                                             hz_apply_value_record_adjustments(&metrics,
                                                                               &subtable->value_records[record_index],
                                                                               subtable->value_format);
@@ -6111,16 +6169,14 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                     hz_buffer_add_range(b2, b1, range->mn, range->mx);
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                        int32_t cov_index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
+                                            && (cov_index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_segment_sz_t base_idx = range->base + (g - range->mn);
 
                                             if (base_idx+1 < hz_vector_size(rangeList->unignored_indices)) {
                                                 hz_segment_sz_t g2 = rangeList->unignored_indices[base_idx + 1];
-                                                uint32_t set_index = hz_map_get_value(subtable->coverage,
-                                                                                      b1->glyph_indices[g]);
-                                                hz_pair_set_t *pair_set = &subtable->pair_sets[set_index];
+                                                hz_pair_set_t *pair_set = &subtable->pair_sets[cov_index];
 
                                                 for (uint16_t pv = 0; pv < pair_set->pair_value_count; ++pv) {
                                                     hz_pair_value_record_t *pair_value_record = &pair_set->pair_value_records[pv];
@@ -6164,21 +6220,19 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     // unignored
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g])) {
+                                        
+                                        int32_t class1_index, class2_index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
+                                            && (class1_index = hz_coverage_search(&subtable->coverage, b1->glyph_indices[g])) != -1) {
                                             hz_segment_sz_t base_idx = range->base + (g - range->mn);
 
                                             if (base_idx+1 < hz_vector_size(rangeList->unignored_indices)) {
                                                 hz_segment_sz_t g2 = rangeList->unignored_indices[base_idx + 1];
-                                                if (hz_map_contains(subtable->class_def1, b1->glyph_classes[g])
-                                                    && hz_map_contains(subtable->class_def2, b1->glyph_classes[g2])) {
-                                                    uint32_t class1_idx = hz_map_get_value(subtable->class_def1,
-                                                                                           b1->glyph_classes[g]);
-                                                    uint32_t class2_idx = hz_map_get_value(subtable->class_def2,
-                                                                                           b1->glyph_classes[g2]);
+                    
+                                                if ((class1_index = hz_class_def_search(&subtable->class_def1, b1->glyph_classes[g])) != -1
+                                                    && (class2_index = hz_class_def_search(&subtable->class_def2, b1->glyph_classes[g2])) != -1) {
 
-                                                    const hz_class2_record_t *class2_record = &subtable->class1_records[class1_idx].class2_records[class2_idx];
+                                                    const hz_class2_record_t *class2_record = &subtable->class1_records[class1_index].class2_records[class2_index];
                                                     hz_apply_value_record_adjustments(&b1->glyph_metrics[g],
                                                                                       &class2_record->value_record1,
                                                                                       subtable->value_format1);
@@ -6206,11 +6260,9 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                     }
                     break;
                 }
-#if 0
                 case HZ_GPOS_LOOKUP_TYPE_CURSIVE_ATTACHMENT: {
                     break;
                 }
-#endif
                 case HZ_GPOS_LOOKUP_TYPE_MARK_TO_BASE_ATTACHMENT: {
                     switch (base->format) {
                         case 1: {
@@ -6226,33 +6278,27 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
 
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->mark_coverage, b1->glyph_indices[g])) {
-                                            int prev_base = hz_search_prev_glyph(b1, g, HZ_GLYPH_CLASS_MARK, HZ_GLYPH_CLASS_BASE);
-                                            if (prev_base != -1) {
-                                                if (hz_map_contains(subtable->mark_coverage, b1->glyph_indices[g])
-                                                    && hz_map_contains(subtable->base_coverage,
-                                                                       b1->glyph_indices[prev_base])) {
-                                                    // both coverages match
-                                                    uint16_t mark_index = hz_map_get_value(subtable->mark_coverage, b1->glyph_indices[g]);
-                                                    uint16_t base_index = hz_map_get_value(subtable->base_coverage, b1->glyph_indices[prev_base]);
-                                                    hz_mark_record_t *mark_record = &subtable->mark_array.mark_records[mark_index];
-                                                    hz_anchor_t *base_anchor = &subtable->base_array.base_records[base_index].base_anchors[mark_record->mark_class];
-                                                    hz_anchor_t *mark_anchor = &mark_record->mark_anchor;
+                                        int32_t mark_index, base_index;
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
+                                            && (mark_index = hz_coverage_search(&subtable->mark_coverage, b1->glyph_indices[g])) != -1) {
+                                            hz_segment_sz_t prev_base = hz_search_prev_glyph(b1, g, HZ_GLYPH_CLASS_MARK, HZ_GLYPH_CLASS_BASE);
+                                            if (prev_base != -1 && (base_index = hz_coverage_search(&subtable->base_coverage, b1->glyph_indices[prev_base])) != -1) {
+                                                // both coverages match
+                                                hz_mark_record_t *mark_record = &subtable->mark_array.mark_records[mark_index];
+                                                hz_anchor_t *base_anchor = &subtable->base_array.base_records[base_index].base_anchors[mark_record->mark_class];
+                                                hz_anchor_t *mark_anchor = &mark_record->mark_anchor;
 
-                                                    hz_glyph_metrics_t base_metrics = b1->glyph_metrics[prev_base];
-                                                    int32_t placement_x1 = mark_anchor->xCoord;
-                                                    int32_t placement_y1 = mark_anchor->yCoord;
-                                                    int32_t placement_x2 = base_anchor->xCoord + base_metrics.xOffset;
-                                                    int32_t placement_y2 = base_anchor->yCoord + base_metrics.yOffset;
+                                                hz_glyph_metrics_t base_metrics = b1->glyph_metrics[prev_base];
+                                                int32_t placement_x1 = mark_anchor->xCoord - base_metrics.xOffset;
+                                                int32_t placement_y1 = mark_anchor->yCoord - base_metrics.yOffset;
+                                                int32_t placement_x2 = base_anchor->xCoord + base_metrics.xOffset;
+                                                int32_t placement_y2 = base_anchor->yCoord + base_metrics.yOffset;
 
-                                                    int32_t xOffset = placement_x2 - placement_x1;
-                                                    int32_t yOffset = placement_y2 - placement_y1;
+                                                int32_t xOffset = placement_x2 - placement_x1;
+                                                int32_t yOffset = placement_y2 - placement_y1;
 
-                                                    metrics.xOffset = xOffset;
-                                                    metrics.yOffset = yOffset;
-                                                }
+                                                metrics.xOffset = xOffset;
+                                                metrics.yOffset = yOffset;
                                             }
                                         }
 
@@ -6278,18 +6324,19 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                         } else {
                             for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                 hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
-                        
+
+                                int32_t cov_index1, cov_index2;
                                 if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
-                                    && hz_map_contains(subtable->mark_coverage, b1->glyph_indices[g])) {
+                                    && (cov_index1 = hz_coverage_search(&subtable->mark_coverage, b1->glyph_indices[g])) != -1) {
                                     int prev_ligature = hz_search_prev_glyph(b1, g, HZ_GLYPH_CLASS_MARK, HZ_GLYPH_CLASS_LIGATURE);
                                     if (prev_ligature != -1) {
-                                        if (hz_map_contains(subtable->ligature_coverage, b1->glyph_indices[prev_ligature])) {
+                                        if ((cov_index2 = hz_coverage_search(&subtable->ligature_coverage, b1->glyph_indices[prev_ligature])) != -1) {
                                             // both coverages match
                                             uint16_t component_index = b1->component_indices[g];
                                             uint16_t attachment_class = b1->attachment_classes[g];
                                             
-                                            uint16_t mark_index = hz_map_get_value(subtable->mark_coverage, b1->glyph_indices[g]);
-                                            uint16_t ligature_index = hz_map_get_value(subtable->ligature_coverage, b1->glyph_indices[prev_ligature]);
+                                            uint16_t mark_index = cov_index1;
+                                            uint16_t ligature_index = cov_index2;
                                             hz_mark_record_t *mark_record = &subtable->mark_array.mark_records[mark_index];
                                             hz_ligature_attachment_t *ligature_attachment = &subtable->ligature_array.ligature_attachments[ligature_index];
                                             hz_component_record_t *component = &ligature_attachment->component_records[component_index];
@@ -6333,17 +6380,15 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
-
+                                        int32_t mark1_index, mark2_index;
                                         if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)) {
                                             int prev_mark = hz_search_prev_glyph(b1, g, HZ_GLYPH_CLASS_MARK, HZ_GLYPH_CLASS_MARK);//range->base + (g - range->mn) - 1;
                                             if (prev_mark != -1) {
-                                                if (hz_map_contains(subtable->mark2_coverage, b1->glyph_indices[prev_mark]) &&
-                                                    hz_map_contains(subtable->mark1_coverage, b1->glyph_indices[g])
-                                                    && (b1->component_indices[g] == b1->component_indices[prev_mark]))
+                                                if ((mark2_index = hz_coverage_search(&subtable->mark2_coverage, b1->glyph_indices[prev_mark])) != -1 &&
+                                                   ( mark1_index = hz_coverage_search(&subtable->mark1_coverage, b1->glyph_indices[g])) != -1 &&
+                                                   (b1->component_indices[g] == b1->component_indices[prev_mark]))
                                                 {
                                                     // valid second mark found
-                                                    uint16_t mark1_index = hz_map_get_value(subtable->mark1_coverage, b1->glyph_indices[g]);
-                                                    uint16_t mark2_index = hz_map_get_value(subtable->mark2_coverage, b1->glyph_indices[prev_mark]);
                                                     hz_mark_record_t *mark_record = &subtable->mark1_array.mark_records[mark1_index];
                                                     hz_mark2_record_t *mark2_record = &subtable->mark2_array.mark2_records[mark2_index];
                                                     hz_anchor_t *base_anchor = &mark2_record->mark2_anchors[mark_record->mark_class];
@@ -6395,9 +6440,8 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                 } else {
                                     for (hz_segment_sz_t g = range->mn; g <= range->mx; ++g) {
                                         hz_bool_t match = HZ_FALSE;
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)
-                                            && hz_map_contains(subtable->coverage, b1->glyph_indices[g]))  {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)
+                                            && hz_coverage_contains(&subtable->coverage, b1->glyph_indices[g]))  {
                                             for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                                 hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
                                                 for (uint16_t n = 0; n < rs->count; ++n) {
@@ -6520,8 +6564,7 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                         hz_bool_t match = HZ_FALSE;
                                         hz_glyph_metrics_t metrics = b1->glyph_metrics[g];
 
-                                        if (hz_should_replace(b1, feature, g, table->lookup_flags,
-                                                              table->mark_filtering_set)) {
+                                        if (hz_should_replace(b1, feature, g, table->lookup_flags, table->mark_filtering_set)) {
                                             // context bounds check, if this doesn't fit inside the original range
                                             // this context is impossible to match
                                             int u = range->base + (g - range->mn);
@@ -6535,8 +6578,8 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
 
                                                 // prefix (reverse order according to spec.)
                                                 for (int k = 0; k < subtable->prefix_count; ++k) {
-                                                    if (!hz_map_contains(subtable->prefix_maps[k],
-                                                                         b1->glyph_indices[rangeList->unignored_indices[
+                                                    if (!hz_coverage_contains(&subtable->prefix_coverages[k],
+                                                                            b1->glyph_indices[rangeList->unignored_indices[
                                                                                  u - (k + 1)]])) {
                                                         prefix_match = 0;
                                                         break;
@@ -6545,7 +6588,7 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
 
                                                 // input
                                                 for (int k = 0; k < subtable->input_count; ++k) {
-                                                    if (!hz_map_contains(subtable->input_maps[k],
+                                                    if (!hz_coverage_contains(&subtable->input_coverages[k],
                                                                          b1->glyph_indices[rangeList->unignored_indices[
                                                                                  u + k]])) {
                                                         input_match = 0;
@@ -6555,7 +6598,7 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
 
                                                 // suffix
                                                 for (int k = 0; k < subtable->suffix_count; ++k) {
-                                                    if (!hz_map_contains(subtable->suffix_maps[k],
+                                                    if (!hz_coverage_contains(&subtable->suffix_coverages[k],
                                                                          b1->glyph_indices[rangeList->unignored_indices[
                                                                                  u + subtable->input_count + k]])) {
                                                         suffix_match = 0;
@@ -6578,7 +6621,6 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
                                                         int sequence_idx = context_index_list[subtable->lookup_records[z].sequence_index];
                                                         hz_vector_destroy(context_index_list);
 
-                                                        // recurse :^)
                                                         hz_shape_plan_apply_gpos_lookup(plan, feature,
                                                                                         subtable->lookup_records[z].lookup_list_index,
                                                                                         ctx1, ctx2,
@@ -6643,7 +6685,6 @@ hz_shape_plan_apply_gpos_lookup(hz_shape_plan_t *plan,
     hz_buffer_destroy(b1);
     hz_buffer_destroy(b2);
 }
-#endif
 
 HZ_STATIC int
 hz_feature_list_search(hz_feature_list_item_t *features, uint16_t num_features, hz_feature_t feature)
@@ -6696,8 +6737,7 @@ int cmp_lookup_ref(const void *a, const void *b)
     return (int)((const hz_lookup_reference_t *)a)->index - (int)((const hz_lookup_reference_t *)b)->index;
 }
 
-HZ_STATIC void
-hz_shape_plan_apply_gsub_features(hz_shape_plan_t *plan, hz_segment_t *seg)
+HZ_STATIC void hz_shape_plan_apply_gsub_features(hz_shape_plan_t *plan, hz_segment_t *seg)
 {
     hz_face_t *face = hz_font_get_face(plan->font);
     hz_gsub_table_t *gsub = &plan->gsub_table;
@@ -6763,8 +6803,7 @@ hz_shape_plan_apply_gpos_features(hz_shape_plan_t *plan, hz_segment_t *seg)
 
     for (size_t i = 0; i < hz_vector_size(lookup_refs); ++i) {
         hz_lookup_reference_t *ref = &lookup_refs[i];
-        // GPOS FIXME
-        // hz_shape_plan_apply_gpos_lookup(plan, ref->feature, ref->index, seg->in, seg->out, 0, seg->in->glyph_count - 1, 0);
+        hz_shape_plan_apply_gpos_lookup(plan, ref->feature, ref->index, seg->in, seg->out, 0, seg->in->glyph_count - 1, 0);
         hz_segment_swap_buffers(seg, face);
     }
 
@@ -6790,7 +6829,7 @@ hz_shape_plan_execute(hz_shape_plan_t *plan, hz_segment_t *seg)
 
         hz_shape_plan_apply_gsub_features(plan, seg);
         hz_segment_setup_metrics(seg,face);
-        // hz_shape_plan_apply_gpos_features(plan, seg);
+        hz_shape_plan_apply_gpos_features(plan, seg);
 
         hz_buffer_compute_info(seg->in, face);
 
@@ -6808,7 +6847,6 @@ hz_shape(hz_font_t *font,
          hz_shape_flags_t flags)
 {
     hz_shape_plan_t *plan = hz_shape_plan_create(font, seg, features, num_features, flags);
-    printf("arena size: %d\n", plan->arena.size);
     hz_shape_plan_execute(plan, seg);
     hz_shape_plan_destroy(plan);
 }

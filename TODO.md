@@ -16,4 +16,4 @@ and codepoint mapping.
 ### 6/3/2022
 - [ ] Look for a different hash function for `hz_map_t` such as MurmurHash3 or MeowHash, 
 make it resizable, make it generic and improve performance.
-- [ ] Lower memory footprint of `HzRangeList` and improve its initialization speed.
+- [ ] Lower memory footprint of `hz_range_list_t` and improve its initialization speed.

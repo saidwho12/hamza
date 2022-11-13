@@ -120,11 +120,10 @@
 #endif
 
 #if HZ_COMPILER & HZ_COMPILER_VC
-#define HZ_DBGBREAK() __debugbreak()
+#define HZ_BREAKPOINT __debugbreak()
 #elif HZ_COMPILER & HZ_COMPILER_GCC
-#define HZ_DBGBREAK() __builtin_trap()
+#define HZ_BREAKPOINT __builtin_trap()
 #else
-#define HZ_DBGBREAK()
 #endif
 
 #define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
@@ -240,10 +239,10 @@ typedef enum {
  * */
 typedef enum {
     HZ_GLYPH_CLASS_ZERO      = 0,
-    HZ_GLYPH_CLASS_BASE      = 0x00000001ul,
-    HZ_GLYPH_CLASS_LIGATURE  = 0x00000002ul,
-    HZ_GLYPH_CLASS_MARK      = 0x00000004ul,
-    HZ_GLYPH_CLASS_COMPONENT = 0x00000008ul
+    HZ_GLYPH_CLASS_BASE      = 1 << 0,
+    HZ_GLYPH_CLASS_LIGATURE  = 1 << 1,
+    HZ_GLYPH_CLASS_MARK      = 1 << 2,
+    HZ_GLYPH_CLASS_COMPONENT = 1 << 3
 } hz_glyph_class_t;
 
 /* include tables, types, and functions and other generated code */
@@ -311,7 +310,7 @@ typedef enum hz_glyph_attrib_flags_t {
 } hz_glyph_attrib_flags_t;
 
 /* struct: hz_buffer_t */
-typedef struct hz_buffer_t {
+typedef struct {
     size_t                  glyph_count;
     hz_glyph_metrics_t *    glyph_metrics;
     hz_index_t *            glyph_indices;
@@ -338,7 +337,7 @@ typedef enum hz_shape_flags_t {
  *      Set of special flags passed in to <hz_setup> used to configure the library.
  */
 typedef enum hz_setup_flags_t {
-    HZ_USE_CPUID_FOR_SIMD_CHECKS = 1 << 0,
+    HZ_QUERY_CPU_FOR_SIMD = 1 << 0,
 } hz_setup_flags_t;
 
 /*  function: hz_setup

@@ -18,9 +18,9 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 endif ()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g2 -ggdb -pedantic")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g2 -ggdb -fverbose-asm")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -O2 -Ofast")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=c99 -march=native")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
 
     if (MINGW)
         set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")

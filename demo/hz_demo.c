@@ -213,7 +213,7 @@ void render_text_to_png(const char *filename,
         int lsb;
         stbtt_GetGlyphHMetrics(font, glyph_index, &ax, &lsb);
 
-        if (glyph_index != 0) {
+        if (glyph_index != 0 /*&& buffer->glyph_classes[i] & HZ_GLYPH_CLASS_BASE*/) {
             hz_glyph_metrics_t *glyph_metrics = &buffer->glyph_metrics[i];
             int32_t xAdvance = glyph_metrics->xAdvance;
             int32_t yAdvance = glyph_metrics->yAdvance;
@@ -248,7 +248,7 @@ void render_text_to_png(const char *filename,
             Color col = {0.0f,//rand_float(),//138.0f/255.0f,
                          0.0f,//rand_float(),//176.0f/255.0f,
                          0.0f,//rand_float(),//238.0f/255.0f,
-                         1.0F};
+                         0.30f};
 
 
 #if 0
@@ -277,19 +277,45 @@ void render_text_to_png(const char *filename,
     free(pixels);
 }
 
+void* Baz(void* user, hz_allocator_cmd_t cmd, void* ptr, size_t size, size_t align)
+{
+    HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(align);
+    static size_t mem_usage = 0;
+    void *addr = __builtin_extract_return_addr (__builtin_return_address (0));
+
+    switch (cmd) {
+        case HZ_CMD_ALLOC:
+            // printf("malloc %d bytes from %p\n", size, addr);
+            // mem_usage += size;
+            // printf("memory usage: %d\n", mem_usage);
+            //_sleep(1000);
+            return malloc(size);
+        case HZ_CMD_REALLOC: // no-op
+            return realloc(ptr, size);
+        case HZ_CMD_FREE:
+            free(ptr);
+        case HZ_CMD_RELEASE:    
+        default: // error, cmd not handled
+            return NULL;
+    }
+}
+
 int main(int argc, char *argv[]) {
-    hz_setup(0);
-    // hz_set_alloc_func(&my_allocation_func, NULL);
+    hz_setup(HZ_QUERY_CPU_FOR_SIMD);
+    hz_set_allocator_fn(Baz);
+    hz_set_allocator_user_pointer(NULL);
 
     stbtt_fontinfo fontinfo;
     // load_font_face(&fontinfo, "../data/fonts/FajerNooriNastalique.ttf");
     // load_font_face(&fontinfo, "../data/fonts/Times New Roman.ttf");
+    // load_font_face(&fontinfo, "../data/fonts/ACaslonPro-Italic.otf");
     // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
     // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
-    load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
+    // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
+    load_font_face(&fontinfo, "../data/fonts/Quran/OmarNaskh-Light.ttf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
-    char *text = "عبس و تولى أن جآئه الأعمى وما يدريك لعله يزكى أو يذكر فتنفعه الذكرى";
+    char *text = "فَٱسْتَجَابَ لَهُمْ رَبُّهُمْ أَنِّى لَآ أُضِيعُ عَمَلَ عَـٰمِلٍ مِّنكُم مِّن ذَكَرٍ أَوْ أُنثَىٰ ۖ بَعْضُكُم مِّنۢ بَعْضٍ ۖ فَٱلَّذِينَ هَاجَرُوا۟ وَأُخْرِجُوا۟ مِن دِيَـٰرِهِمْ وَأُوذُوا۟ فِى سَبِيلِى وَقَـٰتَلُوا۟ وَقُتِلُوا۟ لَأُكَفِّرَنَّ عَنْهُمْ سَيِّـَٔاتِهِمْ وَلَأُدْخِلَنَّهُمْ جَنَّـٰتٍ تَجْرِى مِن تَحْتِهَا ٱلْأَنْهَـٰرُ ثَوَابًا مِّنْ عِندِ ٱللَّهِ ۗ وَٱللَّهُ عِندَهُۥ حُسْنُ ٱلثَّوَابِ";
     // char *text = "sift through tj fi fj ct stop";
     // char *text = "Слава Україні";
     // char *text = "मुझे कोई हिंदी नहीं आती";
@@ -307,10 +333,17 @@ int main(int argc, char *argv[]) {
         HZ_FEATURE_INIT,
         HZ_FEATURE_MEDI,
         HZ_FEATURE_FINA,
-        HZ_FEATURE_CALT,
         HZ_FEATURE_RLIG,
+        HZ_FEATURE_CALT,
+        HZ_FEATURE_LIGA,
         HZ_FEATURE_DLIG,
-        HZ_FEATURE_LIGA
+        // HZ_FEATURE_CSWH,
+        // HZ_FEATURE_SWSH,
+        // HZ_FEATURE_MSET,
+        HZ_FEATURE_CURS,
+        HZ_FEATURE_KERN,
+        HZ_FEATURE_MARK,
+        HZ_FEATURE_MKMK,
     };
 
     printf("first\n");
@@ -318,6 +351,7 @@ int main(int argc, char *argv[]) {
     printf("second\n");
 
     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
+    printf("glyph number: %d\n", buffer->glyph_count);
     render_text_to_png("out.png", &fontinfo, buffer);
     hz_segment_destroy(seg);
     hz_cleanup();

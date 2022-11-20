@@ -1,7 +1,0 @@
-#ifndef HZ_RENDERER_GLES2_H
-#define HZ_RENDERER_GLES2_H
-
-
-
-
-#endif // HZ_RENDERER_GLES2_H

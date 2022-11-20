@@ -236,7 +236,7 @@ void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, 
             return realloc(ptr, size);
         case HZ_CMD_FREE:
             free(ptr);
-        case HZ_CMD_RELEASE:    
+        case HZ_CMD_RELEASE:
         default: // error, cmd not handled
             return NULL;
     }
@@ -4484,7 +4484,7 @@ HZ_STATIC void hz_load_base_array(hz_allocator_t *alctr, hz_deserializer_t *ds, 
 
     for (size_t i = 0; i < base_array->base_count; ++i) {
         hz_base_record_t *record = &base_array->base_records[i];
-        record->base_anchors = hz_allocate(alctr,mark_class_count * sizeof(hz_anchor_t));
+        record->base_anchors = hz_allocate(alctr, mark_class_count * sizeof(hz_anchor_t));
         Offset16 *anchor_offsets = hz_memory_arena_alloc(&arena, mark_class_count * sizeof(Offset16));
         hz_deserializer_read_u16_block(ds, anchor_offsets, mark_class_count);
 
@@ -4505,7 +4505,7 @@ HZ_STATIC void hz_load_mark2_array(hz_allocator_t *alctr, hz_deserializer_t *ds,
     char tmp[4000];
     hz_memory_arena_t arena = hz_memory_arena_create(tmp, sizeof tmp);
     mark2_array->mark2_count = hz_deserializer_read_u16(ds);
-    mark2_array->mark2_records = hz_allocate(alctr,mark2_array->mark2_count * sizeof(hz_mark2_record_t));
+    mark2_array->mark2_records = hz_allocate(alctr, mark2_array->mark2_count * sizeof(hz_mark2_record_t));
     for (size_t i = 0; i < mark2_array->mark2_count; ++i) {
         hz_mark2_record_t *record = &mark2_array->mark2_records[i];
         record->mark2_anchors = hz_allocate(alctr,mark_class_count * sizeof(hz_anchor_t));

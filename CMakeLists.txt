@@ -9,43 +9,45 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
-if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") OR WIN32)
-    message(STATUS "Building Hamza for Windows.")
-    set(PLATFORM_WINDOWS TRUE)
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    message(STATUS "Building Hamza for Linux.")
-    set(PLATFORM_UNIX TRUE)
-endif ()
+add_subdirectory(demos/gl4/)
 
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g2 -ggdb -fverbose-asm")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -O2 -Ofast")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
+# if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") OR WIN32)
+#     message(STATUS "Building Hamza for Windows.")
+#     set(PLATFORM_WINDOWS TRUE)
+# elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+#     message(STATUS "Building Hamza for Linux.")
+#     set(PLATFORM_UNIX TRUE)
+# endif ()
 
-    if (MINGW)
-        set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
-    endif()
-elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /arch:AVX2")
-endif()
+# if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+#     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g2 -ggdb -fverbose-asm")
+#     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -O2 -Ofast")
+#     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
 
-set(HAMZA_SOURCES
-        hz/hz.h
-        hz/hz.c
-        hz/hz_data_tables.h
-        hz/hz_glyph_cache.h
-        hz/hz_glyph_cache.c)
+#     if (MINGW)
+#         set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
+#         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
+#     endif()
+# elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+#     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /arch:AVX2")
+# endif()
 
-if(HAMZA_BUILD_SHARED)
-    add_compile_definitions("HZ_BUILD_SHARED")
-    add_library(hamza SHARED ${HAMZA_SOURCES})
-else()
-    add_library(hamza STATIC ${HAMZA_SOURCES})
-endif()
+# set(HAMZA_SOURCES
+#         hz/hz.h
+#         hz/hz.c
+#         hz/hz_data_tables.h
+#         hz/hz_glyph_cache.h
+#         hz/hz_glyph_cache.c)
 
-set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
-        SOVERSION ${HAMZA_VERSION_MAJOR})
+# if(HAMZA_BUILD_SHARED)
+#     add_compile_definitions("HZ_BUILD_SHARED")
+#     add_library(hamza SHARED ${HAMZA_SOURCES})
+# else()
+#     add_library(hamza STATIC ${HAMZA_SOURCES})
+# endif()
+
+# set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
+#         SOVERSION ${HAMZA_VERSION_MAJOR})
 
 # message(DEBUG "LUNARG Vulkan SDK Path: \"$ENV{VULKAN_SDK}\"")  
 
@@ -55,12 +57,12 @@ set_target_properties(hamza PROPERTIES VERSION ${HAMZA_VERSION_STRING}
 
 # file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}" LUNARG_SDK_ROOT)
 
-add_executable(hamza_demo
-"demo/hz_demo.c")
+# add_executable(hamza_demo
+# "demo/hz_demo.c")
 
-target_link_libraries(hamza_demo PRIVATE hamza)
-target_include_directories(hamza_demo PRIVATE
-            "${CMAKE_CURRENT_LIST_DIR}")
+# target_link_libraries(hamza_demo PRIVATE hamza)
+# target_include_directories(hamza_demo PRIVATE
+#             "${CMAKE_CURRENT_LIST_DIR}")
 
 
 # if (PLATFORM_WINDOWS)

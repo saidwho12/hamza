@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define HZ_IMPLEMENTATION
+// #define HZ_STRIP_GFX_CODE
 #include <hz/hz.h>
-// #include "../hz/backends/hz_renderer_vulkan.h"
+
 #include <errno.h>
 #include <limits.h>
 
@@ -10,39 +12,6 @@
 #include "stb_image_write.h"
 
 #define ARRAYSIZE(x) (sizeof(x)/sizeof((x)[0]))
-
-// typedef struct {
-//     GLFWwindow *window;
-//     hz_vk_renderer_t *vk_renderer;
-//     stbtt_fontinfo fontinfo;
-// } App;
-
-// static void exitApp(App *app)
-// {
-//     glfwDestroyWindow(app->window);
-//     glfwTerminate();
-//     hz_cleanup();
-// }
-
-// static void initApp(App *app)
-// {
-//     if (!glfwInit()) {
-//         printf("Failed to initialize GLFW!");
-//     }
-
-//     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-//     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
-
-//     app->window = glfwCreateWindow(800, 800, "Hamza Demo", NULL, NULL);
-
-//     if (app->window == NULL) {
-//         fprintf(stderr, "%s\n", "Failed to create window!");
-//     }
-
-//     glfwSwapInterval(0);
-
-//     app->vk_renderer = hz_vk_create_renderer(app->window, 1);
-// }
 
 static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
 {
@@ -69,17 +38,6 @@ static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
 
     return 1;
 }
-
-// static void mainLoop(App *app)
-// {
-//     while (!glfwWindowShouldClose(app->window)) {
-//         glfwPollEvents();
-//         hz_index_t gid = stbtt_FindGlyphIndex(&app->fontinfo, 'a');
-//         hz_vk_render_frame(app->vk_renderer, &app->fontinfo, gid);
-//     }
-
-//     hz_vk_wait_idle(app->vk_renderer);
-// }
 
 typedef struct {
     float red,green,blue,alpha;
@@ -276,33 +234,8 @@ void render_text_to_png(const char *filename,
     free(pixels);
 }
 
-void* Baz(void* user, hz_allocator_cmd_t cmd, void* ptr, size_t size, size_t align)
-{
-    HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(align);
-    static size_t mem_usage = 0;
-    void *addr = __builtin_extract_return_addr (__builtin_return_address (0));
-
-    switch (cmd) {
-        case HZ_CMD_ALLOC:
-            // printf("malloc %d bytes from %p\n", size, addr);
-            // mem_usage += size;
-            // printf("memory usage: %d\n", mem_usage);
-            //_sleep(1000);
-            return malloc(size);
-        case HZ_CMD_REALLOC: // no-op
-            return realloc(ptr, size);
-        case HZ_CMD_FREE:
-            free(ptr);
-        case HZ_CMD_RELEASE:    
-        default: // error, cmd not handled
-            return NULL;
-    }
-}
-
 int main(int argc, char *argv[]) {
     hz_setup(HZ_QUERY_CPU_FOR_SIMD);
-    hz_set_allocator_fn(Baz);
-    hz_set_allocator_user_pointer(NULL);
 
     stbtt_fontinfo fontinfo;
     // load_font_face(&fontinfo, "../data/fonts/FajerNooriNastalique.ttf");

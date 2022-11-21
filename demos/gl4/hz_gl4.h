@@ -121,12 +121,12 @@ int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts)
     // create depth/stencil buffer as an rbo
     glGenRenderbuffers(1, &ctx->stencil_rbo);
     glBindRenderbuffer(GL_RENDERBUFFER, ctx->stencil_rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, opts->width, opts->height);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, opts->width, opts->height);
 
     // attach both targets to the fbo 
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->sdf_texture, 0);
-    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->stencil_rbo);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->stencil_rbo);
 
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "Framebuffer is incomplete!\n");
@@ -155,17 +155,6 @@ typedef struct {
 void hz_gl4_bind_framebuffer(hz_gl4_context_t *ctx)
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo);
-    glViewport(0,0,ctx->opts.width, ctx->opts.height);
-    
-    // blending state
-    glEnable(GL_BLEND);
-    glBlendEquation(GL_MAX);
-    glBlendFunc(GL_ONE, GL_ONE);
-
-    glFrontFace(GL_CCW);
-    glCullFace(GL_BACK);
-    glEnable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
 }
 
 void hz_gl4_unbind_framebuffer(hz_gl4_context_t *ctx)
@@ -259,12 +248,21 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
     }
 
     hz_gl4_bind_framebuffer(ctx);
+    glViewport(0,0,ctx->opts.width, ctx->opts.height);
+    glFrontFace(GL_CCW);
+    glCullFace(GL_BACK);
+        
     // clear stencil from previous operations
-    glClear(GL_STENCIL_BUFFER_BIT);
-    
-    // draw segments to the glyph table
+    glClearColor(0.0f,0.0f,0.0f,0.0f);
+    glClear(GL_COLOR_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
 
     // use the curve to sdf shader program
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_MAX);
+    glBlendFunc(GL_ONE, GL_ONE);
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    
     glUseProgram(ctx->curve_to_sdf_program);
     glBindVertexArray(curves_vao);
     static const unsigned int indices[]={0,1,2,2,1,3};
@@ -279,7 +277,7 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
     glDisable( GL_CULL_FACE );
     glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 
-    glStencilFunc( GL_ALWAYS, 0, 0xff );
+    glStencilFunc( GL_ALWAYS, 0, UINT8_MAX );
     glStencilOpSeparate( GL_FRONT, GL_KEEP, GL_INCR_WRAP, GL_INCR_WRAP );
     glStencilOpSeparate( GL_BACK, GL_KEEP, GL_DECR_WRAP, GL_DECR_WRAP );
     glDrawArrays(GL_TRIANGLES, 0, stencil_draw_count);
@@ -287,12 +285,15 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
     // draw full screen triangle and invert internal distanceglEnable( GL_BLEND );
     glBlendEquation( GL_FUNC_ADD );
     glBlendFunc( GL_ONE_MINUS_DST_COLOR, GL_ZERO );
-    glStencilFunc( GL_NOTEQUAL, 0, 0xff );
+    glStencilFunc( GL_NOTEQUAL, 0, UINT8_MAX );
     glStencilOp( GL_ZERO, GL_ZERO, GL_ZERO );
     glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
     glUseProgram(ctx->fs_triangle_prog);
     glDrawArrays(GL_TRIANGLES,0,3);
 
+    glDisable( GL_BLEND );
+    glDisable( GL_STENCIL_TEST );
+    
     hz_gl4_unbind_framebuffer(ctx);
     
     //unbind

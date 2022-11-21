@@ -100,8 +100,8 @@ int main(int argc, char *argv[])
 
     glfwSwapInterval(0); // disable V-Sync
 
-    glClearColor(0.15f, 0.25f, 0.15f, 1.0f);
     while (!glfwWindowShouldClose(window)) {
+        glClearColor(0.15f, 0.25f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glfwPollEvents();
 

@@ -11,7 +11,6 @@
 #define WIDTH 1280
 #define HEIGHT 720
 
-
 #define ARRAYSIZE(x) (sizeof(x)/sizeof((x)[0]))
 
 static int load_font_face(stbtt_fontinfo *fontinfo, const char *path)
@@ -80,24 +79,26 @@ int main(int argc, char *argv[])
     glDisable(GL_DEPTH_TEST);
 
     // setup sdf glyph cache texture
-    hz_gl4_context_t ctx;
     hz_sdf_cache_opts_t sdf_opts;
-    sdf_opts.width = 2048;
-    sdf_opts.height = 2048;
+    sdf_opts.width = 4096;
+    sdf_opts.height = 4096;
     sdf_opts.max_sdf_distance = 16.0f; 
     sdf_opts.padd = 0.0f;
     sdf_opts.x_subdiv = 16;
     sdf_opts.y_subdiv = 16;
-    hz_gl4_context_init(&ctx, &sdf_opts);
+
+    hz_context_t ctx;
+    hz_context_init(&ctx);
+    hz_gl4_device_t dev;
+    hz_gl4_device_init(&dev, &sdf_opts); 
 
     stbtt_fontinfo fontinfo;
-    if (!load_font_face(&fontinfo, "../../../data/fonts/TimesNewRoman.ttf")) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
         hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
         exit(-1);
     }
 
-    hz_font_t *notosans = hz_stbtt_font_create(&fontinfo);
-
+    hz_font_t *font = hz_stbtt_font_create(&fontinfo);
     glfwSwapInterval(0); // disable V-Sync
 
     while (!glfwWindowShouldClose(window)) {
@@ -105,14 +106,15 @@ int main(int argc, char *argv[])
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glfwPollEvents();
 
-        // hz_cmd_buffer_begin();
-        // hz_cmd_buffer_end();
+        hz_frame_begin(&ctx);
+        // hz_draw_segment(&ctx,font,(hz_vec2){0.0f,0.0f},"مَثَلُ ٱلَّذِينَ حُمِّلُوا۟ ٱلتَّوْرَىٰةَ ثُمَّ لَمْ يَحْمِلُوهَا كَمَثَلِ ٱلْحِمَارِ يَحْمِلُ أَسْفَارًۢا ۚ بِئْسَ مَثَلُ ٱلْقَوْمِ ٱلَّذِينَ كَذَّبُوا۟ بِـَٔايَـٰتِ ٱللَّهِ ۚ وَٱللَّهُ لَا يَهْدِى ٱلْقَوْمَ ٱلظَّـٰلِمِينَ",
+        // HZ_SCRIPT_ARABIC,HZ_LANGUAGE_ARABIC,HZ_DIRECTION_RTL,55.0f);
+        hz_draw_segment(&ctx,font,(hz_vec2){0.0f,0.0f},"Hello, World",
+        HZ_SCRIPT_LATIN,HZ_LANGUAGE_ENGLISH,HZ_DIRECTION_LTR,55.0f);
+        // hz_render_text_segment(&ctx, seg, (hz_vec2){0.0f,0.0f}, (hz_vec2){1.0f,1.0f}, (hz_color32){255,0,255,255}, 0.0f, 0.0f);
+        hz_frame_end(&ctx);
         
-        // hz_gl4_render_frame(hz_get_draw_list());
-        hz_gl4_transformed_glyph_t g;
-        g.fontinfo = &fontinfo;
-        g.gid = stbtt_FindGlyphIndex(&fontinfo, 'a');
-        hz_gl4_generate_glyphs_sdf(&ctx,&g,1);
+        hz_gl4_render_frame(&dev,hz_get_frame_commands(&ctx));
         glfwSwapBuffers(window);
     }
 

@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
     // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
     // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
     // load_font_face(&fontinfo, "../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
-    load_font_face(&fontinfo, "../data/fonts/Quran/OmarNaskh-Light.ttf");
+    load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Light.ttf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
     char *text = "مَثَلُ ٱلَّذِينَ حُمِّلُوا۟ ٱلتَّوْرَىٰةَ ثُمَّ لَمْ يَحْمِلُوهَا كَمَثَلِ ٱلْحِمَارِ يَحْمِلُ أَسْفَارًۢا ۚ بِئْسَ مَثَلُ ٱلْقَوْمِ ٱلَّذِينَ كَذَّبُوا۟ بِـَٔايَـٰتِ ٱللَّهِ ۚ وَٱللَّهُ لَا يَهْدِى ٱلْقَوْمَ ٱلظَّـٰلِمِينَ";

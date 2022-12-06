@@ -9,7 +9,10 @@ set(HAMZA_VERSION_STRING ${HAMZA_VERSION_MAJOR}.${HAMZA_VERSION_MINOR}.${HAMZA_V
 
 option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
+add_subdirectory(demos/stbtt_rasterize/)
 add_subdirectory(demos/gl4/)
+# add_subdirectory(demos/vulkan/)
+# add_subdirectory(demos/gles3/)
 
 # if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") OR WIN32)
 #     message(STATUS "Building Hamza for Windows.")

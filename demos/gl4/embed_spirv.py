@@ -2,6 +2,8 @@
 import os
 import subprocess
 
+BYTES_PER_LINE = 6
+
 # https://www.lunarg.com/simplify-spir-v-size-reduction-with-os-option/
 vksdk = os.environ['VULKAN_SDK']
 glslc = os.path.join(vksdk,'Bin','glslc.exe')
@@ -48,7 +50,7 @@ def compile_file(path: str):
         with open(spirv_name,mode='rb') as spirv:
             cnt = 0
             while spirv.tell() != os.fstat(spirv.fileno()).st_size:
-                if (cnt % 6) == 0: f.write('\n    ')
+                if (cnt % BYTES_PER_LINE) == 0: f.write('\n    ')
                 val = int.from_bytes (spirv.read (1), byteorder='little')
                 f.write('%4s,' % format(val))
                 cnt += 1
@@ -64,12 +66,12 @@ def main():
     print('Spirv-Remap: ' + spirv_remap)
     print('Spirv-Dis: ' + spirv_dis)
 
-    compile_file('curve_to_sdf.vert')
-    compile_file('curve_to_sdf.frag')
-    compile_file('stencil_kokojima.vert')
-    compile_file('stencil_kokojima.frag')
-    compile_file('fs_triangle.vert')
-    compile_file('fs_triangle.frag')
+    compile_file('shaders/curve_to_sdf.vert')
+    compile_file('shaders/curve_to_sdf.frag')
+    compile_file('shaders/stencil_kokojima.vert')
+    compile_file('shaders/stencil_kokojima.frag')
+    compile_file('shaders/fs_triangle.vert')
+    compile_file('shaders/fs_triangle.frag')
 
 
 if __name__ == '__main__':

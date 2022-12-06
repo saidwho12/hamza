@@ -20,9 +20,9 @@ typedef struct {
     GLuint fs_triangle_prog;
 
     hz_sdf_cache_opts_t opts;
-} hz_gl4_context_t;
+} hz_gl4_device_t;
 
-int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts);
+int hz_gl4_device_init(hz_gl4_device_t *dev, hz_sdf_cache_opts_t *opts);
 
 #ifdef HZ_GL4_IMPLEMENTATION
 
@@ -74,15 +74,15 @@ GLuint hz_gl4_create_program(GLuint vert_shader, GLuint frag_shader)
 
 #define HZ_ARG_ARRAY(x) x, (sizeof(x)/sizeof((x)[0]))
 
-int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts)
+int hz_gl4_device_init(hz_gl4_device_t *dev, hz_sdf_cache_opts_t *opts)
 {
     HZ_ASSERT(opts->width == opts->height);
-    HZ_ASSERT(is_power_of_two(opts->width));
+    HZ_ASSERT(hz_is_power_of_two(opts->width));
 
     {
         GLuint vertex_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_curve_to_sdf_vertex_shader), GL_VERTEX_SHADER);
         GLuint fragment_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_curve_to_sdf_fragment_shader), GL_FRAGMENT_SHADER);
-        ctx->curve_to_sdf_program = hz_gl4_create_program(vertex_shader, fragment_shader);
+        dev->curve_to_sdf_program = hz_gl4_create_program(vertex_shader, fragment_shader);
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
     }
@@ -91,7 +91,7 @@ int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts)
     {
         GLuint vertex_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_stencil_kokojima_vertex_shader), GL_VERTEX_SHADER);
         GLuint fragment_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_stencil_kokojima_fragment_shader), GL_FRAGMENT_SHADER);
-        ctx->stencil_kokojima_prog = hz_gl4_create_program(vertex_shader, fragment_shader);
+        dev->stencil_kokojima_prog = hz_gl4_create_program(vertex_shader, fragment_shader);
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
     }
@@ -99,18 +99,18 @@ int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts)
     {
         GLuint vertex_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_fs_triangle_vertex_shader), GL_VERTEX_SHADER);
         GLuint fragment_shader = hz_gl4_create_spirv_shader(HZ_ARG_ARRAY(hz_gl4_fs_triangle_fragment_shader), GL_FRAGMENT_SHADER);
-        ctx->fs_triangle_prog = hz_gl4_create_program(vertex_shader, fragment_shader);
+        dev->fs_triangle_prog = hz_gl4_create_program(vertex_shader, fragment_shader);
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
     }
     
 
-    ctx->opts = *opts;
-    glGenFramebuffers(1, &ctx->fbo);
+    dev->opts = *opts;
+    glGenFramebuffers(1, &dev->fbo);
     
     // create destination texture for storing the signed distance field
-    glGenTextures(1, &ctx->sdf_texture);
-    glBindTexture(GL_TEXTURE_2D, ctx->sdf_texture);
+    glGenTextures(1, &dev->sdf_texture);
+    glBindTexture(GL_TEXTURE_2D, dev->sdf_texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, opts->width, opts->height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -119,14 +119,14 @@ int hz_gl4_context_init(hz_gl4_context_t *ctx, hz_sdf_cache_opts_t *opts)
     glBindTexture(GL_TEXTURE_2D,0);//unbind
 
     // create depth/stencil buffer as an rbo
-    glGenRenderbuffers(1, &ctx->stencil_rbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, ctx->stencil_rbo);
+    glGenRenderbuffers(1, &dev->stencil_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, dev->stencil_rbo);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, opts->width, opts->height);
 
     // attach both targets to the fbo 
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo);
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->sdf_texture, 0);
-    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->stencil_rbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dev->fbo);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dev->sdf_texture, 0);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, dev->stencil_rbo);
 
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "Framebuffer is incomplete!\n");
@@ -152,17 +152,17 @@ typedef struct {
     hz_index_t gid;
 } hz_gl4_transformed_glyph_t;
 
-void hz_gl4_bind_framebuffer(hz_gl4_context_t *ctx)
+void hz_gl4_bind_framebuffer(hz_gl4_device_t *dev)
 {
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dev->fbo);
 }
 
-void hz_gl4_unbind_framebuffer(hz_gl4_context_t *ctx)
+void hz_gl4_unbind_framebuffer()
 {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
-void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
+void hz_gl4_generate_glyphs_sdf(hz_gl4_device_t *dev,
                                 hz_gl4_transformed_glyph_t *glyphs,
                                 size_t glyph_count)
 {
@@ -178,16 +178,16 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
         hz_contour_t *contour = &draw_data.contours[i];
         for (int j = 0; j < contour->curve_count; ++j) {
             hz_bezier_vertex_t seg = draw_data.verts[contour->start+j];
-            hz_stencil_vertex_t f1 = (hz_stencil_vertex_t){contour->pos,hz_vec2(0.0f,1.0f)};
-            hz_stencil_vertex_t f2 = (hz_stencil_vertex_t){seg.v2,hz_vec2(0.0f,1.0f)};
-            hz_stencil_vertex_t f3 = (hz_stencil_vertex_t){seg.v1,hz_vec2(0.0f,1.0f)};
+            hz_stencil_vertex_t f1 = (hz_stencil_vertex_t){contour->pos,(hz_vec2){0.0f,1.0f}};
+            hz_stencil_vertex_t f2 = (hz_stencil_vertex_t){seg.v2,(hz_vec2){0.0f,1.0f}};
+            hz_stencil_vertex_t f3 = (hz_stencil_vertex_t){seg.v1,(hz_vec2){0.0f,1.0f}};
             hz_vector_push_back(mask_verts, f1);
             hz_vector_push_back(mask_verts, f2);
             hz_vector_push_back(mask_verts, f3);
             if (seg.type == HZ_VERTEX_TYPE_QUADRATIC_BEZIER) {// quadratic curve
-                hz_stencil_vertex_t c1 = (hz_stencil_vertex_t){seg.v1,hz_vec2(-1.0f, 1.0f)};
-                hz_stencil_vertex_t c2 = (hz_stencil_vertex_t){seg.v2,hz_vec2(1.0f, 1.0f)};
-                hz_stencil_vertex_t c3 = (hz_stencil_vertex_t){seg.c1,hz_vec2(0.0f, -1.0f)};
+                hz_stencil_vertex_t c1 = (hz_stencil_vertex_t){seg.v1,(hz_vec2){-1.0f, 1.0f}};
+                hz_stencil_vertex_t c2 = (hz_stencil_vertex_t){seg.v2,(hz_vec2){1.0f, 1.0f}};
+                hz_stencil_vertex_t c3 = (hz_stencil_vertex_t){seg.c1,(hz_vec2){0.0f, -1.0f}};
                 hz_vector_push_back(mask_verts, c1);
                 hz_vector_push_back(mask_verts, c2);
                 hz_vector_push_back(mask_verts, c3);
@@ -247,8 +247,8 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(hz_stencil_vertex_t), (void *)offsetof(hz_stencil_vertex_t,uv));
     }
 
-    hz_gl4_bind_framebuffer(ctx);
-    glViewport(0,0,ctx->opts.width, ctx->opts.height);
+    hz_gl4_bind_framebuffer(dev);
+    glViewport(0,0,dev->opts.width, dev->opts.height);
     glFrontFace(GL_CCW);
     glCullFace(GL_BACK);
         
@@ -263,38 +263,38 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
     glEnable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
     
-    glUseProgram(ctx->curve_to_sdf_program);
+    glUseProgram(dev->curve_to_sdf_program);
     glBindVertexArray(curves_vao);
     static const unsigned int indices[]={0,1,2,2,1,3};
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, indices, (GLsizei)curve_draw_count);
+    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, indices, curve_draw_count);
 
     // kokojima et al. technique used for masking and inverting internal distance
     // in the glyph texture using the stencil buffer. Front-facing triangles increase stencil value and
     // back-facing ones decrease it.
-    glUseProgram(ctx->stencil_kokojima_prog);
+    glUseProgram(dev->stencil_kokojima_prog);
     glBindVertexArray(mask_vao);
-    glEnable( GL_STENCIL_TEST );
-    glDisable( GL_CULL_FACE );
-    glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+    glEnable(GL_STENCIL_TEST);
+    glDisable(GL_CULL_FACE);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
-    glStencilFunc( GL_ALWAYS, 0, UINT8_MAX );
-    glStencilOpSeparate( GL_FRONT, GL_KEEP, GL_INCR_WRAP, GL_INCR_WRAP );
-    glStencilOpSeparate( GL_BACK, GL_KEEP, GL_DECR_WRAP, GL_DECR_WRAP );
+    glStencilFunc(GL_ALWAYS, 0, UINT8_MAX);
+    glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_INCR_WRAP, GL_INCR_WRAP);
+    glStencilOpSeparate(GL_BACK, GL_KEEP, GL_DECR_WRAP, GL_DECR_WRAP);
     glDrawArrays(GL_TRIANGLES, 0, stencil_draw_count);
 
     // draw full screen triangle and invert internal distanceglEnable( GL_BLEND );
-    glBlendEquation( GL_FUNC_ADD );
-    glBlendFunc( GL_ONE_MINUS_DST_COLOR, GL_ZERO );
-    glStencilFunc( GL_NOTEQUAL, 0, UINT8_MAX );
-    glStencilOp( GL_ZERO, GL_ZERO, GL_ZERO );
-    glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
-    glUseProgram(ctx->fs_triangle_prog);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
+    glStencilFunc(GL_NOTEQUAL, 0, UINT8_MAX);
+    glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glUseProgram(dev->fs_triangle_prog);
     glDrawArrays(GL_TRIANGLES,0,3);
 
-    glDisable( GL_BLEND );
-    glDisable( GL_STENCIL_TEST );
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
     
-    hz_gl4_unbind_framebuffer(ctx);
+    hz_gl4_unbind_framebuffer();
     
     //unbind
     glBindBuffer(GL_ARRAY_BUFFER,0);
@@ -309,10 +309,10 @@ void hz_gl4_generate_glyphs_sdf(hz_gl4_context_t *ctx,
     hz_shape_draw_data_clear(&draw_data);
 }
 
-// void hz_gl4_render_frame(hz_gl4_context_t *ctx, hz_draw_list_t *drawlist)
-// {
-//     drawlist->cmds[]
-// }
+void hz_gl4_render_frame(hz_gl4_device_t *dev, hz_command_list_t *cmd_list)
+{
+    //cmd_list->cmds[]
+}
 
 #endif // HZ_GL4_IMPLEMENTATION
 

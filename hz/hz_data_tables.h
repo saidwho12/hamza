@@ -621,9 +621,9 @@ typedef struct {
     const char *language_name;
     hz_tag_t tag;
     const char *codes;
-} HzLanguageMap;
+} hz_language_map_t;
 
-static const HzLanguageMap language_map_list[] = {
+static const hz_language_map_t language_map_list[] = {
     {HZ_LANGUAGE_ABAZA, "Abaza", HZ_TAG('A','B','A',' '), "abq"}, /* Abaza */
     {HZ_LANGUAGE_ABKHAZIAN, "Abkhazian", HZ_TAG('A','B','K',' '), "abk"}, /* Abkhazian */
     {HZ_LANGUAGE_ACHOLI, "Acholi", HZ_TAG('A','C','H',' '), "ach"}, /* Acholi */

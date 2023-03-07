@@ -4830,7 +4830,7 @@ HZ_STATIC void hz_font_data_init(hz_font_data_t *font_data, size_t arena_size) {
     font_data->allocator.user = &font_data->memory_arena;
 }
 
-HZ_STATIC void hz_font_data_destroy(hz_font_data_t *font_data){
+HZ_STATIC void hz_font_data_release(hz_font_data_t *font_data){
     hz_free(font_data->memory_arena_data);
 }
 

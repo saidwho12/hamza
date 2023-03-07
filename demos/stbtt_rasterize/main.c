@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
     render_text_to_png("out.png", &fontinfo, &buffer);
 
     hz_buffer_release(&buffer);
-    hz_font_data_destroy(&font_data);
+    hz_font_data_release(&font_data);
     hz_cleanup();
 
     return EXIT_SUCCESS;

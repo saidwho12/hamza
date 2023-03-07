@@ -7,6 +7,10 @@ layout (location = 2) in vec2 v_c1;
 layout (location = 3) in vec2 v_c2;
 layout (location = 4) in int v_type;
 
+layout (std140, binding = 0) uniform UboData {
+    float max_sdf_distance;
+};
+
 // Exact BBox to a quadratic bezier ( from iq )
 void bezier2_bbox(in vec2 p0, in vec2 p1, in vec2 p2 , out vec2 mi, out vec2 ma )
 {
@@ -40,25 +44,25 @@ layout (location = 4) out flat vec2 f_bezier_c2;
 layout (location = 5) out flat int f_bezier_type;
 
 void main() {
-    float max_sdf_distance = 100.;
     vec2 pos = quad_vertices[gl_VertexID];
 
     switch (v_type) {
+        default: break;
         case 2: { // line
             vec2 mi = min(v_v1,v_v2);
             vec2 ma = max(v_v1,v_v2);
-            mi -= max_sdf_distance;// push_constant.max_sdf_distance;
-            ma += max_sdf_distance;// push_constant.max_sdf_distance;
-            pos = mi + pos * (ma-mi);
+            mi -= max_sdf_distance;
+            ma += max_sdf_distance;
+            pos = mi + pos * (ma-mi);//mix(mi,ma,pos);
             break;
         }
 
         case 3: { // quadratic bezier
             vec2 mi,ma;
             bezier2_bbox(v_v1,v_c1,v_v2,mi,ma);
-            mi -=max_sdf_distance;// push_constant.max_sdf_distance;
-            ma +=max_sdf_distance;// push_constant.max_sdf_distance;
-            pos = mi + pos * (ma-mi);
+            mi -= max_sdf_distance;
+            ma += max_sdf_distance;
+            pos = mi + pos * (ma-mi);//mix(mi,ma,pos);
             break;
         }
         case 4: { // cubic bezier
@@ -71,8 +75,7 @@ void main() {
     f_bezier_v2 = v_v2;
     f_bezier_c1 = v_c1;
     f_bezier_c2 = v_c2;
-    f_bezier_type = int(v_type);
+    f_bezier_type = v_type;
 
-    vec2 ndc = pos / 2000.;//vec2(push_constant.mvp * vec3(pos,1.0));
-    gl_Position = vec4(ndc,0,1);
+    gl_Position = vec4(pos/2000.0,0.0,1.0);
 }

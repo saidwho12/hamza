@@ -80,25 +80,27 @@ int main(int argc, char *argv[])
 
     // setup sdf glyph cache texture
     hz_sdf_cache_opts_t sdf_opts;
-    sdf_opts.width = 4096;
-    sdf_opts.height = 4096;
-    sdf_opts.max_sdf_distance = 16.0f; 
+    sdf_opts.width = 1024;
+    sdf_opts.height = 1024;
+    sdf_opts.max_sdf_distance = 100.0f; 
     sdf_opts.padd = 0.0f;
-    sdf_opts.x_subdiv = 16;
-    sdf_opts.y_subdiv = 16;
+    sdf_opts.x_cells = 16;
+    sdf_opts.y_cells = 16;
 
     hz_context_t ctx;
-    hz_context_init(&ctx);
+    hz_context_init(&ctx, &sdf_opts);
     hz_gl4_device_t dev;
     hz_gl4_device_init(&dev, &sdf_opts); 
 
     stbtt_fontinfo fontinfo;
-    if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/TimesNewRoman.ttf")) {//Quran/OmarNaskh-Regular.ttf")) {
         hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
         exit(-1);
     }
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
+    uint16_t font_id = hz_context_stash_font(&ctx,font);
+    
     glfwSwapInterval(0); // disable V-Sync
 
     while (!glfwWindowShouldClose(window)) {
@@ -107,14 +109,13 @@ int main(int argc, char *argv[])
         glfwPollEvents();
 
         hz_frame_begin(&ctx);
-        // hz_draw_segment(&ctx,font,(hz_vec2){0.0f,0.0f},"مَثَلُ ٱلَّذِينَ حُمِّلُوا۟ ٱلتَّوْرَىٰةَ ثُمَّ لَمْ يَحْمِلُوهَا كَمَثَلِ ٱلْحِمَارِ يَحْمِلُ أَسْفَارًۢا ۚ بِئْسَ مَثَلُ ٱلْقَوْمِ ٱلَّذِينَ كَذَّبُوا۟ بِـَٔايَـٰتِ ٱللَّهِ ۚ وَٱللَّهُ لَا يَهْدِى ٱلْقَوْمَ ٱلظَّـٰلِمِينَ",
-        // HZ_SCRIPT_ARABIC,HZ_LANGUAGE_ARABIC,HZ_DIRECTION_RTL,55.0f);
-        hz_draw_segment(&ctx,font,(hz_vec2){0.0f,0.0f},"Hello, World",
-        HZ_SCRIPT_LATIN,HZ_LANGUAGE_ENGLISH,HZ_DIRECTION_LTR,55.0f);
-        // hz_render_text_segment(&ctx, seg, (hz_vec2){0.0f,0.0f}, (hz_vec2){1.0f,1.0f}, (hz_color32){255,0,255,255}, 0.0f, 0.0f);
+        
+        hz_draw_segment(&ctx,font_id, (hz_vec2){0.0f,0.0f}, "The Quick Brown Fox Jumps Over the Lazy Dog",
+            HZ_SCRIPT_LATIN, HZ_LANGUAGE_ENGLISH, HZ_DIRECTION_LTR, 55.0f);
+        
         hz_frame_end(&ctx);
         
-        hz_gl4_render_frame(&dev,hz_get_frame_commands(&ctx));
+        hz_gl4_render_frame(&ctx,&dev);
         glfwSwapBuffers(window);
     }
 

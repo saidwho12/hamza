@@ -41,9 +41,8 @@
 .NDHomePage body {
     padding: 0;
     margin: 0;
-    /* background-color: #E0E0E0; */
-    /* background-image: linear-gradient(to bottom,#757575,#E0E0E0); */
-
+    background-color: #E0E0E0;
+    background-image: linear-gradient(to bottom,#757575,#E0E0E0);
     background-repeat: no-repeat;
     background-attachment: fixed;
     height: 100%

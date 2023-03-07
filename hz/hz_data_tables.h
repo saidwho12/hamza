@@ -1,7 +1,6 @@
 #ifndef HZ_DATA_TABLES_H
 #define HZ_DATA_TABLES_H
 
-/* enum: HzLanguage */
 typedef enum {
     HZ_LANGUAGE_DFLT,
     HZ_LANGUAGE_ABAZA, /* Abaza */ 
@@ -1239,10 +1238,8 @@ static const hz_language_map_t language_map_list[] = {
 
 
 /*
- *  enum: HzFeature
  *      Registered Features
  *      https://docs.microsoft.com/en-us/typography/opentype/spec/featurelist
- *
  */
 typedef enum {
     HZ_FEATURE_AALT = 0, /* Access All Alternates */

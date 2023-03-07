@@ -5,13 +5,13 @@
 
 @font-face {
     font-family: 'Roboto Mono';
-    src: url('../../../nd-project/RobotoMono-VariableFont_wght.ttf');
+    src: url('../../RobotoMono-VariableFont_wght.ttf');
     font-style: normal;
 }
 
 @font-face {
     font-family: 'Roboto Mono';
-    src: url('../../../nd-project/RobotoMono-Italic-VariableFont_wght.ttf');
+    src: url('../../RobotoMono-Italic-VariableFont_wght.ttf');
     font-style:italic;
 }
 

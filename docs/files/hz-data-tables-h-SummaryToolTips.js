@@ -1,1 +1,0 @@
-﻿NDSummary.OnToolTipsLoaded("File:hz-data-tables.h",{2:"<div class=\"NDToolTip TEnumeration LC\"><div class=\"TTSummary\">Registered Features https://&#8203;docs&#8203;.microsoft&#8203;.com&#8203;/en-us&#8203;/typography&#8203;/opentype&#8203;/spec&#8203;/featurelist</div></div>"});

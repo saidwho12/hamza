@@ -1,1 +1,0 @@
-﻿NDSearch.OnPrefixDataLoaded("hzl",["Enumeration"],[["HzLanguage",,[[,,,,0,"File:hz-data-tables.h:HzLanguage"]]]]);

@@ -1,1 +1,0 @@
-﻿NDSummary.OnToolTipsLoaded("CClass:hz_glyph_attrib_flags_t",{37:"<div class=\"NDToolTip TStruct LC\"><div class=\"NDClassPrototype\" id=\"NDClassPrototype37\"><div class=\"CPEntry TStruct Current\"><div class=\"CPModifiers\"><span class=\"SHKeyword\">typedef enum</span> </div><div class=\"CPName\">hz_glyph_attrib_flags_t</div></div></div></div>"});

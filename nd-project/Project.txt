@@ -1,4 +1,4 @@
-﻿Format: 2.2
+﻿Format: 2.3 (Development Release 1)
 
 # This is the main file you use to configure Natural Docs for your project.
 
@@ -7,9 +7,9 @@
 # ------------------------------------------------------------------------
 
 Title: Hamza
-Subtitle: Fast C OpenType Library
+Subtitle: Minimalist C OpenType Library
 
-Copyright: Saïd Metiche
+Copyright: Saīd Metiche
 
 Timestamp: month d year
 #    m     - Single digit month, when possible.  January is "1".
@@ -22,6 +22,8 @@ Timestamp: month d year
 #    yy    - Double digit year.  2022 is "22".
 #    yyyy  - Four digit year.  2022 is "2022".
 #    year  - Four digit year.  2022 is "2022".
+
+Style: Dark
 
 
 # This is where you put general information about your project.  None of these

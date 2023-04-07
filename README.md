@@ -1,51 +1,86 @@
+<p align="center">
+  <img src="hamza.svg" />
+</p>
+
 # Hamza
 
 Hamza is a light-weight, fast and portable C99 [OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's built alongside the [stb_truetype.h](https://github.com/nothings/stb) TrueType library. It's designed to be a small, 
-portable and optimized shaper that's easy to integrate into an existing project.
-Originally Hamza was a research project to learn about font shaping for an Arabic calligraphy software I had in mind.
-Later, with much research and work I have only developed more fascination with the general shaping process and possible strategies of optimization.    
-
-## Objective
-* Keep the library as a whole excluding backends and auto-generated tables under 10k SLOC.
-* The goal is a non-pessimized, small and simple shaping library that can easily be included into any existing project.    
-* The intent is to optimize lookup application slow paths using SIMD + multi-threading while keeping the code as simple and clear as possible.  Many think that shaping is a linear process and very difficult to multi-thread, this couldn't be further from the truth. GSUB table single substitution as an example is a perfect use-case for multi-threading, Unicode parsing can be vectorized and ligature matching can be optimized with SSE.
-* Support for ASCII, Latin1, UTF-8, UTF-16, UTF-32, UCS2 and Johab encodings.
+portable and optimized shaper that's easy to integrate into any existing project.
 
 ## Features
 - [x] Joining script support and RTL writing
 - [x] Kerning
 - [x] Ligatures
 - [x] Support for new [OpenType language tags](https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags) (mixture of [ISO 639-3](https://iso639-3.sil.org/) and [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php) codes)
-- [ ] Support for old Two-Letter [ISO 639-1:2002](https://id.loc.gov/vocabulary/iso639-1.html) language tags (same as HarfBuzz)
-- [ ] Vertical layout (i.e. for Chinese)
-- [ ] Emojis
+- [ ] Vertical layout Support (mostly for CJK, Mongolian, etc...)
+- [ ] Color Emojis
+- [ ] Emoji Combinations
 - [ ] Multi-Threading
 
-## Script Support
-- [x] Standard Scripts (Latin, Cyrillic, Greek, etc)
-- [x] Arabic
-- [ ] Buginese
-- [ ] Hangul
-- [ ] Hebrew
-- [ ] Indic
-  - [ ] Bengali
-  - [ ] Devanagari
-  - [ ] Gujarati
-  - [ ] Gurmukhi
-  - [ ] Kannada
-  - [ ] Malayalam
-  - [ ] Odia
-  - [ ] Tamil
-  - [ ] Telugu
-- [ ] Javanese
-- [ ] Khmer
-- [ ] Lao
-- [ ] Myanmar
-- [ ] Sinhala
-- [ ] Syriac
-- [ ] Thaana
-- [ ] Thai
-- [ ] Tibetan
 
-## Usage
-For usage of API functions, check `hz.h` and respective files. There is also documentation at <https://saidwho12.github.io/hamza/>.
+## Basic Usage
+To start using Hamza, define `HZ_IMPLEMENTATION` before including  `hz.h`.
+```
+#define HZ_IMPLEMENTATION
+#include <hz/hz.h>
+```
+
+Before using any of Hamza's functions you must call `hz_init`:
+```
+if (hz_init() != HZ_OK) {
+    fprintf(stderr, "%s\n", "Failed to initialize Hamza!");
+    return -1;
+}
+```
+
+Next, before you can shape any text you must provide font data. You want to load a font into a `stbtt_fontinfo` struct. Hamza includes `stb_truetype.h` which is intended to be used in reading fonts.To create a `hz_font_t` from a stbtt font write:
+```
+hz_font_t *font = hz_stbtt_font_create(&fontinfo);
+``` 
+
+Hamza aims to let the user manage the memory allocation and the data as much as possible. Before shaping the font data has to be parsed into a `hz_font_data_t` struct. This holds all the OpenType table data required for shaping with a specific font. The `hz_font_data_init` function takes as argument how much memory will be allocated to hold that font's data:
+```
+hz_font_data_t font_data;
+hz_font_data_init(&font_data, 1024*1024); // 1MiB
+hz_font_data_load(&font_data, font);
+```
+Create a shaper and initialize it:
+```
+hz_shaper_t shaper;
+hz_shaper_init(&shaper);
+```
+Set the shaper's required parameters:
+```
+hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
+hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
+hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
+```
+Set the shaper's typography features:
+```
+hz_feature_t features[] = {
+      HZ_FEATURE_ISOL,
+      HZ_FEATURE_INIT,
+      HZ_FEATURE_MEDI,
+      HZ_FEATURE_FINA,
+      HZ_FEATURE_RLIG,
+      HZ_FEATURE_LIGA,
+};
+
+hz_shaper_set_features(&shaper, features, sizeof(features)/sizeof(features[0]));
+```
+Create glyph buffer and shape!
+```
+hz_buffer_t buffer;
+hz_buffer_init(&buffer);
+hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "السلام عليكم", &buffer);
+```
+After this, you can access the buffer's glyph data and render. After you are done with everything you have to deinitialize.
+```
+hz_buffer_release(&buffer);
+hz_font_data_release(&font_data);
+hz_font_destroy(font);
+hz_deinit();
+```
+
+## LICENSE
+Hamza is licensed under LGPLv3.

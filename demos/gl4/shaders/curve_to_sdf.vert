@@ -8,6 +8,7 @@ layout (location = 3) in vec2 v_c2;
 layout (location = 4) in int v_type;
 
 layout (std140, binding = 0) uniform UboData {
+    mat4 view_matrix;
     float max_sdf_distance;
 };
 
@@ -77,5 +78,6 @@ void main() {
     f_bezier_c2 = v_c2;
     f_bezier_type = v_type;
 
-    gl_Position = vec4(pos/2000.0,0.0,1.0);
+    vec4 ndc = view_matrix * vec4(pos,0.0,1.0);
+    gl_Position = vec4(ndc.xyz,1.0);
 }

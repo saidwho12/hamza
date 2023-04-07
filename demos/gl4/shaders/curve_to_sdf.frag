@@ -9,6 +9,7 @@ layout (location = 4) in flat vec2 f_bezier_c2;
 layout (location = 5) in flat int f_bezier_type;
 
 layout (std140, binding = 0) uniform UboData {
+    mat4 view_matrix;
     float max_sdf_distance;
 };
 

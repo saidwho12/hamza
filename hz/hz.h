@@ -256,7 +256,6 @@ typedef enum {
 #include "hz_data_tables.h"
 
 /* Enum: hz_encoding_t 
- *      HZ_DFLT_ENCODING - Default encoding (ASCII)
  *      HZ_ENCODING_ASCII - ASCII (7-bit signed char)
  *      HZ_ENCODING_UTF8 - UTF-8
  *      HZ_ENCODING_UTF16 - UTF-16
@@ -264,9 +263,9 @@ typedef enum {
  *      HZ_ENCODING_UCS2 - UCS-2 (16-bit Universal Character Set, Fixed-Width encoding)
  *      HZ_ENCODING_UCS4 - UCS-4
  *      HZ_ENCODING_JOHAB - Johab
+ *      HZ_DFLT_ENCODING - Default encoding (ASCII)
  */
 typedef enum {
-    HZ_DFLT_ENCODING,
     HZ_ENCODING_ASCII,
     HZ_ENCODING_LATIN1,
     HZ_ENCODING_UTF8,
@@ -275,6 +274,7 @@ typedef enum {
     HZ_ENCODING_UCS2,
     HZ_ENCODING_UCS4,
     HZ_ENCODING_JOHAB,
+    HZ_DFLT_ENCODING = HZ_ENCODING_ASCII,
 } hz_encoding_t;
 
 typedef uint32_t hz_char32_t;
@@ -6792,7 +6792,7 @@ typedef struct {
     // following doubly linked list nodes are stored contiguously for better coherence
     hz_lru_node_t **t; // msi accelerated table
     // begin and end nodes for quick insertion
-    hz_lru_node_t *qfront, *qback;
+    hz_lru_node_t *q1, *q2;
     // size and greater POT size
     int size;
     int pow2_size;
@@ -6823,25 +6823,30 @@ void hz_lru_cache_init(hz_memory_arena_t *memory_arena, hz_lru_cache_t *lru, uin
     lru->pow2_size = size;
     lru->t = hz_memory_arena_alloc(memory_arena, sizeof(lru->t[0])*size);
     HZ_MEMSET(lru->t, 0, sizeof(lru->t[0])*size);
-    
+
     // allocate begin and end nodes
-    lru->qfront = hz_lru_node_alloc(memory_arena);
-    lru->qback = hz_lru_node_alloc(memory_arena);
+    lru->q1 = hz_lru_node_alloc(memory_arena);
+    lru->q2 = hz_lru_node_alloc(memory_arena);
     
     // link dummy nodes together
-    hz_lru_nodes_link(lru->qfront, lru->qback);
+    hz_lru_nodes_link(lru->q1, lru->q2);
     hz_msi_ht_init(memory_arena, &lru->msi, size);
 
     lru->max_insert_ratio = max_insert_ratio;
 }
 
-void hz_lru_cache_hit_or_miss(hz_lru_cache_t *lru, uint32_t *in_keys, uint32_t *out_keys, int n) {
+void hz_lru_cache_evict_and_replace(hz_lru_cache_t *lru, const uint32_t sorted_unique_ids[], size_t id_count)
+{
+    size_t n = HZ_MIN(lru->max_insert_ratio, id_count);
+}
+
+void hz_lru_cache_missed_keys(hz_lru_cache_t *lru, uint32_t *in_keys, uint32_t out_keys[], size_t *n) {
     int misses = 0;
     
     for (int i = 0; i < n; ++i) {
         int32_t hash_idx = hz_msi_ht_intern(&lru->msi, in_keys[i]);
         if (hash_idx == HZ_MSI_NOT_FOUND) {
-            
+            // out_keys[]
         }
     }
 }
@@ -6887,7 +6892,7 @@ typedef struct {
     union {
         struct {
             unsigned gid : 16;
-            unsigned font_idx : 16;
+            unsigned font_id : 16;
         };
         uint32_t id32;
     } unique_id;
@@ -6904,7 +6909,7 @@ typedef struct {
     hz_ht_t unique_glyph_ht;
 } hz_command_list_t;
 
-#define HZ_MAX_UNIQUE_GLYPHS_PER_FRAME 5000
+#define HZ_MAX_UNIQUE_GLYPHS_PER_FRAME 1000
 
 void hz_command_list_init(hz_command_list_t *cmd_list)
 {
@@ -6932,9 +6937,12 @@ typedef struct {
 #   define HZ_CONTEXT_MEMORY_SIZE HZ_CONTEXT_DFLT_MEMORY_SIZE
 #endif
 
+#define HZ_CONTEXT_FONT_TABLE_SIZE 64
+
 typedef struct {
     hz_command_list_t frame_cmds;
-    hz_vector(hz_font_t*) fonts;
+    hz_font_data_t font_table[HZ_CONTEXT_FONT_TABLE_SIZE];
+    uint16_t font_id_counter;
     hz_lru_cache_t lru;
     hz_memory_arena_t memory_arena;
     uint8_t *arena_buffer;
@@ -6946,13 +6954,15 @@ void hz_context_init (hz_context_t *ctx, hz_sdf_cache_opts_t *opts) {
     ctx->arena_buffer = (uint8_t *)hz_malloc(HZ_CONTEXT_MEMORY_SIZE);
     hz_memory_arena_init(&ctx->memory_arena, ctx->arena_buffer, HZ_CONTEXT_MEMORY_SIZE);
     hz_lru_cache_init(&ctx->memory_arena, &ctx->lru, opts->x_cells * opts->y_cells, 0.5f);
-    ctx->fonts = NULL;
+    ctx->font_id_counter = 0;
 }
 
-uint16_t hz_context_stash_font(hz_context_t *ctx, hz_font_t *font)
+uint16_t hz_context_stash_font(hz_context_t *ctx, const hz_font_data_t *font)
 {
-    hz_vector_push_back(ctx->fonts,font);
-    return hz_vector_size(ctx->fonts)-1;
+    uint16_t id = ctx->font_id_counter;
+    ctx->font_table[id] = *font;
+    ++ctx->font_id_counter;
+    return id;
 }
 
 void hz_frame_begin(hz_context_t *ctx) {
@@ -6994,55 +7004,42 @@ typedef struct {
     char r,g,b,a;
 } hz_color_t;
 
-float hz_font_scale_for_pixel_height(hz_font_t *font, float height)
+float hz_face_scale_for_pixel_h(hz_face_t *face, float height)
 {
-   return (float) height / (float) font->face->fheight;
+   return (float) height / (float) face->fheight;
 }
 
-// void hz_draw_buffer(hz_context_t *ctx,
-//                      uint16_t font_id,
-//                      hz_vec2 pos,
-//                      const char *text,
-//                      hz_script_t script,
-//                      hz_language_t lang,
-//                      hz_direction_t dir,
-//                      float px_size)
-// {
-//     hz_segment_t *seg = hz_segment_create();
-//     hz_segment_set_script(seg,script);
-//     hz_segment_set_direction(seg,dir);
-//     hz_segment_set_language(seg,lang);
-//     hz_segment_load_utf8(seg,text);
+void hz_draw_buffer(hz_context_t *ctx,
+                    hz_buffer_t *buffer,
+                    uint16_t font_id,
+                    hz_vec2 pos,
+                    float px_size)
+{
+    const hz_font_data_t *font_data = &ctx->font_table[font_id];
+    hz_face_t *face = font_data->face;
+    float text_width = 0.0f;
+    float xpen=pos.x,ypen=pos.y;
+    float v_scale = hz_face_scale_for_pixel_h(face,px_size);
 
-//     hz_font_t *font = ctx->fonts[font_id];
-//     hz_shape(font, seg, NULL, 0, HZ_AUTO_LOAD_FEATURES);
+    for (size_t i = 0; i < buffer->glyph_count; ++i) {
+        hz_glyph_metrics_t metrics = buffer->glyph_metrics[i];
+        hz_glyph_instance_t g;
+        g.unique_id.gid = buffer->glyph_indices[i];
+        g.unique_id.font_id = font_id;
 
-//     const hz_buffer_t *buffer = hz_segment_get_buffer(seg);
-//     float text_width = 0.0f;
-//     float xpen=pos.x,ypen=pos.y;
-//     float v_scale = hz_font_scale_for_pixel_height(font,px_size);
+        float gx = xpen + metrics.xOffset * v_scale;
+        float gy = ypen + metrics.yOffset * v_scale;
 
-//     for (size_t i = 0; i < buffer->glyph_count; ++i) {
-//         hz_glyph_metrics_t metrics = buffer->glyph_metrics[i];
-//         hz_glyph_instance_t g;
-//         g.unique_id.gid = buffer->glyph_indices[i];
-//         g.unique_id.font_idx = font_id;
+        g.pos = (hz_vec3){gx,gy,0.f};
+        g.scale = (hz_vec2){1.0f,1.0f};
+        g.sheer_factor = 0.f;
+        g.weight = 0.f;
 
-//         float gx = xpen + metrics.xOffset * v_scale;
-//         float gy = ypen + metrics.yOffset * v_scale;
-
-//         g.pos = (hz_vec3){gx,gy,0.f};
-//         g.scale = (hz_vec2){1.0f,1.0f};
-//         g.sheer_factor = 0.f;
-//         g.weight = 0.f;
-
-//         hz_vector_push_back(ctx->frame_cmds.draw_data,g);
+        hz_vector_push_back(ctx->frame_cmds.draw_data,g);
         
-//         xpen += metrics.xAdvance * v_scale;
-//     }
-
-//     hz_segment_destroy(seg);
-// }
+        xpen += metrics.xAdvance * v_scale;
+    }
+}
 
 void hz_newline(hz_context_t *ctx) {
 
@@ -7076,7 +7073,15 @@ hz_rect_t hz_glyph_cache_compute_cell_rect(hz_sdf_cache_opts_t *opts, int cell)
     return (hz_rect_t){icx * cw, icy * ch, cw, ch};
 }
 
-int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz_index_t glyph_index)
+hz_vec2 hz_vec2_add(hz_vec2 v1, hz_vec2 v2) {
+    return (hz_vec2){v1.x+v2.x, v1.y+v2.y};
+}
+
+hz_vec2 hz_vec2_mult_s(hz_vec2 v1, float scale) {
+    return (hz_vec2){v1.x*scale,v1.y*scale};
+}
+
+int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz_vec2 translate, float y_scale, hz_index_t glyph_index)
 {
     #define PUSH_CURVE() do{hz_contour_t _contour = {hz_vector_size(draw_data->verts),0,pen}; hz_vector_push_back(draw_data->contours, _contour); c = hz_vector_top(draw_data->contours); } while(0)
 
@@ -7095,7 +7100,7 @@ int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz
         switch (vertices[i].type) {
             default:break;
             case HZ_VERTEX_TYPE_MOVETO: { // moveto
-                pen.x = vertices[i].x; pen.y = vertices[i].y;
+                pen.x = translate.x + vertices[i].x* y_scale; pen.y = translate.y + vertices[i].y* y_scale;
                 PUSH_CURVE();
                 break;
             }
@@ -7104,11 +7109,9 @@ int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz
                 hz_bezier_vertex_t v;
                 v.type = vertices[i].type;
                 v.v1 = pen;
-                v.v2.x = vertices[i].x;
-                v.v2.y = vertices[i].y;
+                v.v2 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].x,vertices[i].y}, y_scale));
                 hz_vector_push_back(draw_data->verts, v);
-                pen.x = vertices[i].x;
-                pen.y = vertices[i].y;
+                pen = v.v2;
                 ++c->curve_count;
                 break;
             }
@@ -7116,13 +7119,10 @@ int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz
                 hz_bezier_vertex_t v;
                 v.type = vertices[i].type;
                 v.v1 = pen;
-                v.v2.x = vertices[i].x;
-                v.v2.y = vertices[i].y;
-                v.c1.x = vertices[i].cx;
-                v.c1.y = vertices[i].cy;
+                v.v2 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].x,vertices[i].y}, y_scale));
+                v.c1 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].cx,vertices[i].cy}, y_scale));
                 hz_vector_push_back(draw_data->verts, v);
-                pen.x = vertices[i].x;
-                pen.y = vertices[i].y;
+                pen = v.v2;
                 ++c->curve_count;
                 break;
             }
@@ -7130,15 +7130,11 @@ int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz
                 hz_bezier_vertex_t v;
                 v.type = vertices[i].type;
                 v.v1 = pen;
-                v.v2.x = vertices[i].x;
-                v.v2.y = vertices[i].y;
-                v.c1.x = vertices[i].cx;
-                v.c1.y = vertices[i].cy;
-                v.c2.x = vertices[i].cx1;
-                v.c2.y = vertices[i].cy1;
+                v.v2 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].x,vertices[i].y}, y_scale));
+                v.c1 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].cx,vertices[i].cy}, y_scale));
+                v.c2 = hz_vec2_add(translate, hz_vec2_mult_s((hz_vec2){vertices[i].cx1,vertices[i].cy1}, y_scale));
                 hz_vector_push_back(draw_data->verts, v);
-                pen.x = vertices[i].x;
-                pen.y = vertices[i].y;
+                pen = v.v2;
                 ++c->curve_count;
                 break;
             }

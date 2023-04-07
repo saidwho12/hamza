@@ -11,6 +11,7 @@ const char hz_gl4_curve_to_sdf_fragment_shader[] =
     "layout (location = 5) in flat int f_bezier_type;\n"
     "\n"
     "layout (std140, binding = 0) uniform UboData {\n"
+    "    mat4 view_matrix;\n"
     "    float max_sdf_distance;\n"
     "};\n"
     "\n"

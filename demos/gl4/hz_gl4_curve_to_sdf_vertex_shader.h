@@ -10,6 +10,7 @@ const char hz_gl4_curve_to_sdf_vertex_shader[] =
     "layout (location = 4) in int v_type;\n"
     "\n"
     "layout (std140, binding = 0) uniform UboData {\n"
+    "    mat4 view_matrix;\n"
     "    float max_sdf_distance;\n"
     "};\n"
     "\n"
@@ -79,6 +80,7 @@ const char hz_gl4_curve_to_sdf_vertex_shader[] =
     "    f_bezier_c2 = v_c2;\n"
     "    f_bezier_type = v_type;\n"
     "\n"
-    "    gl_Position = vec4(pos/2000.0,0.0,1.0);\n"
+    "    vec4 ndc = view_matrix * vec4(pos,0.0,1.0);\n"
+    "    gl_Position = vec4(ndc.xyz,1.0);\n"
     "}\n"
 };

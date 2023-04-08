@@ -16,6 +16,7 @@ portable and optimized shaper that's easy to integrate into any existing project
 - [ ] Color Emojis
 - [ ] Emoji Combinations
 - [ ] Multi-Threading
+- [ ] SSE/NEON Extensions
 
 
 ## Basic Usage

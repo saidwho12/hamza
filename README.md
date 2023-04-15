@@ -16,7 +16,6 @@ portable and optimized shaper that's easy to integrate into any existing project
 - [ ] Color Emojis
 - [ ] Emoji Combinations
 - [ ] Multi-Threading
-- [ ] SSE/NEON Extensions
 
 
 ## Basic Usage
@@ -34,7 +33,7 @@ if (hz_init() != HZ_OK) {
 }
 ```
 
-Next, before you can shape any text you must provide font data. You want to load a font into a `stbtt_fontinfo` struct. Hamza includes `stb_truetype.h` which is intended to be used in reading fonts.To create a `hz_font_t` from a stbtt font write:
+Next, before you can shape any text you must provide font data. You want to load a font into a `stbtt_fontinfo` struct. Hamza includes `stb_truetype.h` which is intended to be used in reading fonts. To create a `hz_font_t` from a stbtt font, write:
 ```c
 hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 ```

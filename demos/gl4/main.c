@@ -129,8 +129,8 @@ int main(int argc, char *argv[])
     sdf_opts.height = 1024;
     sdf_opts.max_sdf_distance = 24.0f; 
     sdf_opts.padd = 0.0f;
-    sdf_opts.x_cells = 8;
-    sdf_opts.y_cells = 8;
+    sdf_opts.x_cells = 16;
+    sdf_opts.y_cells = 16;
 
     hz_context_t ctx;
     hz_context_init(&ctx, &sdf_opts);
@@ -138,7 +138,8 @@ int main(int argc, char *argv[])
     hz_gl4_device_init(&dev, &sdf_opts); 
 
     stbtt_fontinfo fontinfo;
-    if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
+    // if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/Times New Roman.ttf")) {
         hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
         exit(-1);
     }
@@ -177,9 +178,9 @@ int main(int argc, char *argv[])
 
     hz_buffer_t buffer;
     hz_buffer_init(&buffer);
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
+    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
     
-    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Hello,World!ThisisHamza", &buffer);
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Hello,World! Test 123", &buffer);
     
     glfwSwapInterval(0); // disable V-Sync
 

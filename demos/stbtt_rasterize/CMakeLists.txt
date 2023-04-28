@@ -12,7 +12,7 @@ endif ()
 target_include_directories(hz_stbtt_rasterize_demo PRIVATE "../../")
 
 if (PLATFORM_WINDOWS)
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g2 -ggdb -fverbose-asm -fno-strict-aliasing")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g -ggdb -fverbose-asm -fno-strict-aliasing")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -fno-strict-aliasing -O2 -Ofast")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
 

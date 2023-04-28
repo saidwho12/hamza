@@ -254,19 +254,6 @@ void hz_gl4_generate_glyph_sdf(hz_gl4_device_t *dev,
 
     hz_face_get_glyph_shape(face, &draw_data, pos, y_scale, glyph_id);
 
-    // transform shape vertices
-    // for (int i = 0; i < hz_vector_size(draw_data.verts); ++i) {
-    //     hz_bezier_vertex_t *v = &draw_data.verts[i];
-    //     v->c1 = hz_mat3_mult_vec2(&tf,v->c1);
-    //     v->c2 = hz_mat3_mult_vec2(&tf,v->c2);
-    //     v->v1 = hz_mat3_mult_vec2(&tf,v->v1);
-    //     v->v2 = hz_mat3_mult_vec2(&tf,v->v2);
-    // }
-    // for (int i = 0; i < hz_vector_size(draw_data.contours); ++i) {
-    //     hz_contour_t *contour = &draw_data.contours[i];
-    //     contour->pos = hz_mat3_mult_vec2(&tf,contour->pos);
-    // }
-
     for (int i = 0; i < hz_vector_size(draw_data.contours); ++i) {
         hz_contour_t *contour = &draw_data.contours[i];
         for (int j = 0; j < contour->curve_count; ++j) {
@@ -356,6 +343,7 @@ void hz_gl4_generate_glyph_sdf(hz_gl4_device_t *dev,
 
     static const uint32_t indices[]={0,1,2,2,1,3};
     glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, indices, curve_draw_count);
+
 #if 1
     // kokojima et al. technique used for generating a stencil mask used for inverting distance
     // in the glyph texture. Front-facing triangles increase stencil value and
@@ -392,6 +380,7 @@ void hz_gl4_generate_glyph_sdf(hz_gl4_device_t *dev,
     glUseProgram(dev->fs_triangle_prog);
     glDrawArrays(GL_TRIANGLES,0,3);
 #endif
+
     glDisable(GL_BLEND);
     glDisable(GL_STENCIL_TEST);
     
@@ -415,11 +404,10 @@ void hz_gl4_render_frame(hz_context_t *ctx, hz_gl4_device_t *dev)
 
     // Bind the sdf cache texture framebuffer
     hz_gl4_bind_fb(dev);
-    glViewport(0,0,dev->opts.width, dev->opts.height);
-    // clear stencil from previous operations
-    glClearColor(0.0f,0.0f,0.0f,1.0f);
+    glViewport(0,0, dev->opts.width, dev->opts.height);
+    // Clear stencil from previous operations
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
-
 
     // Update UBO
     glUseProgram(dev->curve_to_sdf_program);
@@ -432,6 +420,7 @@ void hz_gl4_render_frame(hz_context_t *ctx, hz_gl4_device_t *dev)
             fprintf(stderr,"Block index invalid 1!\n");
             exit(-1);
         }
+
         glBindBuffer(GL_UNIFORM_BUFFER, dev->ubo_handle);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(hz_gl4_view_ubo_t), &dev->ubo_data);
         glBindBufferBase(GL_UNIFORM_BUFFER, block_index, dev->ubo_handle);

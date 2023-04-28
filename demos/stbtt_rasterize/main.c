@@ -208,11 +208,11 @@ void render_text_to_png(const char *filename,
                          0.0f,//rand_float(),//238.0f/255.0f,
                          1.0f};
 
-#if 0
+#if 1
             if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
                 float val = (buffer->component_indices[i]+1.0f)/3.0f;
                 val = 0.2f + 0.6f*val;
-                col = (Color){0.96f, 0.1f,0.11f,1.0f};
+                col = (Color){0.0f, 0.05f,0.95f,1.0f};
             } else if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_LIGATURE) {
                 col = (Color){0.75f,0.01f,0.8f,1.0f};
             }
@@ -235,16 +235,16 @@ void render_text_to_png(const char *filename,
 }
 
 int main(int argc, char *argv[]) {
-    hz_setup(HZ_QUERY_CPU_FOR_SIMD);
+    hz_setup(0);
 
     stbtt_fontinfo fontinfo;
     // load_font_face(&fontinfo, "../data/fonts/FajerNooriNastalique.ttf");
-    // load_font_face(&fontinfo, "../data/fonts/Times New Roman.ttf");
+    load_font_face(&fontinfo, "../../../data/fonts/arial_win.ttf");
     // load_font_face(&fontinfo, "../../../data/fonts/ACaslonPro-Italic.otf");
     // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
     // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
     // load_font_face(&fontinfo, "../../../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
-    load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Light.ttf");
+    // load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Light.ttf");
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
 
     // char *text = "مَثَلُ ٱلَّذِينَ حُمِّلُوا۟ ٱلتَّوْرَىٰةَ ثُمَّ لَمْ يَحْمِلُوهَا كَمَثَلِ ٱلْحِمَارِ يَحْمِلُ أَسْفَارًۢا ۚ بِئْسَ مَثَلُ ٱلْقَوْمِ ٱلَّذِينَ كَذَّبُوا۟ بِـَٔايَـٰتِ ٱللَّهِ ۚ وَٱللَّهُ لَا يَهْدِى ٱلْقَوْمَ ٱلظَّـٰلِمِينَ";
@@ -256,37 +256,40 @@ int main(int argc, char *argv[]) {
     // char *text = "من گیاهخوارم";
 
     hz_feature_t features[] = {
-        HZ_FEATURE_CCMP,
-        HZ_FEATURE_ISOL,
-        HZ_FEATURE_INIT,
-        HZ_FEATURE_MEDI,
-        HZ_FEATURE_FINA,
-        HZ_FEATURE_RLIG,
-        HZ_FEATURE_CALT,
-        HZ_FEATURE_LIGA,
-        HZ_FEATURE_DLIG,
+        // HZ_FEATURE_CCMP,
+        // HZ_FEATURE_ISOL,
+        // HZ_FEATURE_INIT,
+        // HZ_FEATURE_MEDI,
+        // HZ_FEATURE_FINA,
+        // HZ_FEATURE_RLIG,
+        // HZ_FEATURE_CALT,
+        // HZ_FEATURE_LIGA,
+        // HZ_FEATURE_DLIG,
         // HZ_FEATURE_SWSH,
-        HZ_FEATURE_MSET,
-        HZ_FEATURE_CURS,
-        HZ_FEATURE_KERN,
+        // HZ_FEATURE_MSET,
+        // HZ_FEATURE_CURS,
+        // HZ_FEATURE_KERN,
+        HZ_FEATURE_ABVM,
         HZ_FEATURE_MARK,
-        HZ_FEATURE_MKMK,
+        // HZ_FEATURE_MKMK,
     };
 
     hz_font_data_t font_data;
-    hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
+    hz_font_data_init(&font_data, 5*1024*1024);
     hz_font_data_load(&font_data, font);
 
     hz_shaper_t shaper;
     hz_shaper_init(&shaper);
-    hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
+    hz_shaper_set_direction(&shaper, HZ_DIRECTION_LTR);
     hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
     hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
     hz_shaper_set_features(&shaper, features, ARRAYSIZE(features));
 
     hz_buffer_t buffer;
     hz_buffer_init(&buffer);
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
+    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
+    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "مرحبًا بِكُمْ اجمعين", &buffer);
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "u\u0308", &buffer);
 
     render_text_to_png("out.png", &fontinfo, &buffer);
 

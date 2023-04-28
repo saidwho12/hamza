@@ -256,20 +256,20 @@ int main(int argc, char *argv[]) {
     // char *text = "من گیاهخوارم";
 
     hz_feature_t features[] = {
-        // HZ_FEATURE_CCMP,
-        // HZ_FEATURE_ISOL,
-        // HZ_FEATURE_INIT,
-        // HZ_FEATURE_MEDI,
-        // HZ_FEATURE_FINA,
-        // HZ_FEATURE_RLIG,
-        // HZ_FEATURE_CALT,
-        // HZ_FEATURE_LIGA,
-        // HZ_FEATURE_DLIG,
+        HZ_FEATURE_CCMP,
+        HZ_FEATURE_ISOL,
+        HZ_FEATURE_INIT,
+        HZ_FEATURE_MEDI,
+        HZ_FEATURE_FINA,
+        HZ_FEATURE_RLIG,
+        HZ_FEATURE_CALT,
+        HZ_FEATURE_LIGA,
+        HZ_FEATURE_DLIG,
         // HZ_FEATURE_SWSH,
         // HZ_FEATURE_MSET,
         // HZ_FEATURE_CURS,
         // HZ_FEATURE_KERN,
-        HZ_FEATURE_ABVM,
+        // HZ_FEATURE_ABVM,
         HZ_FEATURE_MARK,
         // HZ_FEATURE_MKMK,
     };
@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
 
     hz_shaper_t shaper;
     hz_shaper_init(&shaper);
-    hz_shaper_set_direction(&shaper, HZ_DIRECTION_LTR);
+    hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
     hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
     hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
     hz_shaper_set_features(&shaper, features, ARRAYSIZE(features));
@@ -288,8 +288,8 @@ int main(int argc, char *argv[]) {
     hz_buffer_t buffer;
     hz_buffer_init(&buffer);
     // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
-    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "مرحبًا بِكُمْ اجمعين", &buffer);
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "u\u0308", &buffer);
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "مرحبًا بِكُمْ اجمعين", &buffer);
+    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "u\u0308", &buffer);
 
     render_text_to_png("out.png", &fontinfo, &buffer);
 

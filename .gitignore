@@ -6,10 +6,9 @@
 # *.coffee
 # *.xhtml
 
-# Docs folder
-./data/
-
 # Folders
+./data/
+./build/
 ./deps/
 ./unicode/
 

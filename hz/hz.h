@@ -847,8 +847,13 @@ void hz_memory_arena_init(hz_memory_arena_t *arena, uint8_t *mem, size_t size)
     arena->mem = mem; arena->size = size; arena->pos = 0;
 }
 
+// align must be a power of two
 uintptr_t hz_align_forward(uintptr_t addr, uintptr_t align)
 {
+    0b0011 -> 3
+    0b1100 -> 12 -> 15-3
+    0b1111
+
     return (~addr+1) & (align-1);
 }
 
@@ -2381,7 +2386,7 @@ hz_face_load_class_maps(hz_face_t *face)
         hz_parser_t p = hz_parser_create(face->data);
         hz_parser_push_state(&p, face->gdef);
 
-        struct { 
+        struct {
             Offset16 glyph_class_def_offset,
                      attach_list_offset,
                      lig_caret_list_offset,

@@ -850,10 +850,6 @@ void hz_memory_arena_init(hz_memory_arena_t *arena, uint8_t *mem, size_t size)
 // align must be a power of two
 uintptr_t hz_align_forward(uintptr_t addr, uintptr_t align)
 {
-    0b0011 -> 3
-    0b1100 -> 12 -> 15-3
-    0b1111
-
     return (~addr+1) & (align-1);
 }
 

@@ -10,7 +10,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 endif ()
 
 if (PLATFORM_WINDOWS)
-    set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.4.bin.WIN64")
+    set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.8.bin.WIN64")
 
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g2 -ggdb -fverbose-asm -fno-strict-aliasing")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -fno-strict-aliasing -O2 -Ofast")

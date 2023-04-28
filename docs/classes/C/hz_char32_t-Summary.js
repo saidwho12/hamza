@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("CClass:hz_char32_t","hz_char32_t");NDSummary.OnSummaryLoaded("CClass:hz_char32_t",[["C/C++","C"]],[["Functions","Function"],["Structs","Struct"]],[[31,0,1,"hz_char32_t"],[32,0,0,"hz_segment_load_utf32","hz_segment_load_utf32"]]);

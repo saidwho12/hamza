@@ -1,1 +1,1 @@
-﻿NDMenu.OnSectionLoaded("files.js",[[1,"hz.c"],[1,"hz.h"],[1,"hz-data-tables.h"]]);
+﻿NDMenu.OnSectionLoaded("files.js",[[1,"hz.h"]]);

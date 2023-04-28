@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("CClass:hz_glyph_attrib_flags_t","hz_glyph_attrib_flags_t");NDSummary.OnSummaryLoaded("CClass:hz_glyph_attrib_flags_t",[["C/C++","C"]],[["Structs","Struct"]],[[37,0,0,"hz_glyph_attrib_flags_t"]]);

@@ -1,1 +1,0 @@
-﻿NDFramePage.OnPageTitleLoaded("CClass:hz_glyph_metrics_t","hz_glyph_metrics_t");NDSummary.OnSummaryLoaded("CClass:hz_glyph_metrics_t",[["C/C++","C"]],[["Structs","Struct"]],[[36,0,0,"hz_glyph_metrics_t"]]);

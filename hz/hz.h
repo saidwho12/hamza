@@ -467,11 +467,11 @@ typedef int32_t hz_int32;
 #define Offset32 hz_uint32
 #define Version16Dot16 hz_uint32
 
-#if HZ_ARCH & HZ_ARCH_AVX2
+#if HZ_ARCH & HZ_ARCH_AVX2_BIT
 #include <immintrin.h>
 #endif
 
-#if HZ_ARCH & HZ_ARCH_NEON
+#if HZ_ARCH & HZ_ARCH_NEON_BIT
 #include <neon.h>
 #endif
 
@@ -6586,7 +6586,7 @@ void hz_buffer_load_utf8_aligned(hz_buffer_t *buffer, hz_memory_arena_t *memory_
     buffer->codepoints = hz_memory_arena_alloc_aligned(memory_arena, size*4, 4);
     uint32_t *dest = (uint32_t *)buffer->codepoints;
 
-#if HZ_ARCH & HZ_ARCH_AVX2
+#if HZ_ARCH & HZ_ARCH_AVX2_BIT
     // UTF-8 to UTF-32 conversion
     for (size_t rp = 0; rp+32 <= size; rp+=32) {
         // Load 32-bytes into register

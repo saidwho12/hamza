@@ -76,6 +76,7 @@
 
 #if defined(__AVX2__)
 #   define HZ_ARCH HZ_ARCH_AVX2
+#   include <immintrin.h>
 #elif defined(__AVX__)
 #   define HZ_ARCH HZ_ARCH_AVX
 #elif defined(__SSE4_2__)
@@ -92,6 +93,7 @@
 #   define HZ_ARCH (HZ_ARCH_ARMV8)
 #elif defined(__ARM_NEON)
 #   define HZ_ARCH (HZ_ARCH_ARM | HZ_ARCH_NEON)
+#   include <neon.h>
 #elif defined(__arm__) || defined(_M_ARM)
 #   define HZ_ARCH (HZ_ARCH_ARM)
 #elif defined(__mips__)
@@ -466,14 +468,6 @@ typedef int32_t hz_int32;
 #define Offset16 hz_uint16
 #define Offset32 hz_uint32
 #define Version16Dot16 hz_uint32
-
-#if HZ_ARCH & HZ_ARCH_AVX2_BIT
-#include <immintrin.h>
-#endif
-
-#if HZ_ARCH & HZ_ARCH_NEON_BIT
-#include <neon.h>
-#endif
 
 HZ_ALWAYS_INLINE void hz_memset(void *data, int val, size_t size)
 {

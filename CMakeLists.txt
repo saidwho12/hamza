@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19 FATAL_ERROR)
 
-project(Hamza VERSION 0.3.1 LANGUAGES C CXX)
+project(Hamza VERSION 0.4.0 LANGUAGES C CXX)
 
 set(HAMZA_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(HAMZA_VERSION_MINOR ${PROJECT_VERSION_MINOR})
@@ -11,6 +11,7 @@ option(HAMZA_BUILD_SHARED "Build Hamza as a shared library" OFF)
 
 add_subdirectory(demos/stbtt_rasterize/)
 add_subdirectory(demos/gl4/)
+add_subdirectory(tests/)
 # add_subdirectory(demos/vulkan/)
 # add_subdirectory(demos/gles3/)
 

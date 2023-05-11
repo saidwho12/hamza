@@ -1,6 +1,14 @@
 #ifndef HZ_H
 #define HZ_H
 
+#define HZ_MAKE_VERSION(major, minor, patch) (uint32_t)((major << 16) | (minor << 8) | (patch))
+
+#define HZ_VERSION HZ_MAKE_VERSION(0,4,0)
+
+#define HZ_UCD_COMPOSITION_VERSION HZ_MAKE_VERSION(3,1,0)
+#define HZ_UCD_LATEST_VERSION HZ_MAKE_VERSION(14,0,0)
+
+
 #define HZ_COMPILER_UNKNOWN 0ul
 #define HZ_COMPILER_GCC 0x00000001ul
 #define HZ_COMPILER_CLANG 0x00000002ul
@@ -141,6 +149,21 @@
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_TAG_NONE ((hz_tag_t)0)
 
+
+typedef uint32_t hz_version_t;
+
+typedef struct {
+    hz_version_t ucd_version;
+    hz_config_flags_t flags;
+} hz_config_t;
+
+typedef enum {
+    HZ_NFD,
+    HZ_NFC,
+    HZ_NFKD,
+    HZ_NFKC,
+} hz_normalization_form_t;
+
 #define HZ_FLAG(n) (1ul << (n))
 #define Fixed26Dot6 uint32_t
 
@@ -241,7 +264,8 @@ typedef enum {
     HZ_ERROR_INVALID_FORMAT                 = HZ_FLAG(5),
     HZ_ERROR_TABLE_DOES_NOT_EXIST           = HZ_FLAG(6),
     HZ_ERROR_UNEXPECTED_VALUE               = HZ_FLAG(7),
-    HZ_ERROR_SETUP_FAILED                   = HZ_FLAG(8)
+    HZ_ERROR_SETUP_FAILED                   = HZ_FLAG(8),
+    HZ_ERROR_ALREADY_INITIALIZED            = HZ_FLAG(9)
 } hz_error_t;
 
 /*  Enum: hz_glyph_class_t
@@ -324,9 +348,9 @@ typedef enum hz_shape_flags_t {
 /*  enum: hz_setup_flags_t
  *      Set of special flags passed in to <hz_setup> used to configure the library.
  */
-typedef enum hz_setup_flags_t {
+typedef enum {
     HZ_QUERY_CPU_FOR_SIMD = HZ_FLAG(0),
-} hz_setup_flags_t;
+} hz_flags_t;
 
 /*  Function: hz_setup
  *      Sets up the library's internal structures and lookup tables.
@@ -336,12 +360,12 @@ typedef enum hz_setup_flags_t {
  *  Returns:
  *      Returns HZ_OK on success, otherwise HZ_ERROR_SETUP_FAILED.
  * */
-HZ_DECL hz_error_t hz_setup(hz_setup_flags_t flags);
+HZ_DECL hz_error_t hz_init(const hz_config_t *cfg);
 
 /*  function: hz_cleanup
  *      Cleans up all the data initialized by <hz_setup> as well as any shaper cache that might've been allocated.
  */
-HZ_DECL void hz_cleanup(void);
+HZ_DECL void hz_deinit(void);
 
 /*  Function: hz_lang
  *      Finds language based on <ISO 639-2: https://www.loc.gov/standards/iso639-2/php/code_list.php">
@@ -699,36 +723,34 @@ void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, 
     }
 }
 
-static hz_allocator_t s_hz_alctr = { .allocfn = hz_standard_c_allocator_fn, .user = NULL };
-
 hz_allocator_t *hz_get_allocator(void)
 {
-    return &s_hz_alctr;
+    return &hz_.allocator;
 }
 
 void hz_set_allocator_fn(hz_allocator_fn_t allocfn)
 {
-    s_hz_alctr.allocfn = allocfn;
+    hz_.allocator.allocfn = allocfn;
 }
 
 void hz_set_allocator_user_data(void *user)
 {
-    s_hz_alctr.user = user;
+    hz_.allocator.user = user;
 }
 
 void* hz_malloc(size_t size)
 {
-    return s_hz_alctr.allocfn(s_hz_alctr.user,HZ_CMD_ALLOC,NULL,size,1);
+    return hz_.allocator.allocfn(hz_.allocator.user,HZ_CMD_ALLOC,NULL,size,1);
 }
 
 void* hz_realloc(void* pointer, size_t size)
 {
-    return s_hz_alctr.allocfn(s_hz_alctr.user,HZ_CMD_REALLOC,pointer,size,1);
+    return hz_.allocator.allocfn(hz_.allocator.user,HZ_CMD_REALLOC,pointer,size,1);
 }
 
 void hz_free(void *pointer)
 {
-    s_hz_alctr.allocfn(s_hz_alctr.user,HZ_CMD_FREE,pointer,0,1);
+    hz_.allocator.allocfn(hz_.allocator.user,HZ_CMD_FREE,pointer,0,1);
 }
 
 HZ_ALWAYS_INLINE uint16_t hz_bswap16(uint16_t x)
@@ -1707,18 +1729,20 @@ HZ_STATIC hz_mph_map_t *hz_mph_map_create(hz_ht_t *ht)
 #endif 
 
 typedef struct {
-    hz_bool was_setup;
+    hz_config_t cfg;
+    hz_bool is_already_initialized;
     hz_ht_t arabic_joining;
+    hz_allocator_t allocator;
 } hz_lib_t;
 
-static hz_lib_t s_hz_lib;
+static hz_lib_t hz_;
 
 void hz_build_luts(void)
 {
-    hz_ht_init(&s_hz_lib.arabic_joining, &s_hz_alctr, HZ_ARRLEN(hz_arabic_joining_list));
+    hz_ht_init(&hz_.arabic_joining, &hz_.allocator, HZ_ARRLEN(hz_arabic_joining_list));
 
     for (int i = 0; i < HZ_ARRLEN(hz_arabic_joining_list); ++i) {
-        hz_ht_insert(&s_hz_lib.arabic_joining, hz_arabic_joining_list[i].codepoint, hz_arabic_joining_list[i].joining);
+        hz_ht_insert(&hz_.arabic_joining, hz_arabic_joining_list[i].codepoint, hz_arabic_joining_list[i].joining);
     }
 }
 
@@ -2049,7 +2073,7 @@ hz_is_arabic_codepoint(hz_unicode_t c)
 
 HZ_STATIC hz_bool hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint, uint16_t *joining)
 {
-    hz_ht_t *ht = &s_hz_lib.arabic_joining;
+    hz_ht_t *ht = &hz_.arabic_joining;
     hz_ht_iter_t it;
 
     if (hz_ht_search(ht,codepoint,&it)) {
@@ -3301,18 +3325,18 @@ hz_index_t hz_map_unicode_to_id(hz_cmap_format4_subtable_t *subtable, hz_unicode
     return 0; // map to .notdef
 }
 
-hz_error_t hz_setup (hz_setup_flags_t flags)
+hz_error_t hz_init(const hz_config_t *cfg)
 {
-    if (!s_hz_lib.was_setup) {
-        hz_build_luts();
-
-        s_hz_lib.was_setup = HZ_TRUE;
-    }
-
+    if (hz_.is_already_initialized)
+        return HZ_ERROR_ALREADY_INITIALIZED;
+    
+    hz_.cfg = *cfg;
+    hz_build_luts();
+    hz_.is_already_initialized = HZ_TRUE;
     return HZ_OK;
 }
 
-void hz_cleanup(void)
+void hz_deinit(void)
 {
 }
 
@@ -6575,39 +6599,60 @@ void hz_buffer_load_ascii_sz(hz_buffer_t *buffer, const char *sz_input) { // wor
     }
 }
 
-void hz_buffer_load_utf8_aligned(hz_buffer_t *buffer, hz_memory_arena_t *memory_arena, const uint8_t *aligned_input, size_t size)
+HZ_STATIC void hz_buffer_load_utf8_unaligned(hz_buffer_t *buffer, hz_memory_arena_t *memory_arena, const uint8_t *input, size_t size)
 {
-    buffer->codepoints = hz_memory_arena_alloc_aligned(memory_arena, size*4, 4);
-    uint32_t *dest = (uint32_t *)buffer->codepoints;
+    hz_buffer_clear(buffer); // clear any previously loaded data
 
 #if HZ_ARCH & HZ_ARCH_AVX2_BIT
+    buffer->codepoints = hz_memory_arena_alloc_aligned(memory_arena, size*4, 32); // m256 must be aligned on 32-byte boundary
+    uint32_t *dest = (uint32_t *)buffer->codepoints;
     // UTF-8 to UTF-32 conversion
-    for (size_t rp = 0; rp+32 <= size; rp+=32) {
+    for (size_t i = 0; i+32 <= size; i+=32) {
         // Load 32-bytes into register
-        __m256i chunk = _mm256_load_si256((const __m256i *)&aligned_input[rp]);
+        __m256i chunk = _mm256_loadu_si256((const __m256i *)&input[i]);
 
-        // When none of the bytes has the MSB set, all characters of the chunk are ASCII
+        // When none of the bytes has the MSB set, all characters of the chunk are Ascii
         if (!_mm256_movemask_epi8(chunk)) {
             // Extract two halves of the chunk
             __m128i lo = _mm256_castsi256_si128(chunk);
             __m128i hi = _mm256_extracti128_si256(chunk, 1);
-
             // Convert to 32-bit unsigned integers with ZeroExtend32
             __m256i r0 = _mm256_cvtepu8_epi32(lo);
             __m256i r1 = _mm256_cvtepu8_epi32(_mm_srli_si128(lo,8));
             __m256i r2 = _mm256_cvtepu8_epi32(hi);
             __m256i r3 = _mm256_cvtepu8_epi32(_mm_srli_si128(hi,8));
-
             // Store results in destination buffer
             _mm256_store_si256((__m256i *)(dest + 0), r0);
             _mm256_store_si256((__m256i *)(dest + 8), r1);
             _mm256_store_si256((__m256i *)(dest + 16), r2);
             _mm256_store_si256((__m256i *)(dest + 24), r3);
-            
             dest += 32;
         } else {
-            // Non-ascii encountered, handle differently
+            // Non-Ascii encountered, decode chars
+            // 1-byte character 0xxxxxxx
+            // 2-byte character 110xxxxx 10xxxxxxx
+            // 3-byte character 1110xxxx 10xxxxxxx 10xxxxxxx
+            // 4-byte character 11110xxx 10xxxxxxx 10xxxxxxx 10xxxxxxx
+            __m256i c1 = _mm256_cmpgt_epi8(chunk, _mm256_set1_epi8(0xbf)); // gtequal 0xc0 <-> gt 0xbf
+            __m256i c2 = _mm256_cmpgt_epi8(chunk, _mm256_set1_epi8(0xdf)); // gtequal 0xe0 <-> gt 0xdf
+            __m256i c3 = _mm256_cmpgt_epi8(chunk, _mm256_set1_epi8(0xef)); // gtequal 0xf0 <-> gt 0xef
 
+            __m256i data_mask = _mm256_set1_epi8(0x80); // ascii or continuation mask
+
+            data_mask = _mm256_blendv_epi8(data_mask, _mm256_set1_epi8(0xc0), c1);
+            data_mask = _mm256_blendv_epi8(data_mask, _mm256_set1_epi8(0xe0), c2);
+            data_mask = _mm256_blendv_epi8(data_mask, _mm256_set1_epi8(0xf0), c3);
+
+            // chunk contains only 1-byte or 2-byte codepoints
+            if (!_mm256_movemask_epi8(c3)) {
+                
+            }
+
+            for (int k = 0; k < 32; ++k) {
+                uint8_t *p = (uint8_t *)&data_mask;
+                printf("0x%0x ",p[k]);
+            }
+            printf("\n");
         }
     }
 #endif

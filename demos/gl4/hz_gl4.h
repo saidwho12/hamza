@@ -7,8 +7,6 @@ extern "C" {
 
 #include <glad/glad.h>
 
-
-
 typedef struct {
     float f32[3][3];
 } hz_mat3;

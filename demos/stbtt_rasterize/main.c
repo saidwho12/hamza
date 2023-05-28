@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define HZ_IMPLEMENTATION
-#include <hz/hz_ucd_15_0_0.h>
+// #include <hz/hz_ucd_15_0_0.h>
 #include <hz/hz.h>
 
 #include <errno.h>
@@ -235,10 +235,8 @@ void render_text_to_png(const char *filename,
 }
 
 int main(void) {
-    hz_config_t cfg = {
-        .ucd_version = HZ_MAKE_VERSION(15,0,0)
-    };
-
+    hz_config_t cfg;
+    
     if (hz_init(&cfg) != HZ_OK) {
         fprintf(stderr, "Failed to initialize Hamza!\n");
         return EXIT_FAILURE;

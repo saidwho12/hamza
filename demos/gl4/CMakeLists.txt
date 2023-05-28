@@ -9,12 +9,14 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(PLATFORM_UNIX TRUE)
 endif ()
 
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g2 -ggdb -fverbose-asm -fno-strict-aliasing")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -fno-strict-aliasing -O2 -Ofast")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
+endif()
+
 if (PLATFORM_WINDOWS)
     set(GLFW_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/glfw-3.3.8.bin.WIN64")
-
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g2 -ggdb -fverbose-asm -fno-strict-aliasing")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-slp-vectorize -fno-strict-aliasing -O2 -Ofast")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --std=gnu99 -march=native")
 
     if (MINGW)
         set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -static-libgcc -static-libstdc++ -lwsock32 -lws2_32")
@@ -33,4 +35,5 @@ if (PLATFORM_WINDOWS)
 elseif (PLATFORM_UNIX)
     # On Linux, link with shared system library.
     target_link_libraries(hz_gl4_demo PRIVATE m pthread dl Xi Xxf86vm Xrandr X11 glfw gl)
+    target_include_directories(hz_gl4_demo PRIVATE "${GLFW_ROOT_DIR}/include" "glad/include")
 endif ()

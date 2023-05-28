@@ -91,7 +91,8 @@ int main(int argc, char *argv[])
 {
     hz_config_t cfg = {.ucd_version = HZ_MAKE_VERSION(15,0,0)};
 
-    if (!hz_init(&cfg)) {
+    if (hz_init(&cfg) != 0) {
+        fprintf(stderr, "Failed to initialize Hamza!\n");
         return EXIT_FAILURE;
     }
 
@@ -144,8 +145,8 @@ int main(int argc, char *argv[])
     hz_gl4_device_init(&dev, &sdf_opts); 
 
     stbtt_fontinfo fontinfo;
-    // if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
-    if (!load_font_face(&fontinfo, "../../../data/fonts/Times New Roman.ttf")) {
+    // if (!load_font_face(&fontinfo, argv[1])) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/arial-bold.ttf")) {
         hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
         exit(-1);
     }
@@ -173,7 +174,7 @@ int main(int argc, char *argv[])
     hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
     hz_font_data_load(&font_data, font);
 
-    uint16_t omarnaskh = hz_context_stash_font(&ctx,&font_data);
+    uint16_t font_id = hz_context_stash_font(&ctx,&font_data);
 
     hz_shaper_t shaper;
     hz_shaper_init(&shaper);
@@ -184,7 +185,6 @@ int main(int argc, char *argv[])
 
     hz_buffer_t buffer;
     hz_buffer_init(&buffer);
-    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
     
     hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Hello,World! Test 123", &buffer);
     
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
         hz_frame_begin(&ctx);
-        hz_draw_buffer(&ctx, &buffer, omarnaskh, (hz_vec2){0.0f,0.0f},32.0f);
+        hz_draw_buffer(&ctx, &buffer, font_id, (hz_vec2){0.0f,0.0f},32.0f);
         hz_frame_end(&ctx);
         hz_gl4_render_frame(&ctx,&dev);
 

@@ -234,20 +234,57 @@ void render_text_to_png(const char *filename,
     free(pixels);
 }
 
-int main(void) {
-    hz_config_t cfg;
-    
+int main(int argc, char *argv[]) {
+    hz_config_t cfg = {};
+
+    if (argc < 2) {
+        printf("Not enough arguments!\n");
+        return EXIT_FAILURE;
+    }
+
     if (hz_init(&cfg) != HZ_OK) {
         fprintf(stderr, "Failed to initialize Hamza!\n");
         return EXIT_FAILURE;
     }
 
+    stbtt_fontinfo fontinfo;
+    if (!load_font_face(&fontinfo, argv[1])) {
+        fprintf(stderr, "Failed to load font!\n");
+        return EXIT_FAILURE;
+    }
+
+    printf("Test!\n");
+
+    hz_font_t *font = hz_stbtt_font_create(&fontinfo);
+    hz_font_data_t font_data;
+    hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
+    hz_font_data_load(&font_data, font);
+
     hz_buffer_t txt;
     hz_buffer_init(&txt);
-    hz_buffer_load_utf8_sz(&txt, "u\u0308"); // SMALL U WITH UMLAUT ABOVE
 
-    hz_buffer_to_nf(&txt, HZ_NFD);
+    hz_shaper_t shaper;
+    hz_shaper_init(&shaper);
+    hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
+    hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
+    hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
 
+    hz_feature_t features[] = {
+        HZ_FEATURE_ISOL,
+        HZ_FEATURE_MEDI,
+        HZ_FEATURE_INIT,
+        HZ_FEATURE_FINA
+    };
+
+    hz_shaper_set_features(&shaper, 0, 0);
+
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "الجامع الشباب", &txt);
+
+    render_text_to_png("txt.png", &fontinfo, &txt);
+
+    hz_font_data_release(&font_data);
+
+    hz_font_destroy(font);
     hz_buffer_release(&txt);
     hz_deinit();
     return EXIT_SUCCESS;

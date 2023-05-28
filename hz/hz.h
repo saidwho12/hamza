@@ -3341,6 +3341,9 @@ hz_index_t hz_map_unicode_to_id(hz_cmap_format4_subtable_t *subtable, hz_unicode
 
 hz_error_t hz_init(const hz_config_t *cfg)
 {
+    hz_.allocator.allocfn = hz_standard_c_allocator_fn;
+    hz_.allocator.user = NULL;
+
     if (hz_.is_already_initialized)
         return HZ_ERROR_ALREADY_INITIALIZED;
     

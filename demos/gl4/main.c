@@ -87,7 +87,11 @@ GLuint create_fs_quad_shader()
 
 int main(int argc, char *argv[])
 {
-    hz_setup(HZ_QUERY_CPU_FOR_SIMD);
+    hz_config_t cfg = {.ucd_version = HZ_MAKE_VERSION(15,0,0)};
+
+    if (!hz_init(&cfg)) {
+        return EXIT_FAILURE;
+    }
 
     if (!glfwInit()) {
         fprintf(stderr, "Failed to initialize GLFW!\n");
@@ -214,6 +218,6 @@ int main(int argc, char *argv[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
-    hz_cleanup();
+    hz_deinit();
     return 0;
 }

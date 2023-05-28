@@ -1,1 +1,0 @@
-﻿NDContentPage.OnToolTipsLoaded({23:"<div class=\"NDToolTip TStruct LC\"><div class=\"NDClassPrototype\" id=\"NDClassPrototype23\"><div class=\"CPEntry TStruct Current\"><div class=\"CPModifiers\"><span class=\"SHKeyword\">typedef</span> <span class=\"SHKeyword\">struct</span></div><div class=\"CPName\">hz_face_t</div></div></div></div>"});

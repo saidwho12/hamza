@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define HZ_IMPLEMENTATION
-// #define HZ_STRIP_GFX_CODE
+#include <hz/hz_ucd_15_0_0.h>
 #include <hz/hz.h>
 
 #include <errno.h>
@@ -234,68 +234,23 @@ void render_text_to_png(const char *filename,
     free(pixels);
 }
 
-int main(int argc, char *argv[]) {
-    hz_setup(0);
-
-    stbtt_fontinfo fontinfo;
-    // load_font_face(&fontinfo, "../data/fonts/FajerNooriNastalique.ttf");
-    load_font_face(&fontinfo, "../../../data/fonts/arial_win.ttf");
-    // load_font_face(&fontinfo, "../../../data/fonts/ACaslonPro-Italic.otf");
-    // load_font_face(&fontinfo, "../data/fonts/AGRA.TTF");
-    // load_font_face(&fontinfo, "../data/fonts/Jameel Noori Nastaleeq Regular.ttf");
-    // load_font_face(&fontinfo, "../../../data/fonts/KFGQPC Uthmanic Script HAFS.otf");
-    // load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Light.ttf");
-    hz_font_t *font = hz_stbtt_font_create(&fontinfo);
-
-    // char *text = "مَثَلُ ٱلَّذِينَ حُمِّلُوا۟ ٱلتَّوْرَىٰةَ ثُمَّ لَمْ يَحْمِلُوهَا كَمَثَلِ ٱلْحِمَارِ يَحْمِلُ أَسْفَارًۢا ۚ بِئْسَ مَثَلُ ٱلْقَوْمِ ٱلَّذِينَ كَذَّبُوا۟ بِـَٔايَـٰتِ ٱللَّهِ ۚ وَٱللَّهُ لَا يَهْدِى ٱلْقَوْمَ ٱلظَّـٰلِمِينَ";
-    // char *text = "يَـٰٓأَيُّهَا ٱلَّذِينَ ءَامَنُوا۟ لَا تَتَّخِذُوا۟ عَدُوِّى وَعَدُوَّكُمْ أَوْلِيَآءَ تُلْقُونَ إِلَيْهِم بِٱلْمَوَدَّةِ وَقَدْ كَفَرُوا۟ بِمَا جَآءَكُم مِّنَ ٱلْحَقِّ يُخْرِجُونَ ٱلرَّسُولَ وَإِيَّاكُمْ ۙ أَن تُؤْمِنُوا۟ بِٱللَّهِ رَبِّكُمْ إِن كُنتُمْ خَرَجْتُمْ جِهَـٰدًا فِى سَبِيلِى وَٱبْتِغَآءَ مَرْضَاتِى ۚ تُسِرُّونَ إِلَيْهِم بِٱلْمَوَدَّةِ وَأَنَا۠ أَعْلَمُ بِمَآ أَخْفَيْتُمْ وَمَآ أَعْلَنتُمْ ۚ وَمَن يَفْعَلْهُ مِنكُمْ فَقَدْ ضَلَّ سَوَآءَ ٱلسَّبِيلِ";
-    // char *text = "فَٱسْتَجَابَ لَهُمْ رَبُّهُمْ أَنِّى لَآ أُضِيعُ عَمَلَ عَـٰمِلٍ مِّنكُم مِّن ذَكَرٍ أَوْ أُنثَىٰ ۖ بَعْضُكُم مِّنۢ بَعْضٍ ۖ فَٱلَّذِينَ هَاجَرُوا۟ وَأُخْرِجُوا۟ مِن دِيَـٰرِهِمْ وَأُوذُوا۟ فِى سَبِيلِى وَقَـٰتَلُوا۟ وَقُتِلُوا۟ لَأُكَفِّرَنَّ عَنْهُمْ سَيِّـَٔاتِهِمْ وَلَأُدْخِلَنَّهُمْ جَنَّـٰتٍ تَجْرِى مِن تَحْتِهَا ٱلْأَنْهَـٰرُ ثَوَابًا مِّنْ عِندِ ٱللَّهِ ۗ وَٱللَّهُ عِندَهُۥ حُسْنُ ٱلثَّوَابِ";
-    // char *text = "sift through tj fi fj ct stop";
-    // char *text = "Слава Україні";
-    // char *text = "मुझे कोई हिंदी नहीं आती";
-    // char *text = "من گیاهخوارم";
-
-    hz_feature_t features[] = {
-        HZ_FEATURE_CCMP,
-        HZ_FEATURE_ISOL,
-        HZ_FEATURE_INIT,
-        HZ_FEATURE_MEDI,
-        HZ_FEATURE_FINA,
-        HZ_FEATURE_RLIG,
-        HZ_FEATURE_CALT,
-        HZ_FEATURE_LIGA,
-        HZ_FEATURE_DLIG,
-        // HZ_FEATURE_SWSH,
-        // HZ_FEATURE_MSET,
-        // HZ_FEATURE_CURS,
-        // HZ_FEATURE_KERN,
-        // HZ_FEATURE_ABVM,
-        HZ_FEATURE_MARK,
-        // HZ_FEATURE_MKMK,
+int main(void) {
+    hz_config_t cfg = {
+        .ucd_version = HZ_MAKE_VERSION(15,0,0)
     };
 
-    hz_font_data_t font_data;
-    hz_font_data_init(&font_data, 5*1024*1024);
-    hz_font_data_load(&font_data, font);
+    if (hz_init(&cfg) != HZ_OK) {
+        fprintf(stderr, "Failed to initialize Hamza!\n");
+        return EXIT_FAILURE;
+    }
 
-    hz_shaper_t shaper;
-    hz_shaper_init(&shaper);
-    hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
-    hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
-    hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
-    hz_shaper_set_features(&shaper, features, ARRAYSIZE(features));
+    hz_buffer_t txt;
+    hz_buffer_init(&txt);
+    hz_buffer_load_utf8_sz(&txt, "u\u0308"); // SMALL U WITH UMLAUT ABOVE
 
-    hz_buffer_t buffer;
-    hz_buffer_init(&buffer);
-    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "نحن نتفهّم أن خصوصيتك على الإنترنت أمر بالغ الأهمية، وموافقتك على تمكيننا من جمع بعض المعلومات الشخصية عنك يتطلب ثقة كبيرة منك. نحن نطلب منك هذه الموافقة لأنها ستسمح للجزيرة بتقديم تجربة تعطي فعليّاً صوتا لمن لا صوت لهم.", &buffer);
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "مرحبًا بِكُمْ اجمعين", &buffer);
-    // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "u\u0308", &buffer);
+    hz_buffer_to_nf(&txt, HZ_NFD);
 
-    render_text_to_png("out.png", &fontinfo, &buffer);
-
-    hz_buffer_release(&buffer);
-    hz_font_data_release(&font_data);
-    hz_cleanup();
-
+    hz_buffer_release(&txt);
+    hz_deinit();
     return EXIT_SUCCESS;
 }

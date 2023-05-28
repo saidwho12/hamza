@@ -1,13 +1,17 @@
+/*
+     This file is part of Hamza.
+
+    Hamza is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+    Hamza is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+    You should have received a copy of the GNU Lesser General Public License along with Hamza. If not, see <https://www.gnu.org/licenses/>. 
+*/
+
 #ifndef HZ_H
 #define HZ_H
 
 #define HZ_MAKE_VERSION(major, minor, patch) (uint32_t)((major << 16) | (minor << 8) | (patch))
 
 #define HZ_VERSION HZ_MAKE_VERSION(0,4,0)
-
-#define HZ_UCD_COMPOSITION_VERSION HZ_MAKE_VERSION(3,1,0)
-#define HZ_UCD_LATEST_VERSION HZ_MAKE_VERSION(14,0,0)
-
 
 #define HZ_COMPILER_UNKNOWN 0ul
 #define HZ_COMPILER_GCC 0x00000001ul
@@ -149,8 +153,11 @@
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
 #define HZ_TAG_NONE ((hz_tag_t)0)
 
-
 typedef uint32_t hz_version_t;
+
+typedef enum {
+    HZ_CONFIG_FLAG_DEFAULT,
+} hz_config_flags_t;
 
 typedef struct {
     hz_version_t ucd_version;
@@ -158,10 +165,10 @@ typedef struct {
 } hz_config_t;
 
 typedef enum {
-    HZ_NFD,
-    HZ_NFC,
-    HZ_NFKD,
-    HZ_NFKC,
+    HZ_NFD, // Normalization Forms D (Canonical Decomposition)
+    HZ_NFC, // Normalization Forms C (Canonical Decomposition, followed by Canonical Composition)
+    HZ_NFKD, // Normalization Forms KD (Compatibility Decomposition)
+    HZ_NFKC, // Normalization Forms KC (Compatibility Decomposition, followed by Canonical Composition)
 } hz_normalization_form_t;
 
 #define HZ_FLAG(n) (1ul << (n))
@@ -345,26 +352,8 @@ typedef enum hz_shape_flags_t {
     HZ_SHAPER_CULL_BASES         = HZ_FLAG(2)
 } hz_shaper_flags_t;
 
-/*  enum: hz_setup_flags_t
- *      Set of special flags passed in to <hz_setup> used to configure the library.
- */
-typedef enum {
-    HZ_QUERY_CPU_FOR_SIMD = HZ_FLAG(0),
-} hz_flags_t;
-
-/*  Function: hz_setup
- *      Sets up the library's internal structures and lookup tables.
- *      If HZ_USE_CPUID_FOR_SIMD_CHECKS flag is set it will also initialize a special hardware specific info to allow for runtime
- *      SIMD specialization. Otherwise, it will use compile-time macros to determine which instruction set to optimize with.
- *
- *  Returns:
- *      Returns HZ_OK on success, otherwise HZ_ERROR_SETUP_FAILED.
- * */
 HZ_DECL hz_error_t hz_init(const hz_config_t *cfg);
 
-/*  function: hz_cleanup
- *      Cleans up all the data initialized by <hz_setup> as well as any shaper cache that might've been allocated.
- */
 HZ_DECL void hz_deinit(void);
 
 /*  Function: hz_lang
@@ -680,6 +669,8 @@ void hz_flog(hz_severity_t severity, const char *filename, const char *func, int
 #define hz_logln(Severity,Msg)
 #endif
 
+static struct hz_lib_t hz_;
+
 void *hz_aligned_alloc(hz_allocator_t *alctr, size_t size, size_t alignment)
 {
     return alctr->allocfn(alctr->user, HZ_CMD_ALLOC, NULL, size, alignment);
@@ -722,6 +713,177 @@ void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, 
             return NULL;
     }
 }
+
+
+
+HZ_ALWAYS_INLINE uint32_t hz_hash32_fnv1a(uint32_t k) {
+    uint32_t h = 0x811c9dc5ul; // offset basis
+
+    h = 0x01000193 * (h ^ (k & 255)); // multiply by prime
+    k >>= 8;
+    h = 0x01000193 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x01000193 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x01000193 * (h ^ (k & 255));
+    k >>= 8;
+
+    return h;
+}
+
+HZ_ALWAYS_INLINE uint64_t hz_hash64_fnv1a(uint64_t k) {
+    uint64_t h = 0xcbf29ce484222325ull; // offset basis
+    h = 0x00000100000001b3 * (h ^ (k & 255)); // multiply by prime
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    h = 0x00000100000001b3 * (h ^ (k & 255));
+    k >>= 8;
+    return h;
+}
+
+#define HZ_HT_EMPTY HZ_FLAG(0)
+#define HZ_HT_OCCUPIED HZ_FLAG(1)
+#define HZ_HT_TOMBSTONE HZ_FLAG(2)
+
+#define HZ_HT_INVALID_INDEX (UINT32_MAX)
+
+typedef struct {
+    uint32_t index; // if index is HZ_HT_INVALID_INDEX, iterator is invalid
+    uint32_t key;
+    uint32_t *ptr_value;
+} hz_ht_iter_t;
+
+HZ_ALWAYS_INLINE hz_bool hz_ht_iter_valid(hz_ht_iter_t *it) {
+    return it->index != HZ_HT_INVALID_INDEX;
+}
+
+typedef struct {
+    uint8_t *flags;
+    uint32_t *keys;
+    uint32_t *values;
+    size_t size;
+    size_t num_occupied;
+    hz_allocator_t *alctr;
+} hz_ht_t;
+
+HZ_STATIC void hz_ht_clear(hz_ht_t *ht) {
+    HZ_MEMSET(ht->flags, HZ_HT_EMPTY, ht->size);
+    HZ_MEMSET(ht->keys, 0, ht->size*sizeof(uint32_t));
+    HZ_MEMSET(ht->values, 0, ht->size*sizeof(uint32_t));
+}
+
+HZ_STATIC void hz_ht_init(hz_ht_t *ht, hz_allocator_t *alctr, size_t size){
+    ht->alctr = alctr;
+    ht->keys = hz_allocate(alctr, size*sizeof(uint32_t));
+    ht->values = hz_allocate(alctr,size*sizeof(uint32_t));
+    ht->flags = hz_allocate(alctr,size*sizeof(uint8_t));
+    ht->num_occupied = 0;
+    ht->size = size;
+    hz_ht_clear(ht);
+}
+
+HZ_STATIC void hz_ht_destroy(hz_ht_t *ht)
+{
+    hz_deallocate(ht->alctr,ht->flags);
+    hz_deallocate(ht->alctr,ht->keys);
+    hz_deallocate(ht->alctr,ht->values);
+}
+
+HZ_STATIC uint32_t hz_ht_next_valid_index(hz_ht_t *ht, uint32_t index) {
+    if (index >= ht->size) return HZ_HT_INVALID_INDEX;
+
+    while ((ht->flags[index] & (HZ_HT_EMPTY|HZ_HT_TOMBSTONE)) && index < ht->size)
+        ++index;
+
+    if (index != ht->size)
+        return index;
+
+    return HZ_HT_INVALID_INDEX;
+}
+
+HZ_STATIC hz_bool hz_ht_iter_next(hz_ht_t *ht, hz_ht_iter_t *it) {
+    it->index = hz_ht_next_valid_index(ht,it->index+1);
+    if (it->index != HZ_HT_INVALID_INDEX) {
+        it->key = ht->keys[it->index];
+        it->ptr_value = &ht->values[it->index];
+        return HZ_TRUE;//success
+    }
+
+    return HZ_FALSE;
+}
+
+HZ_STATIC hz_ht_iter_t hz_ht_iter_begin(hz_ht_t *ht) {
+    hz_ht_iter_t it;
+    it.index = hz_ht_next_valid_index(ht,0);
+    if (it.index != HZ_HT_INVALID_INDEX) {
+        it.key = ht->keys[it.index];
+        it.ptr_value = &ht->values[it.index];
+    }
+
+    return it;
+}
+
+HZ_STATIC hz_bool hz_ht_search(hz_ht_t *ht, uint32_t key, hz_ht_iter_t *it) {
+    uint32_t h = hz_hash32_fnv1a(key) % ht->size;
+    for (uint32_t i = 0; i < ht->size && !(ht->flags[h] & HZ_HT_EMPTY); ++i, h = (h + i) % ht->size) {
+        if (ht->flags[h] & HZ_HT_TOMBSTONE)
+            continue; // skip tombstone
+
+        // bucket is occupied
+        if (ht->keys[h] == key) {
+            // keys match, set iterator pointers and return successfully
+            it->key = ht->keys[h];
+            it->ptr_value = &ht->values[h];
+            it->index = h;
+            return HZ_TRUE;
+        }
+    }
+
+    return HZ_FALSE; // didn't find item
+}
+
+// returns true if insert succeeded, and false if it didn't
+HZ_STATIC hz_bool hz_ht_insert(hz_ht_t *ht, uint32_t key, uint32_t value)
+{
+    uint32_t h = hz_hash32_fnv1a(key) % ht->size;
+
+    for (uint32_t i = 0; i < ht->size; ++i, h = (h + i) % ht->size) {
+        if ((ht->flags[h] & HZ_HT_OCCUPIED) && ht->keys[h] == key) { // entry aready exists, replace with our value
+            ht->values[h] = value;
+            return HZ_TRUE;
+        }
+
+        if (ht->flags[h] & (HZ_HT_EMPTY | HZ_HT_TOMBSTONE)) { // found empty/tombstone slot, insert value and return
+            ht->keys[h] = key;
+            ht->values[h] = value;
+            ht->flags[h] = HZ_HT_OCCUPIED;
+            return HZ_TRUE;
+        }
+    }
+    
+    // insertion failed
+    return HZ_FALSE;
+}
+
+
+struct hz_lib_t {
+    hz_config_t cfg;
+    hz_bool is_already_initialized;
+    hz_ht_t arabic_joining;
+    hz_allocator_t allocator;
+};
+
 
 hz_allocator_t *hz_get_allocator(void)
 {
@@ -775,9 +937,19 @@ HZ_ALWAYS_INLINE void hz_byte_swap_u16x4(uint64_t *p) {
     *p = q;
 }
 
-HZ_ALWAYS_INLINE uint16_t hz_byte_swap_16(uint16_t *p)
+HZ_ALWAYS_INLINE void hz_byte_swap_16(uint16_t *p)
 {
     *p = (*p << 8) | (*p >> 8);
+}
+
+HZ_ALWAYS_INLINE void hz_byte_swap_32(uint32_t *p)
+{
+    uint32_t q = 0;
+    q |= (*p & 0xff000000UL) >> 24;
+    q |= (*p & 0x00ff0000UL) >> 8;
+    q |= (*p & 0x0000ff00UL) << 8;
+    q |= (*p & 0x000000ffUL) << 24; 
+    *p = q;
 }
 
 HZ_ALWAYS_INLINE void hz_byte_swap_u32x2(uint64_t *p) {
@@ -1127,9 +1299,20 @@ void hz_parser_read_u16_block(hz_parser_t *p, uint16_t *write_addr, size_t size)
 
 void hz_parser_read_u32_block(hz_parser_t *p, uint32_t *write_addr, size_t size)
 {
-    while (size > 0) {
-        *write_addr++ = hz_parser_read_u32(p);
-        --size;
+    hz_memcpy(write_addr, hz_parser_at_cursor(p), size*4);
+    p->offset += size*4;
+
+    if (p->must_bswap) {
+        size_t swap_index = 0;
+        while(swap_index+2 <= size) {
+            hz_byte_swap_u32x2((uint64_t*)&write_addr[swap_index]);
+            swap_index += 2;
+        }
+
+        while (swap_index < size) {
+            hz_byte_swap_32(write_addr + swap_index);
+            ++swap_index;
+        }
     }
 }
 
@@ -1388,166 +1571,6 @@ hz_array_range_eq(const hz_array_t *a_arr, size_t a_index,
     return HZ_TRUE;
 }
 
-HZ_ALWAYS_INLINE uint32_t hz_hash32_fnv1a(uint32_t k) {
-    uint32_t h = 0x811c9dc5ul; // offset basis
-
-    h = 0x01000193 * (h ^ (k & 255)); // multiply by prime
-    k >>= 8;
-    h = 0x01000193 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x01000193 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x01000193 * (h ^ (k & 255));
-    k >>= 8;
-
-    return h;
-}
-
-HZ_ALWAYS_INLINE uint64_t hz_hash64_fnv1a(uint64_t k) {
-    uint64_t h = 0xcbf29ce484222325ull; // offset basis
-    h = 0x00000100000001b3 * (h ^ (k & 255)); // multiply by prime
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    h = 0x00000100000001b3 * (h ^ (k & 255));
-    k >>= 8;
-    return h;
-}
-
-#define HZ_HT_EMPTY HZ_FLAG(0)
-#define HZ_HT_OCCUPIED HZ_FLAG(1)
-#define HZ_HT_TOMBSTONE HZ_FLAG(2)
-
-#define HZ_HT_INVALID_INDEX (UINT32_MAX)
-
-typedef struct {
-    uint32_t index; // if index is HZ_HT_INVALID_INDEX, iterator is invalid
-    uint32_t key;
-    uint32_t *ptr_value;
-} hz_ht_iter_t;
-
-HZ_ALWAYS_INLINE hz_bool hz_ht_iter_valid(hz_ht_iter_t *it) {
-    return it->index != HZ_HT_INVALID_INDEX;
-}
-
-typedef struct {
-    uint8_t *flags;
-    uint32_t *keys;
-    uint32_t *values;
-    size_t size;
-    size_t num_occupied;
-    hz_allocator_t *alctr;
-} hz_ht_t;
-
-HZ_STATIC void hz_ht_clear(hz_ht_t *ht) {
-    HZ_MEMSET(ht->flags, HZ_HT_EMPTY, ht->size);
-    HZ_MEMSET(ht->keys, 0, ht->size*sizeof(uint32_t));
-    HZ_MEMSET(ht->values, 0, ht->size*sizeof(uint32_t));
-}
-
-HZ_STATIC void hz_ht_init(hz_ht_t *ht, hz_allocator_t *alctr, size_t size){
-    ht->alctr = alctr;
-    ht->keys = hz_allocate(alctr, size*sizeof(uint32_t));
-    ht->values = hz_allocate(alctr,size*sizeof(uint32_t));
-    ht->flags = hz_allocate(alctr,size*sizeof(uint8_t));
-    ht->num_occupied = 0;
-    ht->size = size;
-    hz_ht_clear(ht);
-}
-
-HZ_STATIC void hz_ht_destroy(hz_ht_t *ht)
-{
-    hz_deallocate(ht->alctr,ht->flags);
-    hz_deallocate(ht->alctr,ht->keys);
-    hz_deallocate(ht->alctr,ht->values);
-}
-
-HZ_STATIC uint32_t hz_ht_next_valid_index(hz_ht_t *ht, uint32_t index) {
-    if (index >= ht->size) return HZ_HT_INVALID_INDEX;
-
-    while ((ht->flags[index] & (HZ_HT_EMPTY|HZ_HT_TOMBSTONE)) && index < ht->size)
-        ++index;
-
-    if (index != ht->size)
-        return index;
-
-    return HZ_HT_INVALID_INDEX;
-}
-
-HZ_STATIC hz_bool hz_ht_iter_next(hz_ht_t *ht, hz_ht_iter_t *it) {
-    it->index = hz_ht_next_valid_index(ht,it->index+1);
-    if (it->index != HZ_HT_INVALID_INDEX) {
-        it->key = ht->keys[it->index];
-        it->ptr_value = &ht->values[it->index];
-        return HZ_TRUE;//success
-    }
-
-    return HZ_FALSE;
-}
-
-HZ_STATIC hz_ht_iter_t hz_ht_iter_begin(hz_ht_t *ht) {
-    hz_ht_iter_t it;
-    it.index = hz_ht_next_valid_index(ht,0);
-    if (it.index != HZ_HT_INVALID_INDEX) {
-        it.key = ht->keys[it.index];
-        it.ptr_value = &ht->values[it.index];
-    }
-
-    return it;
-}
-
-HZ_STATIC hz_bool hz_ht_search(hz_ht_t *ht, uint32_t key, hz_ht_iter_t *it) {
-    uint32_t h = hz_hash32_fnv1a(key) % ht->size;
-    for (uint32_t i = 0; i < ht->size && !(ht->flags[h] & HZ_HT_EMPTY); ++i, h = (h + i) % ht->size) {
-        if (ht->flags[h] & HZ_HT_TOMBSTONE)
-            continue; // skip tombstone
-
-        // bucket is occupied
-        if (ht->keys[h] == key) {
-            // keys match, set iterator pointers and return successfully
-            it->key = ht->keys[h];
-            it->ptr_value = &ht->values[h];
-            it->index = h;
-            return HZ_TRUE;
-        }
-    }
-
-    return HZ_FALSE; // didn't find item
-}
-
-// returns true if insert succeeded, and false if it didn't
-HZ_STATIC hz_bool hz_ht_insert(hz_ht_t *ht, uint32_t key, uint32_t value)
-{
-    uint32_t h = hz_hash32_fnv1a(key) % ht->size;
-
-    for (uint32_t i = 0; i < ht->size; ++i, h = (h + i) % ht->size) {
-        if ((ht->flags[h] & HZ_HT_OCCUPIED) && ht->keys[h] == key) { // entry aready exists, replace with our value
-            ht->values[h] = value;
-            return HZ_TRUE;
-        }
-
-        if (ht->flags[h] & (HZ_HT_EMPTY | HZ_HT_TOMBSTONE)) { // found empty/tombstone slot, insert value and return
-            ht->keys[h] = key;
-            ht->values[h] = value;
-            ht->flags[h] = HZ_HT_OCCUPIED;
-            return HZ_TRUE;
-        }
-    }
-    
-    // insertion failed
-    return HZ_FALSE;
-}
-
 #if 0
 HZ_STATIC uint32_t hz_map_get_value(hz_map_t *map, uint32_t key)
 {
@@ -1727,15 +1750,6 @@ HZ_STATIC hz_mph_map_t *hz_mph_map_create(hz_ht_t *ht)
     return map;
 }
 #endif 
-
-typedef struct {
-    hz_config_t cfg;
-    hz_bool is_already_initialized;
-    hz_ht_t arabic_joining;
-    hz_allocator_t allocator;
-} hz_lib_t;
-
-static hz_lib_t hz_;
 
 void hz_build_luts(void)
 {
@@ -6675,6 +6689,35 @@ void hz_buffer_load_ucs2_sz(hz_buffer_t *buffer, const hz_ucs2_char_t *sz_input)
     while (*sz_input != '\0') {
         hz_vector_push_back(buffer->codepoints, (hz_unicode_t)(*sz_input));
         ++sz_input;
+    }
+}
+
+void hz_buffer_to_nfd(hz_buffer_t *buffer)
+{
+    
+}
+void hz_buffer_to_nfc(hz_buffer_t *buffer)
+{
+
+}
+
+void hz_buffer_to_nfkd(hz_buffer_t *buffer)
+{
+    
+}
+void hz_buffer_to_nfkc(hz_buffer_t *buffer)
+{
+    
+}
+
+void hz_buffer_to_nf(hz_buffer_t *buffer, hz_normalization_form_t nf)
+{
+    switch (nf) {
+        default: break;
+        case HZ_NFD: hz_buffer_to_nfd(buffer); break;
+        case HZ_NFC: hz_buffer_to_nfc(buffer); break;
+        case HZ_NFKD: hz_buffer_to_nfkd(buffer); break;
+        case HZ_NFKC: hz_buffer_to_nfkc(buffer); break;
     }
 }
 

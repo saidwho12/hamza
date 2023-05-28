@@ -15,15 +15,15 @@ portable and optimized shaper that's easy to integrate into any existing project
   - Clang 16.0.0 x86_64-pc-windows-msvc
 
 ## UCD File Generation
-Hamza includes the single-file programs `update_ucd_ftp` and `generate_ucd_headers`. The first pulls the necessary UCD files from the FTP server at [ftp.unicode.org]() and requires [curl](https://github.com/curl/curl). The second generates optimized C headers from those UCD files. Both of these programs make use of the POSIX header `regex.h` for filtering and parsing. 
+Hamza includes the single-file programs `update_ucd_ftp` and `generate_ucd_headers`. The first pulls the necessary UCD files from the FTP server at [ftp.unicode.org]() and requires [curl](https://github.com/curl/curl). The second generates optimized C headers from those UCD files. Both of these programs make use of the POSIX regex library for filtering and parsing. 
 
-Download the UCD txt:
+Download the UCD txt, this might take a few minutes so only do if UCD headers are out of date:
 ```sh
-./build/ucdtool --pull
+./build/update_ucd_ftp
 ```
-Generate the source:
+Generate the header files for the UCD versions:
 ```sh
-./build/ucdtool --generate
+./build/generate_ucd_headers
 ```
 
 ## Getting Started 

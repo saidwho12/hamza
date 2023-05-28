@@ -7,6 +7,8 @@
 #define HZ_GL4_IMPLEMENTATION
 #include "hz_gl4.h"
 
+#include <errno.h>
+
 #define WIDTH 1000
 #define HEIGHT 1000
 

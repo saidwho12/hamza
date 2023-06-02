@@ -1541,7 +1541,7 @@ static const hz_feature_info_t *
 hz_ot_get_feature_info(hz_feature_t feature) {
     size_t i;
 
-    for (i = 0; i < HZ_ARRLEN(HZ_FEATURE_INFO_LUT); ++i) {
+    for (i = 0; i < HZ_ARRAY_SIZE(HZ_FEATURE_INFO_LUT); ++i) {
         if (HZ_FEATURE_INFO_LUT[i].feature == feature) {
             return &HZ_FEATURE_INFO_LUT[i];
         }

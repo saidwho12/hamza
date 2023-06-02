@@ -146,7 +146,7 @@
 #else
 #endif
 
-#define HZ_ARRLEN(x) (sizeof(x)/sizeof((x)[0]))
+#define HZ_ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
 #define HZ_ASSERT(cond) assert(cond)
 #define HZ_TAG(a, b, c, d) ((hz_tag_t)d | ((hz_tag_t)c << 8) | ((hz_tag_t)b << 16) | ((hz_tag_t)a << 24U))
@@ -749,6 +749,23 @@ HZ_ALWAYS_INLINE uint64_t hz_hash64_fnv1a(uint64_t k) {
     k >>= 8;
     h = 0x00000100000001b3 * (h ^ (k & 255));
     k >>= 8;
+    return h;
+}
+
+uint32_t hz_hash2_lowbias32(uint32_t k1, uint32_t k2) {
+    uint32_t h = k1;
+    h ^= h >> 16;
+    h *= 0x7feb352d;
+    h ^= h >> 15;
+    h *= 0x846ca68b;
+    h ^= h >> 16;
+
+    h ^= k2;
+    h ^= h >> 16;
+    h *= 0x7feb352d;
+    h ^= h >> 15;
+    h *= 0x846ca68b;
+    h ^= h >> 16;
     return h;
 }
 
@@ -1385,7 +1402,7 @@ int hz_cmdread(hz_parser_t *p, int c_struct_align, void *dataptr, const char *cm
                 member_offset += 8 * member_array_count;
                 member_array_count = 1;
                 break;
-            }
+            }   
 
             case ' ': default: {
                 ++curs;
@@ -1751,15 +1768,6 @@ HZ_STATIC hz_mph_map_t *hz_mph_map_create(hz_ht_t *ht)
 }
 #endif 
 
-void hz_build_luts(void)
-{
-    hz_ht_init(&hz_.arabic_joining, &hz_.allocator, HZ_ARRLEN(hz_arabic_joining_list));
-
-    for (int i = 0; i < HZ_ARRLEN(hz_arabic_joining_list); ++i) {
-        hz_ht_insert(&hz_.arabic_joining, hz_arabic_joining_list[i].codepoint, hz_arabic_joining_list[i].joining);
-    }
-}
-
 typedef struct hz_glyph_position_t {
     int32_t xOffset;
     int32_t yOffset;
@@ -2085,20 +2093,23 @@ hz_is_arabic_codepoint(hz_unicode_t c)
             (c >= 0x1EE00u && c <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
 }
 
-HZ_STATIC hz_bool hz_shape_complex_arabic_char_joining(hz_unicode_t codepoint, uint16_t *joining)
+HZ_ALWAYS_INLINE uint32_t hz_ucd_get_arabic_joining_data(hz_unicode_t key)
 {
-    hz_ht_t *ht = &hz_.arabic_joining;
-    hz_ht_iter_t it;
+    size_t size = HZ_ARRAY_SIZE(hz_ucd_arabic_joining_data);
+    uint32_t h = hz_hash2_lowbias32((uint32_t)key, 0) % size;
 
-    if (hz_ht_search(ht,codepoint,&it)) {
-        *joining = *it.ptr_value;
-        return HZ_TRUE; // found value
-    }
+    // Sample k2 array, find second index
+    int32_t k2 = hz_ucd_arabic_joining_k2[h];
 
-    return HZ_FALSE;
+    // Check high bit to determine if k2 is negative, in which case we don't need to hash again to get the final slot.
+    // That's because this bucket had a single key in it.
+    uint32_t slot = k2<0 ? (-k2)-1 : hz_hash2_lowbias32((uint32_t)key, (uint32_t)k2) % size;
+
+    // Verify if unicode codepoints match, otherwise return default
+    if (hz_ucd_arabic_joining_ucs_codepoints[slot] != key) return HZ_JOINING_GROUP_NONE | HZ_JOINING_TYPE_T;
+
+    return hz_ucd_arabic_joining_data[slot];
 }
-
-
 
 typedef struct {
     uint16_t *keys;
@@ -3168,7 +3179,7 @@ hz_ot_is_complex_script(hz_script_t script)
 {
     int i;
 
-    for (i = 0; i < HZ_ARRLEN(complex_script_list); ++i) {
+    for (i = 0; i < HZ_ARRAY_SIZE(complex_script_list); ++i) {
         if (complex_script_list[i] == script) {
             return HZ_TRUE;
         }
@@ -3186,7 +3197,7 @@ hz_auto_load_script_features(hz_memory_arena_t *memory_arena, hz_script_t script
         | HZ_FEATURE_FLAG_ON_BY_DEFAULT;
 
     if (hz_ot_is_complex_script(script)) {
-        for (i=0; i<HZ_ARRLEN(complex_script_feature_orders); ++i) {
+        for (i=0; i<HZ_ARRAY_SIZE(complex_script_feature_orders); ++i) {
             hz_script_feature_order_t order = complex_script_feature_orders[i];
             if (order.script == script) {
                 unsigned int cnt = 0;
@@ -3224,7 +3235,7 @@ hz_language_to_ot_tag(hz_language_t lang)
     const hz_language_map_t *langmap;
     size_t i;
 
-    for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
+    for (i = 0; i < HZ_ARRAY_SIZE(language_map_list); ++i) {
         langmap = &language_map_list[i];
 
         if (langmap->language == lang) {
@@ -3348,7 +3359,6 @@ hz_error_t hz_init(const hz_config_t *cfg)
         return HZ_ERROR_ALREADY_INITIALIZED;
     
     hz_.cfg = *cfg;
-    hz_build_luts();
     hz_.is_already_initialized = HZ_TRUE;
     return HZ_OK;
 }
@@ -3364,37 +3374,6 @@ void hz_deinit(void)
 #else
 #define HZ_NAKEDFN
 #endif
-
-// This routine is optimized with avx2 on inline assembly Intel syntax.
-// When defining HZ_ENABLE_SIMD, Hamza should be compiled with the "-masm=att" flag as
-// the library uses Intel syntax rather than AT&T.
-// NOTE: This works with GCC itself and ICC, but for clang only clang 14 and later.
-// gids and codepoints memory must be aligned on a 32-byte boundary.
-void 
-hz_apply_cmap_format4_avx2_aligned(const hz_cmap_format4_subtable_t *restrict subtable,
-                                   register uint32_t *restrict gids,
-                                   register const uint32_t *restrict u32string,
-                                   register size_t size)
-{
-//    register size_t v __asm__("%r8") = 0;
-//
-//    #pragma GCC ivdep
-//    while (v + 8 < size) {
-//        // load 8 unicode chars into ymm1
-//        asm volatile ("vmovntdqa (%0), %%ymm1\n\t" :: "r" (u32string + v));
-//
-//        // set low and high variables for binary search algo
-//        // lo: ymm2 hi: ymm3
-//        asm ("vpxor %ymm2, %ymm2, %ymm2\n\t");
-//        asm ("vpbroadcastd (%0),%%ymm3\n\t" :: "r" (size));
-//
-//        // compute mid, shift right by 1
-//        asm ("vpaddd %ymm3, %ymm5, %ymm2\n\t");
-//        asm ("vpsrad 1, %ymm5, %ymm4\n\t");
-//
-//        v += 8;
-//    }
-}
 
 HZ_STATIC void
 hz_apply_cmap_format4_subtable(hz_cmap_format4_subtable_t *subtable,
@@ -4963,7 +4942,7 @@ HZ_STATIC int64_t prev_joining_arabic_glyph(hz_buffer_t *buffer, int64_t g, uint
 }
 
 typedef struct hz_arabic_joining_triplet_t {
-    uint16_t prev_joining, curr_joining, next_joining;
+    uint32_t prev_joining, curr_joining, next_joining;
     int init,fina,medi;
     int does_apply;
 } hz_arabic_joining_triplet_t;
@@ -4975,34 +4954,30 @@ hz_shape_complex_arabic_joining(hz_buffer_t *buffer,
                                 const hz_coverage_t *mark_filtering_set)
 {
     hz_arabic_joining_triplet_t triplet;
-
-    if (hz_shape_complex_arabic_char_joining(buffer->codepoints[index], &triplet.curr_joining)) {
+    triplet.curr_joining = hz_ucd_get_arabic_joining_data(buffer->codepoints[index]);
+    if (triplet.curr_joining != (HZ_JOINING_GROUP_NONE | HZ_JOINING_TYPE_U)) {
         int64_t prev_index = prev_joining_arabic_glyph(buffer, index, HZ_LOOKUP_FLAG_IGNORE_MARKS, mark_filtering_set);
         int64_t next_index = next_joining_arabic_glyph(buffer, index, HZ_LOOKUP_FLAG_IGNORE_MARKS, mark_filtering_set);
 
-        if (prev_index == -1) {
-            triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-        } else {
-            if (!hz_shape_complex_arabic_char_joining(buffer->codepoints[prev_index], &triplet.prev_joining))
-                triplet.prev_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-        }
+        if (prev_index == -1)
+            triplet.prev_joining = HZ_JOINING_GROUP_NONE | HZ_JOINING_TYPE_T;
+        else
+            triplet.prev_joining = hz_ucd_get_arabic_joining_data(buffer->codepoints[prev_index]);
 
-        if (next_index == -1) {
-            triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-        } else {
-            if (!hz_shape_complex_arabic_char_joining(buffer->codepoints[next_index], &triplet.next_joining))
-                triplet.next_joining = NO_JOINING_GROUP | JOINING_TYPE_T;
-        }
+        if (next_index == -1)
+            triplet.next_joining = HZ_JOINING_GROUP_NONE | HZ_JOINING_TYPE_T;
+        else
+            triplet.next_joining = hz_ucd_get_arabic_joining_data(buffer->codepoints[next_index]);
 
-        triplet.init = triplet.curr_joining & (JOINING_TYPE_L | JOINING_TYPE_D)
-                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_D | JOINING_TYPE_C);
+        triplet.init = triplet.curr_joining & (HZ_JOINING_TYPE_L | HZ_JOINING_TYPE_D)
+                && triplet.next_joining & (HZ_JOINING_TYPE_R | HZ_JOINING_TYPE_D | HZ_JOINING_TYPE_C);
 
-        triplet.fina = triplet.curr_joining & (JOINING_TYPE_R | JOINING_TYPE_D)
-                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_D | JOINING_TYPE_C);
+        triplet.fina = triplet.curr_joining & (HZ_JOINING_TYPE_R | HZ_JOINING_TYPE_D)
+                && triplet.prev_joining & (HZ_JOINING_TYPE_L | HZ_JOINING_TYPE_D | HZ_JOINING_TYPE_C);
 
-        triplet.medi = triplet.curr_joining & JOINING_TYPE_D
-                && triplet.prev_joining & (JOINING_TYPE_L | JOINING_TYPE_C | JOINING_TYPE_D)
-                && triplet.next_joining & (JOINING_TYPE_R | JOINING_TYPE_C | JOINING_TYPE_D);
+        triplet.medi = triplet.curr_joining & HZ_JOINING_TYPE_D
+                && triplet.prev_joining & (HZ_JOINING_TYPE_L | HZ_JOINING_TYPE_C | HZ_JOINING_TYPE_D)
+                && triplet.next_joining & (HZ_JOINING_TYPE_R | HZ_JOINING_TYPE_C | HZ_JOINING_TYPE_D);
 
         triplet.does_apply = 1;
     } else {
@@ -6475,7 +6450,7 @@ HZ_STATIC void hz_shape_buffer(hz_shaper_t *shaper, hz_font_data_t *font_data, h
 HZ_STATIC const hz_language_map_t *
 hz_get_language_map(hz_language_t lang) {
     size_t i;
-    for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
+    for (i = 0; i < HZ_ARRAY_SIZE(language_map_list); ++i) {
         if (language_map_list[i].language == lang) {
             return &language_map_list[i];
         }
@@ -6494,7 +6469,7 @@ hz_language_t hz_lang(const char *tag)
     len = strlen(tag);
 
     /* use ISO 639-2 and ISO 639-3 codes, same as in https://docs.microsoft.com/en-us/typography/opentype/spec/languagetags */
-    for (i = 0; i < HZ_ARRLEN(language_map_list); ++i) {
+    for (i = 0; i < HZ_ARRAY_SIZE(language_map_list); ++i) {
         currlang = &language_map_list[i];
         p = currlang->codes;
 

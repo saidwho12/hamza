@@ -5,1035 +5,1151 @@
 
 #define HZ_UCD_VERSION HZ_MAKE_VERSION(14,0,0)
 
-uint16_t hz_ucd_arabic_joining_k2[766] = {
-       0,   0,   2,  79,   0,   3,
-      18,   0,   0,   0,   0,   0,
+typedef enum {
+    HZ_JOINING_TYPE_C = 1 << 16,
+    HZ_JOINING_TYPE_D = 1 << 17,
+    HZ_JOINING_TYPE_L = 1 << 18,
+    HZ_JOINING_TYPE_R = 1 << 19,
+    HZ_JOINING_TYPE_T = 1 << 20,
+    HZ_JOINING_TYPE_U = 1 << 21,
+} hz_joining_type_t;
+
+typedef enum {
+    HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_GROUP_AFRICAN_FEH,
+    HZ_JOINING_GROUP_AFRICAN_NOON,
+    HZ_JOINING_GROUP_AFRICAN_QAF,
+    HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_GROUP_ALAPH,
+    HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_GROUP_BETH,
+    HZ_JOINING_GROUP_BURUSHASKI_YEH_BARREE,
+    HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_GROUP_DALATH_RISH,
+    HZ_JOINING_GROUP_E,
+    HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_GROUP_FE,
+    HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_GROUP_FINAL_SEMKATH,
+    HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_GROUP_GAMAL,
+    HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA,
+    HZ_JOINING_GROUP_HANIFI_ROHINGYA_PA,
+    HZ_JOINING_GROUP_HE,
+    HZ_JOINING_GROUP_HEH,
+    HZ_JOINING_GROUP_HEH_GOAL,
+    HZ_JOINING_GROUP_HETH,
+    HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_GROUP_KAPH,
+    HZ_JOINING_GROUP_KHAPH,
+    HZ_JOINING_GROUP_KNOTTED_HEH,
+    HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_GROUP_LAMADH,
+    HZ_JOINING_GROUP_MALAYALAM_BHA,
+    HZ_JOINING_GROUP_MALAYALAM_JA,
+    HZ_JOINING_GROUP_MALAYALAM_LLA,
+    HZ_JOINING_GROUP_MALAYALAM_LLLA,
+    HZ_JOINING_GROUP_MALAYALAM_NGA,
+    HZ_JOINING_GROUP_MALAYALAM_NNA,
+    HZ_JOINING_GROUP_MALAYALAM_NNNA,
+    HZ_JOINING_GROUP_MALAYALAM_NYA,
+    HZ_JOINING_GROUP_MALAYALAM_RA,
+    HZ_JOINING_GROUP_MALAYALAM_SSA,
+    HZ_JOINING_GROUP_MALAYALAM_TTA,
+    HZ_JOINING_GROUP_MANICHAEAN_ALEPH,
+    HZ_JOINING_GROUP_MANICHAEAN_AYIN,
+    HZ_JOINING_GROUP_MANICHAEAN_BETH,
+    HZ_JOINING_GROUP_MANICHAEAN_DALETH,
+    HZ_JOINING_GROUP_MANICHAEAN_DHAMEDH,
+    HZ_JOINING_GROUP_MANICHAEAN_FIVE,
+    HZ_JOINING_GROUP_MANICHAEAN_GIMEL,
+    HZ_JOINING_GROUP_MANICHAEAN_HETH,
+    HZ_JOINING_GROUP_MANICHAEAN_HUNDRED,
+    HZ_JOINING_GROUP_MANICHAEAN_KAPH,
+    HZ_JOINING_GROUP_MANICHAEAN_LAMEDH,
+    HZ_JOINING_GROUP_MANICHAEAN_MEM,
+    HZ_JOINING_GROUP_MANICHAEAN_NUN,
+    HZ_JOINING_GROUP_MANICHAEAN_ONE,
+    HZ_JOINING_GROUP_MANICHAEAN_PE,
+    HZ_JOINING_GROUP_MANICHAEAN_QOPH,
+    HZ_JOINING_GROUP_MANICHAEAN_RESH,
+    HZ_JOINING_GROUP_MANICHAEAN_SADHE,
+    HZ_JOINING_GROUP_MANICHAEAN_SAMEKH,
+    HZ_JOINING_GROUP_MANICHAEAN_TAW,
+    HZ_JOINING_GROUP_MANICHAEAN_TEN,
+    HZ_JOINING_GROUP_MANICHAEAN_TETH,
+    HZ_JOINING_GROUP_MANICHAEAN_THAMEDH,
+    HZ_JOINING_GROUP_MANICHAEAN_TWENTY,
+    HZ_JOINING_GROUP_MANICHAEAN_WAW,
+    HZ_JOINING_GROUP_MANICHAEAN_YODH,
+    HZ_JOINING_GROUP_MANICHAEAN_ZAYIN,
+    HZ_JOINING_GROUP_MEEM,
+    HZ_JOINING_GROUP_MIM,
+    HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_GROUP_NUN,
+    HZ_JOINING_GROUP_NYA,
+    HZ_JOINING_GROUP_PE,
+    HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_GROUP_QAPH,
+    HZ_JOINING_GROUP_REH,
+    HZ_JOINING_GROUP_REVERSED_PE,
+    HZ_JOINING_GROUP_ROHINGYA_YEH,
+    HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_GROUP_SADHE,
+    HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_GROUP_SEMKATH,
+    HZ_JOINING_GROUP_SHIN,
+    HZ_JOINING_GROUP_STRAIGHT_WAW,
+    HZ_JOINING_GROUP_SWASH_KAF,
+    HZ_JOINING_GROUP_SYRIAC_WAW,
+    HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_GROUP_TAW,
+    HZ_JOINING_GROUP_TEH_MARBUTA,
+    HZ_JOINING_GROUP_HAMZA_ON_HEH_GOAL,
+    HZ_JOINING_GROUP_TETH,
+    HZ_JOINING_GROUP_THIN_YEH,
+    HZ_JOINING_GROUP_VERTICAL_TAIL,
+    HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_GROUP_YEH_BARREE,
+    HZ_JOINING_GROUP_YEH_WITH_TAIL,
+    HZ_JOINING_GROUP_YUDH,
+    HZ_JOINING_GROUP_YUDH_HE,
+    HZ_JOINING_GROUP_ZAIN,
+    HZ_JOINING_GROUP_ZHAIN,
+} hz_joining_group_t;
+
+int32_t hz_ucd_arabic_joining_k2[766] = {
+       0,   0,   2,-739,   0,-713,
+    -712,   0,   0,   0,   0,   0,
        1,   0,   0,   0,   0,   2,
-       2,   0,   0,   1,   2,   1,
-       1,   1,   4,   3,   0,   0,
-       0,   1,   0,   0,   0,   1,
-       0,   2,  14,   0,   1,   0,
-       5,   5,   2,   0,   0,   0,
-       0,   5,   1,   0,   0,   2,
-       0,   0,   3,   9,   2,   4,
-       4,   0,   8,   1,   0, 105,
-       4,   3,  11,   7,  30, 171,
-       2, 157,   1,   0,   0,  77,
-       0,   0,   1,  68,   0,   3,
-       2,  20,   0,  24,   0,   0,
-       0,  21,   1,   0,   0,   0,
-       1,   0,   0,   0,   0,   1,
+       2,   0,   0,   1,-369,   1,
+       1,-347,   4,-313,   0,   0,
+       0,-234,   0,   0,   0,-128,
+       0,-108,  14,   0,   1,   0,
+       5, -21, -12,   0,   0,   0,
+       0,-166,-173,   0,   0,   2,
+       0,   0,-361,   9,   2,-368,
+    -405,   0,-439,   1,   0,-667,
+    -674,   3,-699,-703,-725,-757,
+       2,-750,   1,   0,   0,-710,
+       0,   0,   1,-695,   0,-669,
+       2,-666,   0,-653,   0,   0,
+       0,-622,   1,   0,   0,   0,
+       1,   0,   0,   0,   0,-607,
        0,   1,   0,   0,   0,   0,
-       4,   0,   7,   3,  10,   0,
-       3,   2,   0,   6,   1,   2,
-       4,   1,   2,   2,   2,   2,
-       1,   4,   0,   1,  13,   0,
-       2,   0,   7,   0,   1,   6,
+    -573,   0,-547,   3,-530,   0,
+    -512,   2,   0,-499,   1,-456,
+       4,-419,-417,-413,   2,-411,
+       1,   4,   0,   1,-400,   0,
+    -397,   0,   7,   0,-380,   6,
        3,   9,   1,   0,   0,   0,
-       1,   2,   3,   4,   4,   0,
-       2,  15,   8,   0,   4,   7,
-       9,   0,   2,  14,   0,   6,
-       0,   0,   3,   1,   0,   4,
-       1,   0,   8,   4,   1,   0,
-       8,   1,  19,   0,   8,   0,
-       2,   3,   9,   7,   3,   6,
-       7,   0,   0,   9,   0,   4,
-       8,   0,   1,   0,   0,   0,
-       0,   2,   0,   3,   0,   0,
-       4,   0,   3,   1,   2,   9,
-       0,   4,   2,   1,   0,   6,
-       0,   0,   0,   4,   5,   0,
-       2,   0,   3,   1,   1,   3,
-       3,   2,   1,   2,  10,   1,
-       5,   0,   0,   1,   3,   1,
+    -346,-345,-336,-331,-319,   0,
+    -299,  15,-296,   0,-283,-279,
+    -268,   0,-250,  14,   0,-232,
+       0,   0,   3,-226,   0,-211,
+    -208,   0,-192,-178,   1,   0,
+       8,-177,  19,   0,-175,   0,
+       2,   3,-145,   7,-137,-133,
+    -127,   0,   0,   9,   0,   4,
+     -92,   0,   1,   0,   0,   0,
+       0, -58,   0,   3,   0,   0,
+     -22,   0,   3,   1,  -8,   9,
+       0,   4, -15, -18,   0,   6,
+       0,   0,   0, -35,   5,   0,
+     -41,   0, -47, -49,   1, -54,
+     -56,   2,   1,   2,  10, -74,
+     -76,   0,   0,   1,-100,   1,
        0,   0,   0,   3,   1,   0,
-       0,   0,   0,   4,   2,   1,
-       8,   3,   6,   4,   0,   0,
-       0,   2,   2,   0,   0,  12,
-       2,   0,   9,   1,   0,   6,
-       0,   6,   3,   0,   2,   2,
-       5,   0,   5,   0,   0,   3,
-       0,   0,   1,  12,   0,   2,
-       0,   2,   5,   0,   1,   9,
-       1,   0,  26,  13,   0,   7,
-       5,  12,   0,   5,   6,   0,
-       0,   0,   7,  10,   0,  28,
-       0,   0,   0,   0,  15,   7,
-       1,   1,   1,   5,   3,   1,
-       0,   0,   1,   0,   3,   2,
-       5,   0,  17,   0,   3,   6,
-       2,   0,   1,   3,   1,   2,
-      10,  10,   5,   0,   1,   0,
-       0,   0,  10,   0,   0,   0,
-       2,   0,   0,   0,   2,   4,
-       5,   0,   2,   0,   4,   0,
-       1,   0,   5,  12,   0,   0,
-       0,   2,   3,   7,   0,   0,
-       0,   0,   2,   0,   0, 859,
-       3,   0,   0,  14,   2,   0,
-       0,   0,   0,   0,   6,   5,
-       0,   1,   1,  12,   2,   0,
+       0,   0,   0,   4,-134,-135,
+       8,-141,   6,-152,   0,   0,
+       0,-167,-169,   0,   0,  12,
+       2,   0,-180,-182,   0,-188,
+       0,-195,   3,   0,   2,   2,
+    -214,   0,   5,   0,   0,   3,
+       0,   0,-231,  12,   0,   2,
+       0,-249,   5,   0,   1,-262,
+       1,   0,-276,  13,   0,-284,
+    -285,-290,   0,   5,   6,   0,
+       0,   0,   7,-329,   0,-332,
+       0,   0,   0,   0,-341,-344,
+       1,   1,   1,   5,-359,   1,
+       0,   0,   1,   0,   3,-383,
+       5,   0,-393,   0,   3,-399,
+       2,   0,   1,-407,   1,   2,
+    -415,  10,   5,   0,-430,   0,
+       0,   0,-446,   0,   0,   0,
+    -466,   0,   0,   0,   2,-500,
+    -503,   0,   2,   0,   4,   0,
+       1,   0,-522,-523,   0,   0,
+       0,   2,-549,-556,   0,   0,
+       0,   0,-569,   0,   0,-761,
+       3,   0,   0,-586,   2,   0,
+       0,   0,   0,   0,-600,-601,
+       0,   1,-608,-610,   2,   0,
        0,   3,   1,   0,   0,   2,
-       1,  34,  17,   5,   0,  39,
-       1,  29,   0,   2,   0,  27,
+       1,-632,-633,-634,   0,-640,
+    -644,-646,   0,   2,   0,-660,
        1,   0,   0,   0,   1,   0,
-       4,   0,   0,   2,   0,   0,
+    -680,   0,   0,   2,   0,   0,
        1,   0,   9,   0,   1,   0,
-       0,  31,   0,   0,  12,  92,
-      35,   3,   0,   4,   0,   1,
-       5,   0,  74,   3,   0, 172,
-     144,   7,   7, 128,   1,   0,
-      12,  37,   1,   1,   0,   0,
-       7,   2,  11,   1,   0,   8,
-       0,   2,   5,   0,   1,   0,
-       0,   2,  36,   2,  40,  29,
-       3,   0,  24,   6,   3,   0,
-       8,   1,   3,   0,   0,  12,
-      12,   0,   2,  12,   4,   1,
-       2,   1,   0,   0,   5,   0,
-       5,   9,   8,   0,   5,   0,
-       4,   0,   0,   0,   1,   0,
-       1,   0,   5,   0,   0,   4,
-       0,   1,  20,  18,   9,   0,
-       2,  12,   2,   9,   0,   0,
-       0,   9,   1,   9,   0,   0,
-      16,   1,   3,   8,   0,   0,
-       4,   0,   0,   0,   1,   0,
-       3,   0,   0,   3,   1,   2,
-      11,  10,   0,   6,   3,  11,
-       0,   2,   1,   0,   2,   1,
-       1,   0,   1,   1,   4,   0,
-       0,   1,   2,   1,   5,   1,
-       1,   0,  15,   3,   4,   0,
-       1,  10,   0,   1,   2,   0,
-       1,   0,   2,   2,   3,   0,
-       0,   0,   4,   1,   3,   1,
-       0,   0,   1,   1,   0,   2,
-       1,   8,   1,   1,   2,   2,
-       2,  21,   0,   0,   8,   0,
-       6,   7,   1,   1,   0,   2,
-       1,   1,   0,   6,   8,   4,
-       5,   1,   0,   1,   1,   7,
-       6,   1,   0,   1,   0,   2,
-       0,   0,   3,   1,   1,   0,
-       3,   0,   8,   2,  11,   0,
-       1,   0,   7,   0,  23,   0,
-       0,   2,  11,   6,   3,   0,
-       1,   0,   0,   0,  13,   1,
-       0,   4,  22,  77,   2,   0,
+       0,-716,   0,   0,-727,-730,
+    -732,   3,   0,-745,   0,   1,
+       5,   0,-759,   3,   0,-763,
+    -762,   7,-746,-744,   1,   0,
+    -724,-715,   1,   1,   0,   0,
+    -708,   2,-701,   1,   0,-692,
+       0,-677,   5,   0,   1,   0,
+       0,   2,-658,   2,-636,-626,
+       3,   0,-616,-615,-604,   0,
+       8,   1,   3,   0,   0,-596,
+    -591,   0,   2,-580,   4,   1,
+    -564,-562,   0,   0,-560,   0,
+    -558,-546,-540,   0,   5,   0,
+    -521,   0,   0,   0,-515,   0,
+       1,   0,-504,   0,   0,-483,
+       0,-482,-481,-465,-458,   0,
+       2,-444,   2,-433,   0,   0,
+       0,-425,   1,   9,   0,   0,
+    -392,   1,   3,-367,   0,   0,
+    -338,   0,   0,   0,   1,   0,
+    -335,   0,   0,-333,   1,   2,
+    -307,  10,   0,   6,   3,  11,
+       0,-252,-244,   0,   2,-230,
+       1,   0,-224,-223,-216,   0,
+       0,-206,   2,-184,   5,   1,
+       1,   0,  15,-164,-163,   0,
+       1,  10,   0,-123,-122,   0,
+       1,   0,-105,-103, -84,   0,
+       0,   0, -80, -46, -37,   1,
+       0,   0,   1, -26,   0,   2,
+     -11,   8, -32, -36,   2, -59,
+     -68,  21,   0,   0,   8,   0,
+     -69,   7,-110,-119,   0,   2,
+       1,   1,   0,-202,-222,   4,
+       5,-243,   0,-257,   1,-306,
+    -349,   1,   0,   1,   0,-384,
+       0,   0,   3,-398,   1,   0,
+    -506,   0,-516,   2,-575,   0,
+    -579,   0,-597,   0,-598,   0,
+       0,   2,-614,   6,   3,   0,
+       1,   0,   0,   0,-619,   1,
+       0,-621,-627,-630,   2,   0,
        0,   0,   7,   0,   0,   3,
-       0,   1,  18,  44,   2,  13,
+       0,   1,-707,-714,   2,-599,
        0,   0,   0,   0,   0,   0,
-       0,  10,   9,   0,   0,   0,
-       0,   1,   0,  11,   0,   0,
-       3,   2,   2,   0,   1,   0,
-       7,   3,   0,   7,   0,   0,
-       0,   0,   0,   1, 462,  18,
-       3,   0,  17,   5,   0,   1,
-       3,   1,   0,  12,   0,   2,
-       1,   4,   1,   2,   3,   0,
-      11,   1,   1,   0,   0,   1,
-       0,   0,   0,  10,
+       0,-406,-295,   0,   0,   0,
+       0,-227,   0,-176,   0,   0,
+       3,-102,   2,   0, -51,   0,
+       7, -33,   0,   7,   0,   0,
+       0,   0,   0,   1,-751,  18,
+       3,   0,  17,   5,   0,-266,
+       3,-379,   0,-509,   0,   2,
+    -584,-590,   1,   2,-657,   0,
+    -670,   1,   1,   0,   0,   1,
+       0,   0,   0,-576,
 };
 
-uint32_t hz_ucd_arabic_joining_ucs[766] = {
-        1582,    1607,    2116,    2153,   68885,    1581,
-        1671,    6234,    1568,    1676,   69493,    2227,
-        2187,    1816,    6274,    1673,    2247,    1913,
-        2220,    1897,   68493,   68306,    2000,    1654,
-        1657,    2168,    1706,    2174,    2152,    1819,
-        1659,   69500,    1747,   68298,    1663,    1652,
-       68302,   68323,    1774,    2128,   68319,    1596,
-        1885,    1646,    1883,    1810,    1733,    2023,
-        6208,   68495,   68870,    6257,    1886,    1669,
-       68487,    1917,    2185,   69494,    1811,   68876,
-        1650,    1602,    1589,    1713,    1696,    1707,
-        1824,    1583,   68321,    1741,    1745,    2008,
-        2124,    1605,    6255,    6250,    1704,    2026,
-        1724,    2221,    1666,    1601,   69432,   68527,
-        2224,    6209,    1569,    6251,    2148,   68881,
-        6278,   68304,    2127,    1812,    1899,    1892,
-        6188,    1653,    1918,    6259,    1902,    6189,
-        2232,    1869,    6150,    1822,    6204,    1718,
-       69445,    2180,    1904,   68305,    2226,    1689,
-        2154,    6219,    1682,  125235,    1834,    2012,
-        6240,  125259,    6182,    1655,   68486,    2151,
-      125232,    1880,    1680,    1608,    2179,    1587,
-        1808,    1877,    2189,    2125,   68483,    2231,
-        2132,    1903,    2014,    1788,    2005,    6187,
-        1684,    2175,    2129,    2183,    1592,    1695,
-        2209,    1719,    2217,    1891,    1900,    1544,
-        1898,    1740,   68873,    2134,    1685,    6239,
-        6184,    6181,    6216,    1591,    1610,    1598,
-        6223,    1590,    2131,    1575,    1896,    6290,
-        1710,   68893,  125193,   68288,   68882,   68869,
-        1672,    2004,    1827,   68883,    1995,    2146,
-      125200,   69428,    6262,    1820,    6242,    1838,
-        6198,    6291,    6304,    6246,    2216,    2162,
-        6214,    1662,   69560,    2017,   68316,    1609,
-        1775,   68875,   69570,   69459,    1594,    1997,
-        1665,    2161,   68898,    1828,    6194,   68300,
-        1570,    1726,    1573,    6212,    6253,    6248,
-        1656,    1606,    1578,   68480,   69457,    2115,
-        2119,    6273,    6230,   68291,    6279,    1832,
-        1727,    1714,  125240,    1738,    6277,    6301,
-        1721,    2120,   69438,    6282,    1728,  125216,
-        1595,    6205,    1906,    1887,    6228,    1890,
-        6185,   68322,    1910,    1698,    1734,   68879,
-        1604,    1683,    1901,    1731,   69572,    6154,
-        1723,    6213,   68290,    2147,    1705,  125238,
-       69553,    2181,    2007,    2228,    1686,    2222,
-       69573,    6226,   68484,    2248,    1736,    1888,
-        1674,    1717,    1709,   69425,  125190,    1584,
-        6245,    1821,   69821,    1572,    1732,    6305,
-        2234,    6264,    1882,    2211,    6225,    2177,
-        2236,    2117,    1889,    2122,    1746,    6310,
-        2188,    1539,    2178,    1690,    2239,    1574,
-        2192,    1681,    6200,    6289,    2190,    6196,
-      125250,    1600,    2241,    1580,    1894,  125201,
-        6283,    1837,    6178,  125242,  125241,    2163,
-      125192,    1787,   68333,    2018,    1571,    1579,
-        2208,    6294,    1585,   68334,   68308,    1876,
-      125186,    2246,  125217,    6293,   69502,    1540,
-      125202,    1547,   68886,   68307,    2145,  125189,
-        2136,  125214,  125224,   69429,    1873,    6311,
-       68494,    2233,   68301,    2019,   68880,   68294,
-        2150,    6292,    1996,    1668,    1667,    1730,
-        8205,   68315,    6231,    2009,    1909,    2218,
-       68311,    1911,    1872,    1699,   69437,    1725,
-        2173,    1677,    1577,   68289,    6197,    2213,
-        1660,    2223,    1694,    1658,    6221,   69504,
-        6179,    1791,    1749,    1588,    1915,   69430,
-        2042,    1729,    6227,   68314,   68296,  125196,
-      125221,    6244,  125195,   69439,    2016,   69837,
-        1715,    2171,   68895,    1813,    2225,    6191,
-        6151,    1693,    6243,   69579,  125205,    1878,
-       69576,    6281,    6308,  125184,    6307,   68891,
-        1786,    1743,    2113,   69501,   69505,    8297,
-        6302,   69460,   69426,    2006,    1661,  125208,
-       68497,    6241,    1870,   69436,    6254,    1675,
-        6300,    6207,    1541,    1835,   68871,    2121,
-      125245,    1814,    1807,    6176,   68492,   68899,
-        1688,    2229,    1664,    6295,    2021,    1742,
-        1871,  125204,   68866,    6203,   68335,    1999,
-        6314,    6199,    6193,   68292,    2215,    6256,
-        6224,    1687,   69496,    1697,   68312,   69435,
-        2172,    2186,    2240,   68299,  125231,    1879,
-        1875,    6258,    1647,   69431,    1702,    1815,
-        1586,    2219,    2013,    1670,    1912,    2169,
-        2003,    2182,    6158,    2001,    1919,    1916,
-        1597,    6260,    1826,  125198,  125247,    2160,
-      125249,  125219,    1712,  125211,    2243,   69489,
-        1701,    6217,    2166,    1599,   68524,   68888,
-       69577,    2024,  125243,    6222,    2133,    6306,
-        6309,    6201,   69564,    2123,   68309,    1576,
-       68293,    2242,    6296,    2011,   68481,   69491,
-        1537,    1692,    6186,    6287,  125220,   68297,
-       68489,    1905,    6298,    1907,   68488,    1603,
-        1998,    6235,  125210,    6192,    1884,    1830,
-        2164,    1739,   69566,    6312,    1700,   69434,
-        2235,    2112,    6183,    6288,    2149,   68295,
-      125209,   68877,  125218,    1737,    6276,   69498,
-      125199,    6299,    2130,    6272,   69565,    1735,
-       69427,   68332,    1836,    6261,   68897,    6247,
-        6232,    2135,    1874,  125237,   68892,    2118,
-       68310,  125239,    6280,    6263,    2274,   68324,
-       68890,    6236,  125229,   68889,  125244,   69443,
-      125187,    6237,    1708,    2184,    6177,    2020,
-        1538,   69499,    2022,    2144,    6252,   68318,
-      125207,    1908,  125213,    1833,    1818,    1895,
-      125251,    6238,   69567,  125230,    2170,    2114,
-        1831,    1914,   69574,    1825,    1593,   69492,
-       69559,   69563,   68865,    6220,   68303,    1651,
-        6284,  125212,   68525,  125246,    2230,  125222,
-       69562,   69444,    1703,   69555,    6218,    1649,
-      125197,  125227,    2010,   68523,   68872,    1691,
-        6297,    1893,    1839,    6206,   68867,    6229,
-        1823,    8296,  125188,    6211,    2025,    2245,
-        1720,    1829,  125223,   69458,  125215,  125206,
-       69569,    6286,    1881,   68864,   68874,    1744,
-       69441,    2244,   69442,    2126,   68522,   69557,
-       68482,    6285,    6215,   68317,    1679,   69495,
-      125185,   69556,   68878,    2167,    2176,  125191,
-      125236,   69488,    1536,    1711,    1994,    2212,
-        2015,    2214,   69554,   68331,   69575,   68313,
-       68887,   69571,   69578,   68521,  125194,   68526,
-        1678,  125234,  125248,   69552,  125226,    1757,
-        2210,  125203,   68490,   68868,   69497,    2193,
-        6180,   69561,    6233,    6249,    1716,    2002,
-        6195,    6303,    6275,   69433,    6190,   68884,
-        2238,    2165,  125228,   69424,    6210,   69503,
-        1722,   68496,   68320,   69568,    1817,    2237,
-        6202,  125233,   69558,  125225,
+uint32_t hz_ucd_arabic_joining_ucs_codepoints[766] = {
+        1582,   68290,    2116,   68874,   68885,    2186,
+        1774,   68892,    1568,    1676,    1538,    1808,
+        2209,    6275,    1731,    1673,    2247,    1828,
+        2220,    1596,    6259,  125202,    2128,    1595,
+        1657,    2184,   69458,    2174,    2248,   68495,
+        1659,    2022,    1719,   68298,    1825,    2144,
+        1656,  125227,    1671,    2000,   69428,  125219,
+        1885,    1646,    1883,   68889,    2188,   69558,
+       68480,    1819,  125194,    6291,    1886,    6260,
+       68487,    2169,    2164,    1919,    1610,   68876,
+        2163,    1602,    1589,    1713,    1696,    6278,
+        6199,    1583,    1917,    1741,    1881,   68880,
+        2124,    1832,    6255,   69488,   69505,   69570,
+        1831,    1694,   68486,    1692,   69432,    1710,
+      125234,   68312,    6287,    6251,   69561,   68881,
+        1707,    1708,    2127,    1812,    6203,    1892,
+       69554,    1653,    1918,    6263,   69564,    1606,
+       68304,    1536,    1877,    1905,    6204,    6304,
+      125189,   69567,    6262,   68879,    2026,    1689,
+        2154,    6219,    1682,  125235,  125230,    2012,
+        6240,   68302,  125237,    1655,    1666,   68864,
+        2004,    1652,    1680,    1608,    2179,    1581,
+      125232,    1718,    1890,    2125,  125184,    2274,
+        2132,   68872,    2135,    1788,    1730,    1728,
+        6206,    6279,    2129,    2183,    1592,    1833,
+        2187,    1537,   69579,   68293,    1900,   68496,
+        1898,   69501,   68873,    6305,  125251,    6247,
+        2025,    6273,    6216,    1669,    6202,   69568,
+        2180,    2011,  125238,  125246,   68870,   69498,
+        1786,    1880,   68893,    2244,   68882,    6235,
+        1672,    2147,    1827,    6272,  125231,    2134,
+      125200,    1588,    1904,    1820,    6242,    2192,
+        1574,    6257,    2219,    6246,   69435,    1704,
+       69566,    1662,   69560,    6264,   69439,   69442,
+        2235,    6299,    2226,    6223,    6178,    1997,
+      125213,    2161,   68898,    1649,    6194,    6225,
+      125207,    6256,    1815,   69427,    6253,    1821,
+        1737,  125218,    6233,    1591,    2214,    2115,
+        2181,   68295,    1709,   69457,    2175,   69500,
+        6200,    1714,  125240,   68334,    6277,    6301,
+       69443,    2120,   69563,    6183,    6298,  125216,
+        1901,    6309,    6295,    1907,    6228,    2149,
+       68891,   68322,    1910,   69426,    6220,   68305,
+      125244,    1683,    1654,    1733,   69572,    6154,
+        1723,    2002,   68294,    1873,    1705,    2131,
+       69553,    2119,    2007,  125209,    2208,    1687,
+       69573,  125225,    2222,    2152,    1736,    1888,
+        1711,    1722,    6192,   69425,  125190,    1584,
+        1675,   69437,   69821,   69576,    1732,   69575,
+        6182,   68333,    1882,    1594,  125191,  125186,
+        2236,    6311,    2162,    2122,    1837,    6186,
+        1994,    1539,   68299,   68307,    2239,  125199,
+       68521,    6177,    1727,    6289,    2190,    6196,
+       68291,    1600,    2241,    8205,    1587,  125201,
+        6185,    1746,    2211,  125242,   68320,    1570,
+        1836,    1579,    6282,    2018,   68332,    1674,
+        1580,    6302,    6285,    1738,    1887,    1876,
+        2177,   68494,    6274,    1684,    2168,    6276,
+        6230,    2218,    6214,    1690,    6254,   69445,
+       69504,  125214,  125224,   69429,    1811,    2117,
+        2014,    6158,   68867,    2166,    2008,   68315,
+        6292,    6293,   69494,    6252,   68871,   69837,
+      125220,    1607,    2113,   69431,   68309,    1547,
+        6303,   68483,    1872,    2019,  125195,    1576,
+      125212,   69436,    1999,   68289,  125228,    6280,
+        6307,    1725,    2221,    1658,  125249,    2136,
+        6184,   69555,    1703,    1996,    1915,   69430,
+        1897,    1729,    6208,    1734,   68884,  125196,
+      125221,    6244,    1814,   68316,   68869,    2005,
+       69438,    2148,    1700,   68865,  125259,    6191,
+        1598,    1693,    6243,    2217,    2227,    2006,
+        1572,    6281,    6308,   69502,    1660,    6283,
+        1874,    1743,   68877,    1740,    1889,    8297,
+        1834,   69460,    1698,    1878,    6222,    1817,
+       68497,   68308,    2013,    1677,    2145,   68888,
+        6300,    6207,    1541,    1835,    1667,    1665,
+      125245,    6241,    2170,    6258,   68492,   68899,
+        1742,    2229,    8296,    6181,    1903,    1688,
+        1871,  125204,   68866,    1899,   68335,    1577,
+       68303,    1824,   69497,   68292,    2245,   68526,
+       68288,    2024,   68875,    1697,    6209,    2216,
+        2172,    1894,    2240,    2178,    1995,   69434,
+        1875,    6176,    6249,    2009,    1702,    1573,
+        2225,    1586,    1870,    1670,    1791,    1912,
+       69574,    2230,    2233,   68523,    2121,   68482,
+        6221,    6180,    1826,  125198,    2243,    1839,
+        1597,    2042,    6151,  125211,   68311,    2016,
+        2232,    6217,    1699,    6198,   68524,    6245,
+       69577,   68310,  125243,    1661,    2133,  125210,
+        6205,    6201,    1902,    2123,    1909,   69493,
+        1891,    6286,   69559,   69578,   68481,    2176,
+        2015,    1601,    6248,    1569,    1686,   68297,
+      125222,    1822,    6187,    1678,   68488,   69496,
+        1998,   68314,    6306,    2182,    1884,    1896,
+        6290,    1739,   68886,    6312,    1679,    1879,
+        1775,    2193,    1663,    6288,   69552,    1913,
+        2228,    6231,    6297,    1701,   68897,    2185,
+        1599,    2238,    1816,    2150,   69565,    1735,
+        6212,    1747,    6234,    6261,    1540,    6239,
+       69556,   68321,   68484,    1717,  125217,   68296,
+       68522,  125239,    2213,    6250,    2231,   68324,
+        6189,    1749,  125229,   68527,    1604,    1721,
+      125187,    6236,  125205,  125193,    1681,    2020,
+        2212,   69499,   68895,    2017,    1668,    1685,
+        1650,  125250,    6215,    1695,   69495,   68319,
+       68318,    2118,    6227,    1830,    1807,    6238,
+        1724,    1914,    2003,  125241,   69433,   69492,
+        6296,    1715,    1813,    2160,    6314,    1651,
+        6284,    2173,   68525,    1575,    2114,   68489,
+       69562,   69444,    6310,    1908,    6218,    6294,
+      125197,   68323,    2165,    2001,    2021,   68890,
+        1757,    1893,   69459,  125185,   68301,    6229,
+        1823,    1603,  125188,   68317,    6179,    2215,
+        2210,   68493,  125223,    1706,  125215,  125206,
+       69569,    2242,    1745,    2151,    2153,    1744,
+       69441,   69489,    1609,    2126,    2234,   69557,
+        1916,    1585,  125208,    6211,    1829,    1818,
+        1895,    6232,   68878,    2167,   68300,    2237,
+      125236,   68306,   69571,    6213,    1787,    1906,
+       69491,    2189,    6188,   68331,    2146,   68313,
+       68887,    1869,    1590,    1810,    6195,    1726,
+      125247,    2224,  125248,  125192,  125226,    2223,
+        1720,  125203,   68490,   68868,    6193,    2112,
+        6150,    2171,    1578,    1647,    1716,    1838,
+        1605,   68883,    2130,    1593,    6190,    1911,
+        2246,    2010,    6197,   69503,    6210,   69424,
+        1691,    1544,    1664,    1712,    6224,    1571,
+        6237,  125233,    2023,    6226,
 };
 
 uint32_t hz_ucd_arabic_joining_data[766] = {
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HEH << 6), /* HEH */
-    HZ_JOINING_TYPE_D, /* MANDAIC AH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM LLLA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA NA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 4 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO JIA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH WITH SEPARATE RING BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_R, /* OLD UYGHUR FINAL HETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH WITH DOT BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_SYRIAC << 6), /* WAW */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN ALI GALI DAMARU */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH TAH ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH DIGIT THREE ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ROHINGYA << 6), /* ROHINGYA YEH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON WITH V ABOVE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI SAMEKH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN KAPH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO O */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* HIGH HAMZA WAW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH TAH ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED LEFT ROUND DOT */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SWASH << 6), /* SWASH KAF */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED TOP RIGHT FATHA AND LEFT RING */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM LLA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TETH << 6), /* TETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH VERTICAL 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR PE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_YEH << 6), /* YEH BARREE WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN ZAYIN WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_U, /* HIGH HAMZA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN TETH */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN SHIN WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_D, /* MANDAIC AP */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN QOPH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH BAR */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BETH << 6), /* BETH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH LOOP */
-    HZ_JOINING_TYPE_D, /* NKO NYA WOLOSO */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN LHA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI SADHE */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA CA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE CHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH INVERTED 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI HETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH DIGIT FOUR ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* DOTLESS NOON WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR YODH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAMAL << 6), /* GAMAL */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA RA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH WAVY HAMZA ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* QAF */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAMADH << 6), /* LAMADH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN RESH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_YEH << 6), /* YEH WITH TAIL */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* NKO DA */
-    HZ_JOINING_TYPE_D, /* MANDAIC AM */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MEEM << 6), /* MEEM */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE ZA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE JA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* DOTLESS QAF WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO JONA RA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_U, /* LOW ALEF */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH VERTICAL 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* FEH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN KAPH */
-    HZ_JOINING_TYPE_U, /* PSALTER PAHLAVI HUNDRED */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH STROKE BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ZHI */
-    HZ_JOINING_TYPE_U, /* HAMZA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE FA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM NNA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA KA */
-    HZ_JOINING_TYPE_T, /* MONGOLIAN ALI GALI THREE BALUDA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN KAPH */
-    HZ_JOINING_TYPE_D, /* MANDAIC IN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAMAL << 6), /* GAMAL GARSHUNI */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH VERTICAL 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH INVERTED 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN QA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* HIGH HAMZA ALEF */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU I */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH TAH BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN GA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH TEH ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ZHAIN << 6), /* SOGDIAN ZHAIN */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN TODO SOFT HYPHEN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_YUDH << 6), /* YUDH HE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TSA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH DOT ABOVE */
-    HZ_JOINING_TYPE_U, /* SOGDIAN INDEPENDENT SHIN */
-    HZ_JOINING_TYPE_C, /* TATWEEL WITH OVERSTRUCK WAW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH 2 DOTS AND TAH ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN KAPH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH DOT AND INVERTED V ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM SSA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO BA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH V ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL KAF */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DALATH << 6), /* RISH */
-    HZ_JOINING_TYPE_D, /* NKO GBA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE UE */
-    HZ_JOINING_TYPE_T, /* ADLAM NASALIZATION MARK */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN UE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* HIGH HAMZA WAW WITH COMMA ABOVE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI ZAYIN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM RA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL YHE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH INVERTED 3 DOTS BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW */
-    HZ_JOINING_TYPE_C, /* TATWEEL WITH OVERSTRUCK HAMZA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALAPH << 6), /* ALAPH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH INVERTED V BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH VERTICAL 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MANDAIC AN */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI DALETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 3 DOTS BELOW AND MEEM ABOVE */
-    HZ_JOINING_TYPE_R, /* MANDAIC ASH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH TAH AND 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* NKO KA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH DOT BELOW AND DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO TA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN PA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH DOT BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH RIGHT MIDDLE STROKE AND LEFT RING */
-    HZ_JOINING_TYPE_D, /* MANDAIC ASZ */
-    HZ_JOINING_TYPE_U, /* ARABIC BASELINE ROUND DOT */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* BEH WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* YEH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_U, /* ARABIC RAY */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH BAR */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HANIFI << 6), /* HANIFI ROHINGYA PA WITH DOT ABOVE */
-    HZ_JOINING_TYPE_R, /* MANDAIC DUSHENNA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH V BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE IY */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN NA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN OE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO OE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* YEH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO MA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* MANDAIC AR */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON WITH TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI PA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA VOWEL A */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL E */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN ALEPH */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA GA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA JA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO PA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEMKATH << 6), /* SEMKATH */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA LA */
-    HZ_JOINING_TYPE_D, /* NKO EE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM NYA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL NUN */
-    HZ_JOINING_TYPE_D, /* SOGDIAN WAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU FA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TETH << 6), /* TETH GARSHUNI */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE ANG */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAMAL << 6), /* PERSIAN GHAMAL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN YA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI PHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI TA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE PA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* YEH WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH RIGHT MIDDLE STROKE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO O */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN ZAYIN */
-    HZ_JOINING_TYPE_D, /* NKO MA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN PE WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA DDA */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN RESH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN TWENTY */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO E */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED TOP RIGHT FATHA */
-    HZ_JOINING_TYPE_R, /* HANIFI ROHINGYA SAKIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FINAL << 6), /* FINAL SEMKATH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TA */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN JAYIN WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH MADDA ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KNOTTED << 6), /* KNOTTED HEH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH HAMZA BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO E */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE HAA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE TA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* HIGH HAMZA DOTLESS YEH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI ALEPH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN ONE */
-    HZ_JOINING_TYPE_D, /* MANDAIC AD */
-    HZ_JOINING_TYPE_R, /* MANDAIC IT */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN ALI GALI VISARGA ONE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO WA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN GIMEL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI A */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_SADHE << 6), /* SADHE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 3 DOTS BELOW AND DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL HA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_T, /* MONGOLIAN ALI GALI BALUDA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI JHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON WITH DOT BELOW */
-    HZ_JOINING_TYPE_D, /* MANDAIC ATT */
-    HZ_JOINING_TYPE_D, /* SOGDIAN PE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI NGA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_TEH << 6), /* DOTLESS TEH MARBUTA WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL KPO */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ZA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH TAH ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH VERTICAL 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO TSA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ANG */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN SHIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH DIGIT THREE ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH DOT BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH V ABOVE */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA SA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH VERTICAL 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_TEH << 6), /* TEH MARBUTA GOAL */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN TAW */
-    HZ_JOINING_TYPE_C, /* MONGOLIAN NIRUGU */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* DOTLESS NOON WITH TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO I */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN BETH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM TTA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL JIIM */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN SMALL ALEPH */
-    HZ_JOINING_TYPE_C, /* TATWEEL WITH TWO DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* NKO CHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF WITH DOT BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH DOT BELOW AND DOT WITHIN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN ONE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO CHA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI HE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH ELONGATED HAMZA ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH ALEF ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH DOT BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH V ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN BETH */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL PE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE HA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YUDH << 6), /* YUDH */
-    HZ_JOINING_TYPE_U, /* KAITHI NUMBER SIGN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH ATTACHED RING WITHIN */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI DHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* YEH WITH NOON ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU CHA WITH 2 DOTS */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH INVERTED V BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO DA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED RIGHT HAMZA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AFRICAN << 6), /* AFRICAN QAF */
-    HZ_JOINING_TYPE_D, /* MANDAIC USHENNA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH INVERTED 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MANDAIC AK */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_YEH << 6), /* YEH BARREE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI HALF U */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_TAH << 6), /* TAH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_U, /* ARABIC SIGN SAFHA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED LEFT HAMZA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH DOT BELOW AND DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 2 DOTS AND V ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_U, /* ARABIC POUND MARK ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN WA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI DA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_VERTICAL << 6), /* VERTICAL TAIL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN CHA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL KPO */
-    HZ_JOINING_TYPE_C, /* TATWEEL */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 3 DOTS BELOW AND V ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DOT BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MEEM << 6), /* MEEM WITH DOT BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL KAF */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI CA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BETH << 6), /* PERSIAN BHETH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN I */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL GA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL QAAF */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH LEFT MIDDLE STROKE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL RA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD WITH DOT BELOW AND DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN TEN */
-    HZ_JOINING_TYPE_D, /* NKO NYA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH V BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI ZA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN TWENTY */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN DHAMEDH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 2 DOTS BELOW AND DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL LAAM */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DIAMOND 4 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL SHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI ZHA */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR RESH */
-    HZ_JOINING_TYPE_U, /* ARABIC SIGN SAMVAT */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL YA */
-    HZ_JOINING_TYPE_U, /* AFGHANI SIGN */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA WA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN LAMEDH */
-    HZ_JOINING_TYPE_U | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM JA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL SINNYIIYHE */
-    HZ_JOINING_TYPE_R, /* MANDAIC AIN */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL GBE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL PE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN ZAYIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* BEH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI HALF YA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI PE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH NOON ABOVE */
-    HZ_JOINING_TYPE_L | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN HETH */
-    HZ_JOINING_TYPE_D, /* NKO NA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA SHA */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN HE */
-    HZ_JOINING_TYPE_U | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM BHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI SSA */
-    HZ_JOINING_TYPE_D, /* NKO I */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH VERTICAL 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HEH << 6), /* HEH GOAL WITH HAMZA ABOVE */
-    HZ_JOINING_TYPE_C, /* ZERO WIDTH JOINER */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN PE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO KA */
-    HZ_JOINING_TYPE_D, /* NKO RA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH DIGIT TWO ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH LOOP */
-    HZ_JOINING_TYPE_L | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN NUN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH WITH DIGIT FOUR BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH HORIZONTAL 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* FEH WITH DOT BELOW */
-    HZ_JOINING_TYPE_D, /* SOGDIAN AYIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NYA << 6), /* NYA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED BOTTOM RIGHT KASRA AND DOT ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_TEH << 6), /* TEH MARBUTA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN BETH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN JA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* QAF WITH DOT BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH ATTACHED RING BELOW AND 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH VERTICAL 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO QA */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR TAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN O */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KNOTTED << 6), /* KNOTTED HEH WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_TEH << 6), /* DOTLESS TEH MARBUTA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BURUSHASKI << 6), /* BURUSHASKI YEH BARREE WITH DIGIT THREE ABOVE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN HETH */
-    HZ_JOINING_TYPE_C, /* NKO LAJANYALAN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HEH << 6), /* HEH GOAL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO JA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN AYIN WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN UD */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL O */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL MIIM */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE GA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL I */
-    HZ_JOINING_TYPE_D, /* SOGDIAN SADHE */
-    HZ_JOINING_TYPE_D, /* NKO NA WOLOSO */
-    HZ_JOINING_TYPE_U, /* KAITHI NUMBER SIGN ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF WITH VERTICAL 2 DOTS BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED TOP RIGHT FATHA AND DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA VOWEL U */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DALATH << 6), /* DALATH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_STRAIGHT << 6), /* STRAIGHT WAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN LA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE SYLLABLE BOUNDARY MARKER */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SAD << 6), /* SAD WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE KA */
-    HZ_JOINING_TYPE_L, /* CHORASMIAN ONE HUNDRED */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL CHI */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH V ABOVE */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN FOUR */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI KA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI ZHA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL ALIF */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI CYA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA NYA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH DOT BELOW AND 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* MANDAIC AB */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR SADHE */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR LESH */
-    HZ_JOINING_TYPE_U, /* POP DIRECTIONAL ISOLATE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI TTA */
-    HZ_JOINING_TYPE_R, /* SOGDIAN ONE HUNDRED */
-    HZ_JOINING_TYPE_D, /* SOGDIAN GIMEL */
-    HZ_JOINING_TYPE_D, /* NKO JA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH INVERTED 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL GA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI TAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE U */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KHAPH << 6), /* SOGDIAN KHAPH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN SAMEKH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE TSA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH DOT BELOW AND TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI CA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ZRA */
-    HZ_JOINING_TYPE_U, /* ARABIC NUMBER MARK ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SHIN << 6), /* SHIN */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA HA */
-    HZ_JOINING_TYPE_R, /* MANDAIC AKSA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL NHA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DALATH << 6), /* DOTLESS DALATH RISH */
-    HZ_JOINING_TYPE_T, /* SYRIAC ABBREVIATION MARK */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN A */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI NUN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HANIFI << 6), /* HANIFI ROHINGYA DOTLESS KINNA YA WITH DOT ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* DOTLESS QAF WITH DOT BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 4 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI AH */
-    HZ_JOINING_TYPE_D, /* NKO WA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH V ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FE << 6), /* SOGDIAN FE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL JIIM */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HANIFI << 6), /* HANIFI ROHINGYA PA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN KHA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN HUNDRED */
-    HZ_JOINING_TYPE_D, /* NKO OO */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI LHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN RA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN GIMEL WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MEEM << 6), /* MEEM WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE RAA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO TA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR LAMEDH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN SAMEKH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN NUN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH RIGHT MIDDLE STROKE AND DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH INVERTED V BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH TAH AND V ABOVE */
-    HZ_JOINING_TYPE_U, /* MANICHAEAN JAYIN */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL DHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH INVERTED 3 DOTS BELOW AND 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE ZHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* DOTLESS QAF */
-    HZ_JOINING_TYPE_D, /* SOGDIAN YODH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_HE << 6), /* HE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH DOT ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH DOT WITHIN */
-    HZ_JOINING_TYPE_D, /* NKO FA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH DIGIT TWO ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED ROUND DOT BELOW */
-    HZ_JOINING_TYPE_D, /* NKO BA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_THIN << 6), /* THIN YEH */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN VOWEL SEPARATOR */
-    HZ_JOINING_TYPE_D, /* NKO DAGBASINNA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DIGIT FOUR BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU KA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NUN << 6), /* NUN */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL YHE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL KHA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED FATHA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL ZAL */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL DAALI */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF WITH ATTACHED RING BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL NHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN WITH DIAMOND 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR BETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO UE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED ROUND DOT ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FARSI << 6), /* FARSI YEH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI FOUR */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA YA */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN TEN */
-    HZ_JOINING_TYPE_D, /* NKO JONA JA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL NYA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO GA */
-    HZ_JOINING_TYPE_D, /* MANDAIC AT */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI SSA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI ZA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN FA */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN LAMEDH */
-    HZ_JOINING_TYPE_D, /* MANDAIC AL */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN THAMEDH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* BEH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN DALETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* KEHEH WITH V ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO ALI GALI TA */
-    HZ_JOINING_TYPE_D, /* NKO SA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI BETH */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR WAW */
-    HZ_JOINING_TYPE_U, /* ARABIC SIGN SANAH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH 3 DOTS BELOW AND 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN BA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI NNA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL LAAM */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN ZAYIN */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI KAPH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_REH << 6), /* REH WITH 2 DOTS AND TAH ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI GHA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH DIGIT TWO ABOVE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI YODH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF */
-    HZ_JOINING_TYPE_D, /* NKO U */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO NIA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL TU */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH 4 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_PE << 6), /* PE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED KASRA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN NUN */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI BHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN MEM */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AFRICAN << 6), /* AFRICAN FEH */
-    HZ_JOINING_TYPE_R, /* MANDAIC HALQA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN EE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI TA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM NNNA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN WAW */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL NYA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA RRA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL ALIF */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH INVERTED V ABOVE */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN ALI GALI INVERTED UBADAMA */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR NUN */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL WAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI NGA */
-    HZ_JOINING_TYPE_D, /* MANDAIC AQ */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN ALI GALI ANUSVARA ONE */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN MEM */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_WAW << 6), /* WAW WITH COMMA ABOVE */
-    HZ_JOINING_TYPE_R, /* SOGDIAN HE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN FIVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_TAW << 6), /* TAW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU RA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA VOWEL O */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE SHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO GAA */
-    HZ_JOINING_TYPE_R, /* MANDAIC KAD */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH INVERTED 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL U */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HANIFI << 6), /* HANIFI ROHINGYA PA WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_R, /* MANDAIC AZ */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN MEM */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL CHI */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI I */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ZHA */
-    HZ_JOINING_TYPE_U, /* ARABIC DISPUTED END OF AYAH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN TAW */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA NGA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO DZA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL I */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HANIFI << 6), /* HANIFI ROHINGYA KINNA YA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL TU */
-    HZ_JOINING_TYPE_D, /* SOGDIAN FETH */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL MIIM */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE E */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAF << 6), /* KAF WITH DOT ABOVE */
-    HZ_JOINING_TYPE_U, /* ARABIC RAISED ROUND DOT */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN E */
-    HZ_JOINING_TYPE_D, /* NKO HA */
-    HZ_JOINING_TYPE_U, /* ARABIC FOOTNOTE MARKER */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR SAMEKH */
-    HZ_JOINING_TYPE_D, /* NKO YA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MALAYALAM << 6), /* MALAYALAM NGA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE GAA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN QOPH */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL QAAF */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH DIGIT THREE ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL KHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAPH << 6), /* QAPH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HETH << 6), /* HETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* NOON WITH 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL SHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE I */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN SAMEKH */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL O */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* MANDAIC AG */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_REVERSED << 6), /* REVERSED PE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BURUSHASKI << 6), /* BURUSHASKI YEH BARREE WITH DIGIT TWO ABOVE */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN TWO */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MIM << 6), /* MIM */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AIN << 6), /* AIN */
-    HZ_JOINING_TYPE_R, /* OLD UYGHUR ZAYIN */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN CURLED WAW */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN KAPH */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA BA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO PA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN YODH */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH WAVY HAMZA BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI TTA */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL VA */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI TEN */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL VA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* BEH WITH MEEM ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL BA */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN YODH */
-    HZ_JOINING_TYPE_D, /* SOGDIAN LESH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_QAF << 6), /* DOTLESS QAF WITH DOT ABOVE */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN GIMEL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO ANG */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH WASLA ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL DHA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL E */
-    HZ_JOINING_TYPE_D, /* NKO RRA */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI THREE */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA KHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_SEEN << 6), /* SEEN WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO ALI GALI ZHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MEEM << 6), /* MEEM WITH DOT ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DALATH << 6), /* PERSIAN DHALATH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN HAA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA TA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO YA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_KAPH << 6), /* KAPH */
-    HZ_JOINING_TYPE_U, /* FIRST STRONG ISOLATE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL BA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO LONG VOWEL SIGN */
-    HZ_JOINING_TYPE_D, /* NKO JONA CHA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DOT BELOW AND 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH 3 DOTS BELOW */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_E << 6), /* E */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL SINNYIIYHE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN TEN */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL ZAL */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL HA */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN PE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI DDA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH VERTICAL 2 DOTS BELOW AND TAH ABOVE */
-    HZ_JOINING_TYPE_L, /* HANIFI ROHINGYA A */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA DA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_YEH << 6), /* DOTLESS YEH WITH VERTICAL 2 DOTS BELOW */
-    HZ_JOINING_TYPE_D, /* SOGDIAN SHIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AFRICAN << 6), /* AFRICAN QAF WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* SOGDIAN TAW */
-    HZ_JOINING_TYPE_D, /* MANDAIC AS */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI TWO */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN HE */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI GIMEL */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN ALI GALI TTHA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO U */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN SADHE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH INVERTED 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR KAPH */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL DAALI */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN DALETH */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA ZA */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED RIGHT ROUND DOT */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED BOTTOM RIGHT KASRA AND LEFT RING */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL BHE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL YA */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR ALEPH */
-    HZ_JOINING_TYPE_U, /* ARABIC NUMBER SIGN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF */
-    HZ_JOINING_TYPE_D, /* NKO A */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_FEH << 6), /* DOTLESS FEH WITH DOT BELOW AND 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO LA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_LAM << 6), /* LAM WITH DOUBLE BAR */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN BETH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN ONE */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN THREE */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN AYIN */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA KINNA WA */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN SHIN */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN TWENTY */
-    HZ_JOINING_TYPE_R, /* PSALTER PAHLAVI ONE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL FA */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI TWENTY */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_DAL << 6), /* DAL WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL NUN */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL GBE */
-    HZ_JOINING_TYPE_D, /* CHORASMIAN ALEPH */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL RA */
-    HZ_JOINING_TYPE_U, /* ARABIC END OF AYAH */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_HAH << 6), /* HAH WITH DOT BELOW AND 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* ADLAM CAPITAL U */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI LAMEDH */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA TTA */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR MEM */
-    HZ_JOINING_TYPE_U, /* ARABIC PIASTRE MARK ABOVE */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN U */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN HETH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN TODO HAA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN SIBE DA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_GAF << 6), /* GAF WITH 3 DOTS ABOVE */
-    HZ_JOINING_TYPE_D, /* NKO N */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN DA */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MANCHU ALI GALI DDHA */
-    HZ_JOINING_TYPE_U, /* MONGOLIAN ALI GALI UBADAMA */
-    HZ_JOINING_TYPE_D, /* SOGDIAN LAMEDH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN MA */
-    HZ_JOINING_TYPE_D, /* HANIFI ROHINGYA MA */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_BEH << 6), /* DOTLESS BEH WITH 3 DOTS BELOW AND V ABOVE */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ALEF << 6), /* ALEF WITH ATTACHED BOTTOM RIGHT KASRA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL FA */
-    HZ_JOINING_TYPE_D, /* SOGDIAN ALEPH */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN CHI */
-    HZ_JOINING_TYPE_D, /* OLD UYGHUR SHIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_NOON << 6), /* DOTLESS NOON */
-    HZ_JOINING_TYPE_D, /* PSALTER PAHLAVI SHIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_MANICHAEAN << 6), /* MANICHAEAN QOPH WITH 2 DOTS ABOVE */
-    HZ_JOINING_TYPE_U, /* CHORASMIAN AYIN */
-    HZ_JOINING_TYPE_R | (HZ_JOINING_GROUP_ZAIN << 6), /* ZAIN */
-    HZ_JOINING_TYPE_D | (HZ_JOINING_GROUP_AFRICAN << 6), /* AFRICAN NOON */
-    HZ_JOINING_TYPE_D, /* MONGOLIAN KA */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL WAW */
-    HZ_JOINING_TYPE_R, /* CHORASMIAN WAW */
-    HZ_JOINING_TYPE_D, /* ADLAM SMALL BHE */
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_BETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HANIFI_ROHINGYA_PA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALAPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_TEH_MARBUTA_GOAL,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FINAL_SEMKATH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ROHINGYA_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_ZAYIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MIM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_NGA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_T | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_YEH_WITH_TAIL,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_SADHE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_REVERSED_PE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_SAMEKH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAMAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_KAPH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MALAYALAM_SSA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_TETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_L | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HEH_GOAL,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_TEH_MARBUTA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_L | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_DALETH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HANIFI_ROHINGYA_PA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AFRICAN_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_TTA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEMKATH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AFRICAN_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_HE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YUDH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_TWENTY,
+    HZ_JOINING_TYPE_T | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_NNNA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_KAPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_LLA,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_TEN,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AFRICAN_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_LAMEDH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_VERTICAL_TAIL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_GIMEL,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_YEH_BARREE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_QOPH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_TAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_FIVE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAMAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_PE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_THAMEDH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_BETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NYA,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BURUSHASKI_YEH_BARREE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HEH_GOAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DALATH_RISH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_PE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_NNA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_T | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DALATH_RISH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ZAIN,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_DHAMEDH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_MALAYALAM_JA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SHIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HANIFI_ROHINGYA_KINNA_YA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HANIFI_ROHINGYA_PA,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_HUNDRED,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_TEH_MARBUTA,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_YODH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAMADH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_GIMEL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_ALEPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MEEM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_STRAIGHT_WAW,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KHAPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KNOTTED_HEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NUN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DALATH_RISH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_C | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_L | HZ_JOINING_GROUP_MANICHAEAN_NUN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_MEM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_ZAYIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_YUDH_HE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_AYIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_THIN_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FARSI_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_SYRIAC_WAW,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_MALAYALAM_BHA,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_WAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_YEH_BARREE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_RESH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_TAW,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_TEH_MARBUTA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_TAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_QOPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_QOPH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_PE,
+    HZ_JOINING_TYPE_T | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BURUSHASKI_YEH_BARREE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_DALATH_RISH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MEEM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_L | HZ_JOINING_GROUP_MANICHAEAN_HETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAPH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_SADHE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MEEM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SWASH_KAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MALAYALAM_RA,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MALAYALAM_LLLA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_REH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_E,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AFRICAN_NOON,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_MANICHAEAN_KAPH,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_ONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MALAYALAM_NYA,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MANICHAEAN_AYIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ZHAIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BETH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_KNOTTED_HEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SAD,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_LAM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_QAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAMAL,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_MEEM,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_AIN,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_HAH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_SEEN,
+    HZ_JOINING_TYPE_U | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_BEH,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_GAF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_R | HZ_JOINING_GROUP_ALEF,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
+    HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
 };
 
 #endif /* HZ_UCD_14_0_0_H */

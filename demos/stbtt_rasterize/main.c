@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <hz/hz_ucd_15_0_0.h>
 #define HZ_IMPLEMENTATION
-// #include <hz/hz_ucd_15_0_0.h>
 #include <hz/hz.h>
 
 #include <errno.h>
@@ -208,7 +208,7 @@ void render_text_to_png(const char *filename,
                          0.0f,//rand_float(),//238.0f/255.0f,
                          1.0f};
 
-#if 1
+#if 0
             if (buffer->glyph_classes[i] & HZ_GLYPH_CLASS_MARK) {
                 float val = (buffer->component_indices[i]+1.0f)/3.0f;
                 val = 0.2f + 0.6f*val;
@@ -237,18 +237,13 @@ void render_text_to_png(const char *filename,
 int main(int argc, char *argv[]) {
     hz_config_t cfg = {};
 
-    if (argc < 2) {
-        printf("Not enough arguments!\n");
-        return EXIT_FAILURE;
-    }
-
     if (hz_init(&cfg) != HZ_OK) {
         fprintf(stderr, "Failed to initialize Hamza!\n");
         return EXIT_FAILURE;
     }
 
     stbtt_fontinfo fontinfo;
-    if (!load_font_face(&fontinfo, argv[1])) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/AyeshaQuran-Regular.ttf")) {
         fprintf(stderr, "Failed to load font!\n");
         return EXIT_FAILURE;
     }
@@ -260,32 +255,44 @@ int main(int argc, char *argv[]) {
     hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
     hz_font_data_load(&font_data, font);
 
-    hz_buffer_t txt;
-    hz_buffer_init(&txt);
-
     hz_shaper_t shaper;
     hz_shaper_init(&shaper);
     hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
-    hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
+    hz_shaper_set_language(&shaper, HZ_LANGUAGE_ENGLISH);
     hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
 
     hz_feature_t features[] = {
+        HZ_FEATURE_CCMP,
         HZ_FEATURE_ISOL,
+        HZ_FEATURE_FINA,
         HZ_FEATURE_MEDI,
         HZ_FEATURE_INIT,
-        HZ_FEATURE_FINA
+        HZ_FEATURE_RLIG,
+        HZ_FEATURE_CALT,
+        HZ_FEATURE_DLIG,
+        HZ_FEATURE_LIGA,
+        HZ_FEATURE_SWSH,
+        HZ_FEATURE_MARK,
+        HZ_FEATURE_MKMK,
+        HZ_FEATURE_KERN,
     };
 
-    hz_shaper_set_features(&shaper, 0, 0);
+    hz_shaper_set_features(&shaper, features, HZ_ARRAY_SIZE(features));
 
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "الجامع الشباب", &txt);
+    hz_buffer_t txt;
+
+    for (int i = 0; i < 1; ++i) {
+        hz_buffer_init(&txt);
+        // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "يحتفل الأردنبزفاف ملكي هو الأول منذ سنوات طويلة، إذ يُعقد قِران ولي العهد الأردني الأمير الحسين بن عبدالله الثاني، على الآنسة رجوة آل سيف.", &txt);
+        hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, " وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ", &txt);
+        // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "The James Dudley is studying online college.", &txt);
+    }
 
     render_text_to_png("txt.png", &fontinfo, &txt);
 
-    hz_font_data_release(&font_data);
-
-    hz_font_destroy(font);
     hz_buffer_release(&txt);
+    hz_font_data_release(&font_data);
+    hz_font_destroy(font);
     hz_deinit();
     return EXIT_SUCCESS;
 }

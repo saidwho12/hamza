@@ -1,18 +1,9 @@
-# Hamza
+
+# Hamza (همزه)
 
 Hamza is a light-weight, fast and portable C99 [Unicode](https://www.unicode.org)/[OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's designed to be a small, 
-portable and optimized shaper that's easy to integrate into any existing project.
-
-## Building 🚀
-  - #### Linux
-  - #### Windows
-
-## Tested Compilers
-  - GCC 10.3.0 x86_64-w64-wingw32
-  - GCC 10.3.0 x86_64-w64-wingw32 (mingw64)
-  - MSVC 19.35.32217.1
-  - MSVC 19.29.30148.0
-  - Clang 16.0.0 x86_64-pc-windows-msvc
+portable and optimized shaper that's easy to integrate into any existing project. Below is an image of a short string of Arabic shaped with this library using a fairly complex font, random colors are assigned to each glyph.
+![](banner.png)
 
 ## UCD File Generation
 Hamza includes the single-file programs `update_ucd_ftp` and `generate_ucd_headers`. The first pulls the necessary UCD files from the FTP server at [ftp.unicode.org]() and requires [curl](https://github.com/curl/curl). The second generates optimized C headers from those UCD files. Both of these programs make use of the POSIX regex library for filtering and parsing. 
@@ -96,7 +87,15 @@ hz_font_destroy(font);
 hz_deinit();
 ```
 
-  ## Features 📃
+## Tested Compilers
+  - GCC 10.3.0 x86_64-w64-wingw32
+  - GCC 10.3.0 x86_64-w64-wingw32 (mingw64)
+  - MSVC 19.35.32217.1
+  - MSVC 19.29.30148.0
+  - Clang 16.0.0 x86_64-pc-windows-msvc
+
+
+  ## Features
 - [x] Joining script support and RTL writing
 - [x] Kerning
 - [x] Ligatures

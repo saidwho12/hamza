@@ -2095,7 +2095,7 @@ hz_is_arabic_codepoint(hz_unicode_t c)
 
 HZ_ALWAYS_INLINE uint32_t hz_ucd_get_arabic_joining_data(hz_unicode_t key)
 {
-    size_t size = HZ_ARRAY_SIZE(hz_ucd_arabic_joining_data);
+    static const size_t size = HZ_ARRAY_SIZE(hz_ucd_arabic_joining_data);
     uint32_t h = hz_hash2_lowbias32((uint32_t)key, 0) % size;
 
     // Sample k2 array, find second index
@@ -2103,10 +2103,10 @@ HZ_ALWAYS_INLINE uint32_t hz_ucd_get_arabic_joining_data(hz_unicode_t key)
 
     // Check high bit to determine if k2 is negative, in which case we don't need to hash again to get the final slot.
     // That's because this bucket had a single key in it.
-    uint32_t slot = k2<0 ? (-k2)-1 : hz_hash2_lowbias32((uint32_t)key, (uint32_t)k2) % size;
+    uint32_t slot = k2 & 0x80000000 ? (-k2)-1 : hz_hash2_lowbias32((uint32_t)key, (uint32_t)k2) % size;
 
     // Verify if unicode codepoints match, otherwise return default
-    if (hz_ucd_arabic_joining_ucs_codepoints[slot] != key) return HZ_JOINING_GROUP_NONE | HZ_JOINING_TYPE_T;
+    if (hz_ucd_arabic_joining_ucs_codepoints[slot] != key) return HZ_JOINING_GROUP_NONE|HZ_JOINING_TYPE_T;
 
     return hz_ucd_arabic_joining_data[slot];
 }

@@ -19,12 +19,7 @@
 #include <regex.h>
 #include <assert.h>
 
-#define UC_VERSION_REGEX "^([0-9]+)\\.([0-9]+)(?:\\.([0-9]+)|-(Update(?:[0-9]+)?))$"
-#define ARABIC_SHAPING_REGEX "^([[:xdigit:]]*)[[:space:]]*;[[:space:]]*((?:[[:alnum:]][[:space:]]{0,1})*)[[:space:]]*;[[:space:]]*([[:alpha:]])[[:space:]]*;[[:space:]]*([[:alnum:]_]*)"
-#define JAMO_REGEX "^$"
-
 #define INTS_PER_LINE 6
-
 
 typedef struct {
     uint32_t codepoint;
@@ -34,6 +29,11 @@ typedef struct {
     char *joining_group;
     int joining_group_len;
 } arabic_joining_data_t;
+
+typedef struct {
+    uint32_t codepoint;
+    char name[25];
+} jamo_t;
 
 typedef struct {
     char *txt[5];
@@ -269,12 +269,12 @@ void mph_table_deinit(mph_table_t *t)
 }
 
 
-int generate()
-{
+int generate() {
     int err;
     char errbuf[512];
     regex_t ver_regex,
             arabic_shaping_regex,
+            jamo_regex,
             property_value_aliases_regex;
 
     if ((err = regcomp(&ver_regex, "^([0-9]+)\\.([0-9]+)(?:\\.([0-9]+)|-(Update(?:[0-9]+)?))$", REG_EXTENDED|REG_NEWLINE)) != 0) {
@@ -285,6 +285,12 @@ int generate()
 
     if ((err = regcomp(&arabic_shaping_regex, "^([[:xdigit:]]*)[[:space:]]*;[[:space:]]*((?:[[:alnum:]][[:space:]]?)*)[[:space:]]*;[[:space:]]*([[:alpha:]])[[:space:]]*;[[:space:]]*((?:[[:space:]]?[[:alpha:]_])*)[[:space:]]*$", REG_EXTENDED|REG_NEWLINE)) != 0) {
         regerror(err, &arabic_shaping_regex, errbuf, 512);
+        fprintf(stderr, "Failed to compile regex err:\n%s\n", errbuf);
+        return -1;
+    }
+
+    if ((err = regcomp(&jamo_regex, "^([[:xdigit:]]*)[[:space:]]*;[[:space:]]*([[:alpha:]]*)[[:space:]#^\\n]*", REG_EXTENDED|REG_NEWLINE)) != 0) {
+        regerror(err, &jamo_regex, errbuf, 512);
         fprintf(stderr, "Failed to compile regex err:\n%s\n", errbuf);
         return -1;
     }
@@ -328,8 +334,9 @@ int generate()
                     int minor = atoi(fdFile.cFileName + match[2].rm_so);
                     int patch = atoi(fdFile.cFileName + match[3].rm_so);
                     snprintf(filename,sizeof(filename),"hz_ucd_%d_%d_%.*s%d.h", major, minor,
-                                        match[4].rm_eo-match[4].rm_so, fdFile.cFileName + match[4].rm_so,
-                                        patch);
+                            match[4].rm_eo-match[4].rm_so, fdFile.cFileName + match[4].rm_so,
+                            patch);
+
                     char filename2[100];
                     snprintf(filename2,100,"./hz/%s", filename);
                     FILE *f = fopen(filename2, "w+");
@@ -345,7 +352,8 @@ int generate()
                         fprintf(f, "#include <stdint.h>\n\n");
                         fprintf(f, "#define HZ_UCD_VERSION HZ_MAKE_VERSION(%d,%d,%d)\n\n",major,minor,patch);
 
-                        { // Add enum definitions from PropertyValueAliases.txt
+                        {
+                            // Add enum definitions from PropertyValueAliases.txt
                             char tmp[100];
                             snprintf(tmp,100,"%s\\ucd\\PropertyValueAliases.txt", sPath);
                             printf("%s\n", tmp);
@@ -410,6 +418,75 @@ int generate()
                                 free(aliases);
                                 fclose(property_value_aliases);
                             }
+                        }
+
+                        { // Add Korean Jamo table from Jamo.txt
+                            char tmp[100];
+                            snprintf(tmp,100,"%s\\ucd\\Jamo.txt", sPath);
+                            printf("%s\n", tmp);
+                            FILE *jamo = fopen(tmp,"r");
+                            if (jamo) { // Read entire file data, then split into lines and parse
+                                mph_table_t jamo_mph_table;
+                                fseek(jamo,0,SEEK_END);
+                                size_t filesize = ftell(jamo);
+                                fseek(jamo,0,SEEK_SET);
+                                char *str = malloc(filesize+1); 
+                                fread(str,1,filesize,jamo);
+                                str[filesize] = '\0';
+                                // Allocate big enough buffer for joining data
+
+                                #define JAMO_SIZE 2048
+                                jamo_t *jamo_data = malloc(sizeof(*jamo_data) * JAMO_SIZE);
+                                uint32_t *jamo_data_keys = malloc(sizeof(uint32_t) * JAMO_SIZE);
+
+                                char *s = str;
+                                int off, len, cnt;
+                                for (cnt=0; ; ++cnt) {
+                                    regmatch_t match[3];
+                                    if (regexec(&jamo_regex, s, 3, match, 0) == REG_NOMATCH)
+                                        break;
+
+                                    off = match[0].rm_so + (s - str);
+                                    len = match[0].rm_eo - match[0].rm_so;
+
+                                    jamo_data_keys[cnt] = strtol(s+match[1].rm_so,NULL,16);
+                                    jamo_data[cnt].codepoint = jamo_data_keys[cnt];
+                                    memset(jamo_data[cnt].name, 0, sizeof jamo_data[cnt].name);
+                                    snprintf(jamo_data[cnt].name, sizeof jamo_data[cnt].name, "%.*s", match[2].rm_eo - match[2].rm_so, s + match[2].rm_so);
+
+                                    printf("%s\n", jamo_data[cnt].name);
+
+                                    s += match[0].rm_eo;
+                                }
+
+                                mph_table_init(&jamo_mph_table,
+                                                jamo_data_keys,
+                                                jamo_data,
+                                                sizeof(jamo_data[0]),
+                                                cnt,
+                                                hash2_lowbias32);
+
+
+                                fprintf(f, "int32_t hz_ucd_jamo_short_names_k2[%d] = {", cnt);
+                                for (int i = 0; i < jamo_mph_table.size; ++i) {
+                                    int k2 = jamo_mph_table.k2[i];
+                                    if (!(i % INTS_PER_LINE)) fprintf(f,"\n    ");
+                                    fprintf(f, "%4d,", k2);
+                                }
+
+                                fprintf(f,"\n};\n\n");
+
+                                // Short Names
+                                fprintf(f, "uint32_t hz_ucd_jamo_short_names[%d] = {",cnt);
+                                for (int i = 0; i < jamo_mph_table.size; ++i) {
+                                    jamo_t dat = ((jamo_t*)jamo_mph_table.values)[i];
+                                    fprintf(f, "\n    HZ_JAMO_SHORT_NAME_%s,", dat.name);
+                                }
+
+                                fprintf(f,"\n};\n\n");
+                                
+                            }
+
                         }
 
                         { // Add arabic table

@@ -800,7 +800,7 @@ HZ_STATIC void hz_ht_clear(hz_ht_t *ht) {
     HZ_MEMSET(ht->values, 0, ht->size*sizeof(uint32_t));
 }
 
-HZ_STATIC void hz_ht_init(hz_ht_t *ht, hz_allocator_t *alctr, size_t size){
+HZ_STATIC void hz_ht_init(hz_ht_t ht[static 1], hz_allocator_t alctr[static 1], size_t size){
     ht->alctr = alctr;
     ht->keys = hz_allocate(alctr, size*sizeof(uint32_t));
     ht->values = hz_allocate(alctr,size*sizeof(uint32_t));
@@ -2039,71 +2039,16 @@ typedef struct {
     uint32_t            flags;
 } hz_utf8_decoder_t;
 
-/*
-This table decodes the first byte of a utf-8 sequence.
-It returns the number of expected continuation bytes
-in the rest of the sequence.
-From wikipedia:
-# Bits      First       Last        Sequence    Byte 1      Byte 2      Byte 3      Byte 4      Byte 5      Byte 6
-# 7         0x0000      0x007F      1           0xxxxxxx
-# 11        0x0080      0x07FF      2           110xxxxx    10xxxxxx
-# 16        0x0800      0xFFFF      3           1110xxxx    10xxxxxx    10xxxxxx
-# 21        0x10000     0x1FFFFF    4           11110xxx    10xxxxxx    10xxxxxx    10xxxxxx
-# 26        0x200000    0x3FFFFFF   5           111110xx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
-# 31        0x4000000   0x7FFFFFFF  6           1111110x    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
-*/
-static const int8_t hz_decode_byte_table[] = {
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x00 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x10 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x20 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x30 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x40 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x50 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x60 */
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x70 */
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x80 */
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x90 */
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xa0 */
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xb0 */
-        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xc0 */
-        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xd0 */
-        2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  /* 0xe0 */
-        3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5, -1, -1,  /* 0xf0 */
-};
-
-/* This table returns the mask for the data in the first byte
-of an n-byte sequence, where n is the index into the table.
-*/
-static const uint8_t hz_decode_mask_table[] = {
-        0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01,
-};
-
-static const int8_t hz_prefix_to_length_table[32] = {
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3
-};
-
-HZ_STATIC hz_bool
-hz_is_arabic_codepoint(hz_unicode_t c)
-{
-    return (c >= 0x0600u && c <= 0x06FFu) || /* Arabic (0600–06FF) */
-            (c >= 0x0750u && c <= 0x077Fu) || /* Arabic Supplement (0750–077F) */
-            (c >= 0x08A0u && c <= 0x08FFu) || /* Arabic Extended-A (08A0–08FF) */
-            (c >= 0xFB50u && c <= 0xFDFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-            (c >= 0xFE70u && c <= 0xFEFFu) || /* Arabic Presentation Forms-B (FE70–FEFF) */
-            (c >= 0x1EE00u && c <= 0x1EEFFu); /* Arabic Mathematical Alphabetic Symbols (1EE00–1EEFF) */
-}
-
-HZ_ALWAYS_INLINE uint32_t hz_ucd_get_arabic_joining_data(hz_unicode_t key)
-{
+HZ_ALWAYS_INLINE uint32_t hz_ucd_get_arabic_joining_data(hz_unicode_t key) {
     static const size_t size = HZ_ARRAY_SIZE(hz_ucd_arabic_joining_data);
     uint32_t h = hz_hash2_lowbias32((uint32_t)key, 0) % size;
 
     // Sample k2 array, find second index
     int32_t k2 = hz_ucd_arabic_joining_k2[h];
 
-    // Check high bit to determine if k2 is negative, in which case we don't need to hash again to get the final slot.
+    // Check if k2 is negative, in which case we don't need to hash again to get the final slot.
     // That's because this bucket had a single key in it.
-    uint32_t slot = k2 & 0x80000000 ? (-k2)-1 : hz_hash2_lowbias32((uint32_t)key, (uint32_t)k2) % size;
+    uint32_t slot = k2<0 ? (-k2)-1 : hz_hash2_lowbias32((uint32_t)key, (uint32_t)k2) % size;
 
     // Verify if unicode codepoints match, otherwise return default
     if (hz_ucd_arabic_joining_ucs_codepoints[slot] != key) return HZ_JOINING_GROUP_NONE|HZ_JOINING_TYPE_T;
@@ -6499,6 +6444,49 @@ hz_language_t hz_lang(const char *tag)
 
 #define UTF_START 0
 
+/*
+This table decodes the first byte of a utf-8 sequence.
+It returns the number of expected continuation bytes
+in the rest of the sequence.
+From wikipedia:
+# Bits      First       Last        Sequence    Byte 1      Byte 2      Byte 3      Byte 4      Byte 5      Byte 6
+# 7         0x0000      0x007F      1           0xxxxxxx
+# 11        0x0080      0x07FF      2           110xxxxx    10xxxxxx
+# 16        0x0800      0xFFFF      3           1110xxxx    10xxxxxx    10xxxxxx
+# 21        0x10000     0x1FFFFF    4           11110xxx    10xxxxxx    10xxxxxx    10xxxxxx
+# 26        0x200000    0x3FFFFFF   5           111110xx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
+# 31        0x4000000   0x7FFFFFFF  6           1111110x    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx    10xxxxxx
+*/
+static const int8_t hz_decode_byte_table[] = {
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x00 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x10 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x20 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x30 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x40 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x50 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x60 */
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  /* 0x70 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x80 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0x90 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xa0 */
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  /* 0xb0 */
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xc0 */
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  /* 0xd0 */
+        2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  /* 0xe0 */
+        3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  5,  5, -1, -1,  /* 0xf0 */
+};
+
+/* This table returns the mask for the data in the first byte
+of an n-byte sequence, where n is the index into the table.
+*/
+static const uint8_t hz_decode_mask_table[] = {
+        0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01,
+};
+
+static const int8_t hz_prefix_to_length_table[32] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3
+};
+
 HZ_STATIC void
 hz_utf8_decoder_init(hz_utf8_decoder_t *state)
 {
@@ -6892,7 +6880,6 @@ typedef enum {
     Hash table inspired by Chris Wellons' on the idea of the "MSI" hash table found here: https://nullprogram.com/blog/2022/08/08/.
     The "MSI" acronym stands for "mask-step-index" which describes the function of this hash table pattern.
 */
-
 typedef uint32_t hz_msi_key_t;
 
 typedef struct {
@@ -6902,7 +6889,7 @@ typedef struct {
 } hz_msi_ht_t;
 
 #define HZ_MSI_NOT_FOUND -1
-#define HZ_MSI_EMPTY_KEY 0x10000000ul
+#define HZ_MSI_EMPTY_KEY -2
 
 void hz_msi_ht_init(hz_memory_arena_t *memory_arena, hz_msi_ht_t *msi, size_t size) {
     HZ_ASSERT(hz_is_power_of_two(size));
@@ -6997,7 +6984,6 @@ HZ_ALWAYS_INLINE void hz_lru_cache_init(hz_memory_arena_t *memory_arena, hz_lru_
 
 void hz_lru_cache_evict_and_replace(hz_lru_cache_t *lru, const uint32_t sorted_unique_ids[], size_t count){
     size_t n = HZ_MIN(lru->max_insert_ratio, count);
-
     for (int i = 0; i < n; ++i) {
         
     }

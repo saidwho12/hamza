@@ -1,4 +1,7 @@
+
+#include "../../hz/hz_ucd_5_2_0.h"
 #define HZ_IMPLEMENTATION
+#define HZ_DEBUG_LOGGING
 #include "../../hz/hz.h"
 
 #define GLFW_INCLUDE_NONE
@@ -9,8 +12,8 @@
 
 #include <errno.h>
 
-#define WIDTH 1000
-#define HEIGHT 1000
+#define WIDTH 800
+#define HEIGHT 800
 
 #define ARRAYSIZE(x) (sizeof(x)/sizeof((x)[0]))
 
@@ -57,7 +60,7 @@ GLuint create_fs_quad_shader()
 {
     static const char fs_quad_vert[] = "#version 450 core\n"
     "#extension GL_ARB_separate_shader_objects : enable\n"
-    "const vec2 fs_quad_verts[6] = vec2[6](vec2(-1,-1),vec2(1,-1),vec2(-1,1),vec2(-1,1),vec2(1,-1), vec2(1,1));\n"
+    "const vec2 fs_quad_verts[6] = vec2[6](vec2(-1,-1),vec2(-0.5,-1),vec2(-1,-0.5),vec2(-1,-0.5),vec2(-0.5,-1), vec2(-0.5,-0.5));\n"
     "const vec2 fs_quad_uvs[6] = vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1), vec2(1,0), vec2(1,1));\n"
     "out vec2 fragTexCoord;\n"
     "void main(){\n"
@@ -68,10 +71,15 @@ GLuint create_fs_quad_shader()
     static const char fs_quad_frag[] = "#version 450 core\n"
     "#extension GL_ARB_separate_shader_objects : enable\n"
     "in vec2 fragTexCoord;\n"
+    "uniform int has_texture;\n"
     "uniform sampler2D uMainTex;\n"
     "layout(location=0) out vec4 outColor;\n"
     "void main(){\n"
-    "    outColor = vec4(texture(uMainTex,fragTexCoord).xyz,1.0);\n"
+    "    if (has_texture == 1){\n"
+    "        outColor = vec4(texture(uMainTex,fragTexCoord).xyz,1.0);\n"
+    "    }else{\n"
+    "        outColor=vec4(1,0,0,1);\n"
+    "    }"
     "}\n";
 
     GLuint vert_shader, frag_shader;
@@ -144,14 +152,28 @@ int main(int argc, char *argv[])
     hz_gl4_device_t dev;
     hz_gl4_device_init(&dev, &sdf_opts); 
 
-    stbtt_fontinfo fontinfo;
+    stbtt_fontinfo fontinfo, fontinfo2;
     // if (!load_font_face(&fontinfo, argv[1])) {
-    if (!load_font_face(&fontinfo, "../../../data/fonts/arial-bold.ttf")) {
+    // if (!load_font_face(&fontinfo, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
+    if (!load_font_face(&fontinfo, "../../../data/fonts/Times New Roman.ttf")) {
+        hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
+        exit(-1);
+    }
+
+    if (!load_font_face(&fontinfo2, "../../../data/fonts/Quran/OmarNaskh-Regular.ttf")) {
         hz_logln(HZ_LOG_ERROR, "Failed to load font file!");
         exit(-1);
     }
 
     hz_font_t *font = hz_stbtt_font_create(&fontinfo);
+    hz_font_t *font2 = hz_stbtt_font_create(&fontinfo2);
+
+    hz_font_data_t font_data, font_data2;
+    hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
+    hz_font_data_load(&font_data, font);
+    hz_font_data_init(&font_data2, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
+    hz_font_data_load(&font_data2, font2);
+
     hz_feature_t features[] = {
         HZ_FEATURE_CCMP,
         HZ_FEATURE_ISOL,
@@ -170,23 +192,31 @@ int main(int argc, char *argv[])
         HZ_FEATURE_MKMK,
     };
 
-    hz_font_data_t font_data;
-    hz_font_data_init(&font_data, HZ_DEFAULT_FONT_DATA_ARENA_SIZE);
-    hz_font_data_load(&font_data, font);
-
-    uint16_t font_id = hz_context_stash_font(&ctx,&font_data);
+    uint16_t arialid = hz_context_stash_font(&ctx, &font_data);
+    uint16_t omarid = hz_context_stash_font(&ctx, &font_data2);
 
     hz_shaper_t shaper;
     hz_shaper_init(&shaper);
     hz_shaper_set_direction(&shaper, HZ_DIRECTION_RTL);
+    hz_shaper_set_script(&shaper, HZ_SCRIPT_ARABIC);
+    hz_shaper_set_language(&shaper, HZ_LANGUAGE_ARABIC);
+    hz_shaper_set_features(&shaper, ARRAYSIZE(features), features);
+
+    hz_buffer_t ar_sample, en_sample, ru_sample;
+    hz_buffer_init(&ar_sample);
+    hz_shape_sz1(&shaper, &font_data2, HZ_ENCODING_UTF8, "ذهبت دليلة الى المدرسة", &ar_sample);
+
+    hz_buffer_init(&en_sample);
+    hz_shaper_set_direction(&shaper, HZ_DIRECTION_LTR);
     hz_shaper_set_script(&shaper, HZ_SCRIPT_LATIN);
     hz_shaper_set_language(&shaper, HZ_LANGUAGE_ENGLISH);
-    hz_shaper_set_features(&shaper, features, ARRAYSIZE(features));
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Welcome! ♥", &en_sample);
 
-    hz_buffer_t buffer;
-    hz_buffer_init(&buffer);
-    
-    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Hello,World! Test 123", &buffer);
+    hz_buffer_init(&ru_sample);
+    hz_shaper_set_direction(&shaper, HZ_DIRECTION_LTR);
+    hz_shaper_set_script(&shaper, HZ_SCRIPT_CYRILLIC);
+    hz_shaper_set_language(&shaper, HZ_LANGUAGE_RUSSIAN);
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "Са́мый холо́дный го́род на Земле́", &ru_sample);
     
     glfwSwapInterval(0); // disable V-Sync
 
@@ -198,11 +228,13 @@ int main(int argc, char *argv[])
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         hz_frame_begin(&ctx);
-        hz_draw_buffer(&ctx, &buffer, font_id, (hz_vec2){0.0f,0.0f},32.0f);
+        hz_draw_buffer(&ctx, &ar_sample, omarid, (hz_vec2){-260.0f,100.0f},80.0f);
+        hz_draw_buffer(&ctx, &en_sample, arialid, (hz_vec2){-200.0f,150.0f},42.0f);
+        hz_draw_buffer(&ctx, &ru_sample, arialid, (hz_vec2){-200.0f,200.0f},42.0f);
         hz_frame_end(&ctx);
         hz_gl4_render_frame(&ctx,&dev);
 
@@ -213,7 +245,13 @@ int main(int argc, char *argv[])
         glUseProgram(fs_quad_shader);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, dev.sdf_texture);
+        glUniform1i(glGetUniformLocation(fs_quad_shader,"has_texture"),1);
         glDrawArrays(GL_TRIANGLES,0,6);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glUniform1i(glGetUniformLocation(fs_quad_shader,"has_texture"),0);
+        glDrawArrays(GL_TRIANGLES,0,6);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glfwSwapBuffers(window);
     }

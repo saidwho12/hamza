@@ -144,7 +144,7 @@ int occurcnt(int *arr, int size, int val)
     return cnt;
 }
 
-void mph_table_init(mph_table_t *t, uint32_t *keys, void *values,
+void mph_table_init(mph_table_t t[static 1], uint32_t *keys, void *values,
                     size_t value_size, size_t num_values, uint32_t (*hash)(uint32_t, uint32_t))
 {
     mph_bucket_t *buckets = calloc(num_values, sizeof(mph_bucket_t)); // Index buckets
@@ -420,7 +420,7 @@ int generate() {
                             }
                         }
 
-                        { // Add Korean Jamo table from Jamo.txt
+                        if (0) { // Add Korean Jamo table from Jamo.txt
                             char tmp[100];
                             snprintf(tmp,100,"%s\\ucd\\Jamo.txt", sPath);
                             printf("%s\n", tmp);
@@ -467,6 +467,7 @@ int generate() {
                                                 hash2_lowbias32);
 
 
+/*
                                 fprintf(f, "int32_t hz_ucd_jamo_short_names_k2[%d] = {", cnt);
                                 for (int i = 0; i < jamo_mph_table.size; ++i) {
                                     int k2 = jamo_mph_table.k2[i];
@@ -484,7 +485,7 @@ int generate() {
                                 }
 
                                 fprintf(f,"\n};\n\n");
-                                
+                                */
                             }
 
                         }

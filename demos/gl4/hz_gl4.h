@@ -104,9 +104,14 @@ typedef struct {
     GLuint curve_to_sdf_program;
     GLuint stencil_kokojima_prog;
     GLuint fs_triangle_prog;
+    GLuint char_quad_shader;
+
+    GLuint glyphs_vao, glyphs_vbo;
 
     GLuint ubo_handle;
     hz_gl4_view_ubo_t ubo_data;
+
+    GLuint slots_ubo_handle;
 
     hz_sdf_cache_opts_t opts;
 } hz_gl4_device_t;
@@ -119,6 +124,8 @@ int hz_gl4_device_init(hz_gl4_device_t *dev, hz_sdf_cache_opts_t *opts);
 #include "hz_gl4_curve_to_sdf_fragment_shader.h"
 #include "hz_gl4_stencil_kokojima_vertex_shader.h"
 #include "hz_gl4_stencil_kokojima_fragment_shader.h"
+#include "hz_gl4_char_quad_vertex_shader.h"
+#include "hz_gl4_char_quad_fragment_shader.h"
 #include "hz_gl4_fs_triangle_vertex_shader.h"
 #include "hz_gl4_fs_triangle_fragment_shader.h"
 
@@ -136,7 +143,9 @@ GLuint hz_gl4_create_shader(const char *code, GLenum type)
     glGetShaderiv(shader, GL_COMPILE_STATUS, (int *)&success);
 
     if (success != GL_TRUE) {
-        hz_logln(HZ_LOG_FATAL, "failed to create shader!");
+        char infoLog[1024];
+        glGetShaderInfoLog(shader,1024,NULL,(GLchar*)infoLog);
+        hz_logf(HZ_LOG_FATAL, "failed to create shader!\n%s",infoLog);
     }
 
     return shader;
@@ -163,15 +172,36 @@ GLuint hz_gl4_create_program(GLuint vert_shader, GLuint frag_shader)
 
 #define HZ_ARG_ARRAY(x) x, (sizeof(x)/sizeof((x)[0]))
 
+void hz_gl4_device_deinit(hz_gl4_device_t *dev)
+{
+    glDeleteBuffers(1,&dev->glyphs_vbo);
+    glDeleteVertexArrays(1,&dev->glyphs_vao);
+}
+
 int hz_gl4_device_init(hz_gl4_device_t *dev, hz_sdf_cache_opts_t *opts)
 {
     HZ_ASSERT(opts->width == opts->height);
     HZ_ASSERT(hz_is_power_of_two(opts->width));
 
+    
+    glGenVertexArrays(1, &dev->glyphs_vao);
+    glBindVertexArray(dev->glyphs_vao);
+    glGenBuffers(1, &dev->glyphs_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, dev->glyphs_vbo);
+    glBufferData(GL_ARRAY_BUFFER, 0, NULL, GL_DYNAMIC_DRAW);
+
     {
         GLuint vertex_shader = hz_gl4_create_shader(hz_gl4_curve_to_sdf_vertex_shader, GL_VERTEX_SHADER);
         GLuint fragment_shader = hz_gl4_create_shader(hz_gl4_curve_to_sdf_fragment_shader, GL_FRAGMENT_SHADER);
         dev->curve_to_sdf_program = hz_gl4_create_program(vertex_shader, fragment_shader);
+        glDeleteShader(vertex_shader);
+        glDeleteShader(fragment_shader);
+    }
+
+    {
+        GLuint vertex_shader = hz_gl4_create_shader(hz_gl4_char_quad_vertex_shader, GL_VERTEX_SHADER);
+        GLuint fragment_shader = hz_gl4_create_shader(hz_gl4_char_quad_fragment_shader, GL_FRAGMENT_SHADER);
+        dev->char_quad_shader = hz_gl4_create_program(vertex_shader, fragment_shader);
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
     }
@@ -197,6 +227,10 @@ int hz_gl4_device_init(hz_gl4_device_t *dev, hz_sdf_cache_opts_t *opts)
     glBindBuffer(GL_UNIFORM_BUFFER, dev->ubo_handle);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(hz_gl4_view_ubo_t), &dev->ubo_data, GL_STREAM_DRAW);
     
+
+    glGenBuffers(1, &dev->slots_ubo_handle);
+    glBindBuffer(GL_UNIFORM_BUFFER, dev->slots_ubo_handle);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(struct hz_lru_slot[opts->x_cells*opts->y_cells]), NULL, GL_STREAM_DRAW);
 
     dev->opts = *opts;
     glGenFramebuffers(1, &dev->fbo);
@@ -238,7 +272,7 @@ void hz_gl4_bind_fb(hz_gl4_device_t *dev) {
 }
 
 void hz_gl4_unbind_fb() {
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,0);
 }
 
 void hz_gl4_generate_glyph_sdf(hz_gl4_device_t *dev,
@@ -395,66 +429,159 @@ void hz_gl4_generate_glyph_sdf(hz_gl4_device_t *dev,
     hz_shape_draw_data_clear(&draw_data);
 }
 
+HZ_STATIC int hz_gl4_refill_cache(hz_context_t *ctx, hz_gl4_device_t *dev, uint16_t unavail_ids_sz, hz_lru_id_t *unavail_ids)
+{
+    float cw, ch, cx, cy, px_size,v_scale, h_dx, h_dy;
+    uint16_t open_slots[unavail_ids_sz];
+    hz_lru_cache_replace_slots(&ctx->lru, unavail_ids_sz, open_slots);
+
+    for (uint16_t i = 0; i < unavail_ids_sz; ++i) {
+        hz_lru_id_t id = unavail_ids[i];
+        uint16_t slot_index = open_slots[i];
+
+        // Get face needed to render this slot's glyph
+        hz_face_t *face = ctx->font_table[id.font_id].face;
+
+        cw = (float)dev->opts.width/(float)dev->opts.x_cells;
+        ch = (float)dev->opts.height/(float)dev->opts.y_cells;
+        cx = (float)(slot_index%dev->opts.x_cells)*cw;
+        cy = (float)(slot_index/dev->opts.y_cells)*ch;
+        px_size = HZ_MIN(cw,ch);
+
+        v_scale = hz_face_scale_for_pixel_h(face,px_size);
+
+        int ix0,iy0,ix1,iy1;
+        stbtt_GetGlyphBitmapBox(face->fontinfo, id.glyph_id,
+                                v_scale, v_scale,
+                                &ix0,&iy0,&ix1,&iy1);
+
+        iy0 = -iy0;
+        iy1 = -iy1;
+        iy0 ^= iy1; iy1 ^= iy0; iy0 ^= iy1;
+
+        h_dx=((ix1+ix0)*0.5f);
+        h_dy=((iy1+iy0)*0.5f);
+
+        // Store texture coordinates and new ID into LRU slot
+        ctx->lru.slots[slot_index] = (struct hz_lru_slot){
+            .id=id,
+            .u1=(cx+cw/2-h_dx+ix0)/dev->opts.width,
+            .v1=(cy+ch/2-h_dy+iy0)/dev->opts.height,
+            .u2=(cx+cw/2-h_dx+ix1)/dev->opts.width,
+            .v2=(cy+ch/2-h_dy+iy1)/dev->opts.height
+        };
+
+        // Render glyph into the LRU table
+        hz_gl4_generate_glyph_sdf(dev,face,(hz_vec2){cx+cw/2-h_dx,cy+ch/2-h_dy},v_scale,id.glyph_id);
+    }
+}
+
 void hz_gl4_render_frame(hz_context_t *ctx, hz_gl4_device_t *dev)
 {
     hz_command_list_t *cmds = &ctx->frame_cmds;
-    hz_ht_iter_t it = hz_ht_iter_begin(&cmds->unique_glyph_ht);
+    hz_memory_arena_reset(&ctx->frame_arena);
 
-    // Bind the sdf cache texture framebuffer
-    hz_gl4_bind_fb(dev);
-    glViewport(0,0, dev->opts.width, dev->opts.height);
-    // Clear stencil from previous operations
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    if (hz_vector_size(cmds->draw_data)) {
+        // Optional frustum cull
+        size_t gid_ht_sz = hz_ht_size(&cmds->unique_glyph_ht);
+        //printf("Unique GID's: %zu\n", gid_ht_sz);
+        if (gid_ht_sz) {
+            hz_lru_id_t *avail_ids = hz_memory_arena_alloc(&ctx->frame_arena, sizeof(hz_lru_id_t[gid_ht_sz]));
+            hz_lru_id_t *unavail_ids = hz_memory_arena_alloc(&ctx->frame_arena, sizeof(hz_lru_id_t[gid_ht_sz]));
 
-    // Update UBO
-    glUseProgram(dev->curve_to_sdf_program);
-    dev->ubo_data.max_sdf_distance = dev->opts.max_sdf_distance;
-    dev->ubo_data.view_matrix = hz_mat4_ortho(0.0f,dev->opts.width,0.0f,dev->opts.height);
-    
-    {
-        GLuint block_index = glGetUniformBlockIndex( dev->curve_to_sdf_program, "UboData" );
-        if (block_index == GL_INVALID_INDEX) {
-            fprintf(stderr,"Block index invalid 1!\n");
-            exit(-1);
+            for(;;){
+                struct hz_lru_stat stat = hz_lru_cache_stat(&ctx->lru, &cmds->unique_glyph_ht,
+                                                            avail_ids, unavail_ids);
+
+                // Render glyphs
+                hz_vector(hz_glyph_instance_t) instance_glyphs = NULL;
+                // Build glyph instances
+                for (size_t v = 0; v < hz_vector_size(cmds->draw_data); ++v) {
+                    struct hz_lru_node *n;
+                    if (n = hz_lru_cache_get_node(&ctx->lru, cmds->draw_data[v].lru_id)) {
+                        hz_glyph_instance_t p = cmds->draw_data[v];
+                        p.lru_id.u32 = n->slot;
+                        hz_vector_push_back(instance_glyphs, p);
+                    }
+                }
+
+                size_t glyphs_sz = hz_vector_size(instance_glyphs);
+
+                if (glyphs_sz) {
+                    glBindVertexArray(dev->glyphs_vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, dev->glyphs_vbo);
+                    glBufferData(GL_ARRAY_BUFFER, sizeof(hz_glyph_instance_t[glyphs_sz]),
+                        instance_glyphs, GL_DYNAMIC_DRAW);
+                    glEnableVertexAttribArray(0);
+                    glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, sizeof(hz_glyph_instance_t), (void *)offsetof(hz_glyph_instance_t, lru_id));
+                    glVertexAttribDivisor(0, 1);
+
+                    glEnableVertexAttribArray(1);
+                    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(hz_glyph_instance_t), (void *)offsetof(hz_glyph_instance_t,pos));
+                    glVertexAttribDivisor(1, 1);
+
+                    glEnableVertexAttribArray(2);
+                    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(hz_glyph_instance_t), (void *)offsetof(hz_glyph_instance_t,rot));
+                    glVertexAttribDivisor(2, 1);
+
+                    glEnableVertexAttribArray(3);
+                    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(hz_glyph_instance_t), (void *)offsetof(hz_glyph_instance_t,scale));
+                    glVertexAttribDivisor(3, 1);
+
+                    glBindVertexArray(dev->glyphs_vao);
+                    glUseProgram(dev->char_quad_shader);
+
+                    GLuint block_index = glGetUniformBlockIndex( dev->char_quad_shader, "u_cache_slots" );
+                    glBindBuffer(GL_UNIFORM_BUFFER, dev->slots_ubo_handle);
+                    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(struct hz_lru_slot[ctx->lru.sz]), ctx->lru.slots);
+                    glBindBufferBase(GL_UNIFORM_BUFFER, block_index, dev->slots_ubo_handle);
+
+                    glBindTexture(GL_TEXTURE_2D, dev->sdf_texture);
+                    glEnable(GL_BLEND);
+                    glDisable(GL_CULL_FACE);
+                    glDisable(GL_DEPTH_TEST);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, glyphs_sz);
+                    glBindVertexArray(0);
+                }
+
+                // Remove drawn glyphs from ht
+
+                hz_vector_destroy(instance_glyphs); // destroy glyph instances buffer
+
+                if (!stat.unavail) {
+                    break;
+                }
+
+                // Write glyphs into texture
+                hz_gl4_bind_fb(dev);
+                // Clear stencil from previous operations
+                glClear(GL_STENCIL_BUFFER_BIT);
+                glViewport(0,0, dev->opts.width, dev->opts.height);
+                // Update UBO
+                glUseProgram(dev->curve_to_sdf_program);
+                dev->ubo_data.max_sdf_distance = dev->opts.max_sdf_distance;
+                dev->ubo_data.view_matrix = hz_mat4_ortho(0.0f,dev->opts.width,0.0f,dev->opts.height);
+
+                {
+                    GLuint block_index = glGetUniformBlockIndex( dev->curve_to_sdf_program, "UboData" );
+                    if (block_index == GL_INVALID_INDEX) {
+                        fprintf(stderr,"Block index invalid 1!\n");
+                        exit(-1);
+                    }
+
+                    glBindBuffer(GL_UNIFORM_BUFFER, dev->ubo_handle);
+                    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(hz_gl4_view_ubo_t), &dev->ubo_data);
+                    glBindBufferBase(GL_UNIFORM_BUFFER, block_index, dev->ubo_handle);
+                }
+
+                hz_gl4_refill_cache(ctx, dev, stat.unavail, unavail_ids);
+                hz_gl4_unbind_fb();
+            }
         }
-
-        glBindBuffer(GL_UNIFORM_BUFFER, dev->ubo_handle);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(hz_gl4_view_ubo_t), &dev->ubo_data);
-        glBindBufferBase(GL_UNIFORM_BUFFER, block_index, dev->ubo_handle);
     }
 
-    size_t i = 0;
-
-    while (hz_ht_iter_valid(&it)) {
-        // if (!hz_glyph_cache_has_hit(&ctx->glyph_cache, it.key)) {
-            hz_face_t *face = ctx->font_table[it.key>>16u].face;
-            hz_index_t glyph_id = it.key & 0xffffu;
-
-            float cell_w = (float)dev->opts.width / (float)dev->opts.x_cells;
-            float cell_h = (float)dev->opts.height / (float)dev->opts.y_cells;
-
-            float cell_x = ((float)(i % dev->opts.x_cells)+0.5f) * cell_w;
-            float cell_y = ((float)(i / dev->opts.y_cells)+0.5f) * cell_h;
-
-            float min_dim = MIN(cell_w, cell_h)*1.5f;
-
-            int x0,x1,y0,y1;
-            
-            stbtt_GetGlyphBox(face->fontinfo, glyph_id, &x0,&y0,&x1,&y1);
-            
-            float y_scale = hz_face_scale_for_pixel_h(face, min_dim);
-            float dxh = (x1 + x0)*0.5f *y_scale;
-            float dyh = (y1 + y0)*0.5f *y_scale;
-            hz_gl4_generate_glyph_sdf(dev,face,(hz_vec2){cell_x-dxh,cell_y-dyh},y_scale,glyph_id);
-        // }
-        ++i;
-
-        hz_ht_iter_next(&cmds->unique_glyph_ht, &it);
-    }
-
-
-    hz_gl4_unbind_fb();
 }
 
 #endif // HZ_GL4_IMPLEMENTATION

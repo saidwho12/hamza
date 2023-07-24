@@ -1,7 +1,7 @@
 
 # Hamza
 
-Hamza is a light-weight, fast and portable C99 [Unicode](https://www.unicode.org)/[OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's designed to be a small, 
+Hamza is a Header-Only, Fast and Portable C99 [Unicode](https://www.unicode.org)/[OpenType](https://docs.microsoft.com/en-us/typography/opentype/spec) shaping and rendering library. It's designed to be a small, 
 portable and optimized shaper that's easy to integrate into any existing project. Below is an image of a short string of Arabic shaped with this library using a fairly complex font, random colors are assigned to each glyph.
 ![](banner.png)
 

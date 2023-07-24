@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <hz/hz_ucd_15_0_0.h>
+#include <hz/hz_ucd_5_2_0.h>
 #define HZ_IMPLEMENTATION
 #include <hz/hz.h>
 
@@ -203,9 +203,9 @@ void render_text_to_png(const char *filename,
             stbtt_MakeGlyphBitmap(font, glyph_buffer, c_w,
                                   c_h, c_w, scale, scale, glyph_index);
 
-            Color col = {0.0f,//rand_float(),//138.0f/255.0f,
-                         0.0f,//rand_float(),//176.0f/255.0f,
-                         0.0f,//rand_float(),//238.0f/255.0f,
+            Color col = {rand_float(),//138.0f/255.0f,
+                         rand_float(),//176.0f/255.0f,
+                         rand_float(),//238.0f/255.0f,
                          1.0f};
 
 #if 0
@@ -271,23 +271,17 @@ int main(int argc, char *argv[]) {
         HZ_FEATURE_CALT,
         HZ_FEATURE_DLIG,
         HZ_FEATURE_LIGA,
-        HZ_FEATURE_SWSH,
+        // HZ_FEATURE_SWSH,
         HZ_FEATURE_MARK,
         HZ_FEATURE_MKMK,
         HZ_FEATURE_KERN,
     };
 
-    hz_shaper_set_features(&shaper, features, HZ_ARRAY_SIZE(features));
+    hz_shaper_set_features(&shaper, HZ_ARRAY_SIZE(features), features);
 
     hz_buffer_t txt;
-
-    for (int i = 0; i < 1; ++i) {
-        hz_buffer_init(&txt);
-        // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "يحتفل الأردنبزفاف ملكي هو الأول منذ سنوات طويلة، إذ يُعقد قِران ولي العهد الأردني الأمير الحسين بن عبدالله الثاني، على الآنسة رجوة آل سيف.", &txt);
-        hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, " وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ", &txt);
-        // hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "The James Dudley is studying online college.", &txt);
-    }
-
+    hz_buffer_init(&txt);
+    hz_shape_sz1(&shaper, &font_data, HZ_ENCODING_UTF8, "اللُّغَةُ العَرَبِيَّة هي أكثر اللغات السامية تحدثًا، وإحدى أكثر اللغات انتشاراً في العالم، يتحدثها أكثر من 467 مليون نسمة.(1) ويتوزع متحدثوها في الوطن العربي، بالإضافة إلى العديد من المناطق الأخرى المجاورة كالأحواز وتركيا وتشاد ومالي والسنغال وإرتيريا وإثيوبيا وجنوب السودان وإيران. وبذلك فهي تحتل المركز الرابع أو الخامس من حيث اللغات الأكثر انتشارًا في العالم، وهي تحتل المركز الثالث تبعًا لعدد الدول التي تعترف بها كلغة رسمية؛ إذ تعترف بها 27 دولة كلغة رسمية، واللغة الرابعة من حيث عدد المستخدمين على الإنترنت. اللغةُ العربيةُ ذات أهمية قصوى ", &txt);
     render_text_to_png("txt.png", &fontinfo, &txt);
 
     hz_buffer_release(&txt);

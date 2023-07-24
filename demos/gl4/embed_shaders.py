@@ -104,7 +104,9 @@ def main():
         'shaders/stencil_kokojima.vert',
         'shaders/stencil_kokojima.frag',
         'shaders/fs_triangle.vert',
-        'shaders/fs_triangle.frag'
+        'shaders/fs_triangle.frag',
+        'shaders/char_quad.vert',
+        'shaders/char_quad.frag',
         ], embed_spirv=False)
 
 if __name__ == '__main__':

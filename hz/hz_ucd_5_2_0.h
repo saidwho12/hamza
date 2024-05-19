@@ -74,7 +74,7 @@ typedef enum {
     HZ_JOINING_GROUP_ZHAIN,
 } hz_joining_group_t;
 
-int32_t hz_ucd_arabic_joining_k2[274] = {
+static int32_t hz_ucd_arabic_joining_k2[274] = {
     -272,  -3, -23,   0,   0,   0,
        0,   0, -98,   0,   0,-142,
     -144,   1,   0,-150,   1,   0,
@@ -123,7 +123,7 @@ int32_t hz_ucd_arabic_joining_k2[274] = {
      -20,   2,   2,   0,
 };
 
-uint32_t hz_ucd_arabic_joining_ucs_codepoints[274] = {
+static uint32_t hz_ucd_arabic_joining_ucs_codepoints[274] = {
         2011,    1609,    1888,    1747,    1662,    1694,
         1681,    2007,    2012,    1588,    1683,    1918,
         1899,    1732,    1904,    1813,    1578,    1874,
@@ -172,7 +172,7 @@ uint32_t hz_ucd_arabic_joining_ucs_codepoints[274] = {
         1722,    1604,    1883,    2015,
 };
 
-uint32_t hz_ucd_arabic_joining_data[274] = {
+static uint32_t hz_ucd_arabic_joining_data[274] = {
     HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_NONE,
     HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_YEH,
     HZ_JOINING_TYPE_D | HZ_JOINING_GROUP_FEH,

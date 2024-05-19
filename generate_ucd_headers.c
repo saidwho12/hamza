@@ -549,7 +549,7 @@ int generate() {
 
                                 printf("ArabicShaping.txt MPH table created\n");
 
-                                fprintf(f, "int32_t hz_ucd_arabic_joining_k2[%d] = {", cnt);
+                                fprintf(f, "static int32_t hz_ucd_arabic_joining_k2[%d] = {", cnt);
                                 for (int i = 0; i < arabic_shaping_table.size; ++i) {
                                     int k2 = arabic_shaping_table.k2[i];
                                     if (!(i % INTS_PER_LINE)) fprintf(f,"\n    ");
@@ -559,7 +559,7 @@ int generate() {
                                 fprintf(f,"\n};\n\n");
 
                                 // UCS 
-                                fprintf(f, "uint32_t hz_ucd_arabic_joining_ucs_codepoints[%d] = {",cnt);
+                                fprintf(f, "static uint32_t hz_ucd_arabic_joining_ucs_codepoints[%d] = {",cnt);
                                 for (int i = 0; i < arabic_shaping_table.size; ++i) {
                                     arabic_joining_data_t dat = ((arabic_joining_data_t*)arabic_shaping_table.values)[i];
                                     if (!(i % INTS_PER_LINE))
@@ -570,7 +570,7 @@ int generate() {
                                 fprintf(f,"\n};\n\n");
                                 printf("UCS Done\n");
 
-                                fprintf(f, "uint32_t hz_ucd_arabic_joining_data[%d] = {",cnt);
+                                fprintf(f, "static uint32_t hz_ucd_arabic_joining_data[%d] = {",cnt);
                                 for (int i = 0; i < arabic_shaping_table.size; ++i) {
                                     arabic_joining_data_t dat = ((arabic_joining_data_t*)arabic_shaping_table.values)[i];
                                     fprintf(f,"\n    ");

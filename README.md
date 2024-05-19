@@ -105,6 +105,7 @@ hz_deinit();
 - [ ] Emoji Combinations
 - [ ] Multi-Threading
 - [x] Unicode Normalization (NFC,NFD,NFKC,NFKD)
+- [ ] Open `.aat` `.woff` and `.woff2` formats
 
 
 ## LICENSE

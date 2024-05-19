@@ -7,10 +7,11 @@
 # *.xhtml
 
 # Folders
-data/
-build/
-deps/
-unicode/
+/out
+/data
+/build
+/deps
+/unicode
 .*
 
 # Prerequisites

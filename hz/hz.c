@@ -1,49 +1,130 @@
 #include "hz.h"
 
 #if HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
-#    define HZ_PACK(__Declaration__) __Declaration__ __attribute__((__packed__))
+#   define HzPack(S) S __attribute__((__packed__))
 #elif HZ_COMPILER & HZ_COMPILER_VC
-#    define HZ_PACK(__Declaration__) __pragma(pack(push,1)) __Declaration__ __pragma(pack(pop))
+#   define HzPack(S) __pragma(pack(push,1)) S __pragma(pack(pop))
 #endif 
 
-#define ArraySize(A) (sizeof(A)/sizeof(A[0]))
-
-// define some helper typedefs to help shorten our code
-typedef uint8_t u8;
-typedef int8_t s8;
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-typedef size_t sz;
-
-#define IS_BIG_ENDIAN (!*(u8*)&(u16){1})
-
-HZ_ALWAYS_INLINE void hz_memset(void *data, int val, size_t size) {
-    memset(data,val,size);
-}
-
-HZ_ALWAYS_INLINE void hz_memcpy(void *dst, const void *src, size_t size) {
-    memcpy(dst,src,size);
-}
-
-#ifndef HZ_MEMSET
-#  define HZ_MEMSET hz_memset
+#if defined(HZ_NOSTDLIB)
+#  define DEBUG_LOG(...)
+#else
+#include <stdio.h>
+#  define DEBUG_LOG(...) printf(__VA_ARGS__)
 #endif
 
-#define HZ_MEMCPY hz_memcpy
+#if defined(_MSC_VER)
+#define IGNORE(x) __noop(x)
+#else /* plain C version */
+#define IGNORE(x) (void)(x)
+#endif
 
-#define hz_zero(_Data, _Size) HZ_MEMSET(_Data,0,_Size)
-#define hz_zero_struct(_Struct) HZ_MEMSET((void *)&(_Struct),0,sizeof(_Struct))
+#define countof(...) (sizeof(__VA_ARGS__)/sizeof(*(__VA_ARGS__)))
+
+/* Helper functions used to clean up the control flow logic */
+#define until(x) while(!(x))
+#define range(type, iterator_name, minval, maxval) (type iterator_name = (minval); iterator_name <= (maxval); ++iterator_name)
+#define each(arr) (u32 i=0; i<countof(arr); ++i)
+
+typedef char s8, byte;
+typedef unsigned char u8, ubyte, uchar;
+typedef short s16;
+typedef unsigned short u16;
+typedef long s32;
+typedef unsigned long u32;
+typedef long long s64;
+typedef unsigned long long u64;
+
+/* ABCD -- A is msb, D is lsb -- little endian (x86, x86_64)
+ * A is lsb, D is msb -- big endian (network, files, arm architecture, etc.)
+ * uint16 temp = 1
+ *   if target arch is intel:
+ *     00 01
+ *   if target arch is arm:
+ *     01 00
+ * uint8 *bytes = (uint8 *) &temp
+ *                            ^ gives a uint16 pointer
+ * bytes[0] == 0 <-- little endian
+ * bytes[0] == 1 <-- big endian
+ */
+// #   define IS_LITTLE_ENDIAN (!*(u8*)&(u16){1})
+#if HZ_COMPILER & (HZ_COMPILER_GCC | HZ_COMPILER_CLANG)
+// #   include <bits/endian.h>
+// #   if __BYTE_ORDER == __LITTLE_ENDIAN
+// #       define IS_LITTLE_ENDIAN 1
+// #   elif __BYTE_ORDER == __BIG_ENDIAN
+// #       define IS_LITTLE_ENDIAN 0
+// #   else
+//         #error "Unknown endianness"
+// #   endif
+// #elif HZ_COMPILER & HZ_COMPILER_CLANG
+#       define LITTLE_ENDIAN 0x41424344UL
+#       define BIG_ENDIAN    0x44434241UL
+// #   define PDP_ENDIAN    0x42414443UL
+/* fallback if our compiler doesn't provide defines for us, this should still simplify to a constant */
+#       define IS_LITTLE_ENDIAN 'ABCD' == LITTLE_ENDIAN /* NOTE: Cross-compilation not possible with this method */
+#elif HZ_COMPILER & HZ_COMPILER_VC
+#   if defined(__i386__) || defined(_M_IX86) || defined(_M_IX64)
+#       define IS_LITTLE_ENDIAN 1
+#   else
+#       define IS_LITTLE_ENDIAN 0
+#   endif
+#endif
+
+/* As Hamza is a self-contained library meant to compile with `-nostdlib` and `-ffreestanding` flags,
+ * or, without CRT on windows...
+ * We must provide our own version of hz_memcpy, memset, malloc, free, calloc, memmove, and other common functions
+ * that we need to use.
+ */
+void HZ_ALWAYS_INLINE hz_memset(void* ptr, uchar c, size_t n)
+{
+    /* The following is a scalar version of memset, implemented using a 64-bit
+       value with each byte being the passed uchar.
+    */
+    size_t i;
+    uchar* mem = {ptr};
+    u64 h = c | ((u64)c << 8);
+    h |= h << 16;
+    h |= h << 32;
+
+    for (i = 0; i <= n - 8; i += 8) {
+        *(u64*)(mem + i) = h;
+    }
+
+    while (i < n) mem[i++] = c;
+}
+
+void HZ_ALWAYS_INLINE hz_memcpy(void *restrict destination, const void *restrict const source, size_t size)
+{
+    /* Scalar version (fake-vectorized using 64-bit value) */
+    size_t i;
+    u8 *outp = destination;
+    const u8 *restrict const inp = source;
+    for (i = 0; i + 8 <= size; i += 8) {
+        *(u64*)(outp+i) = *(u64*)(inp+i);
+    }
+
+    while (i < size) {
+        outp[i] = inp[i];
+        ++i;
+    }
+}
+
+int HZ_ALWAYS_INLINE hz_memcmp(const void* ptr1, const void* ptr2, size_t size) {
+    const u8 *A = ptr1, *B = ptr2;
+    s32 diff;
+    for (size_t i = 0; i < size; ++i)
+        if ((diff = A[i] - B[i])) return diff;
+
+    return 0;
+}
+
+#define hz_zero(_Data, _Size) hz_memset(_Data,0,_Size)
+#define hz_zero_struct(_Struct) hz_memset((void *)&(_Struct),0,sizeof(_Struct))
 #define HZ_PRIVATE static
-#define Offset16 hz_uint16
-#define Offset32 hz_uint32
-#define Version16Dot16 hz_uint32
-
-#include <assert.h>
-#include <stdarg.h>
+#define Offset16 u16
+#define Offset32 u32
+#define Version16Dot16 u32
 
 #define SIZEOF_VOIDPTR sizeof(void*)
 
@@ -52,8 +133,6 @@ HZ_ALWAYS_INLINE void hz_memcpy(void *dst, const void *src, size_t size) {
 #define UTF_FAILED (-1)
 #define UTF_END_OF_BUFFER (-2)
 #define UTF_OK 1
-
-#include "hzconfig.h"
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -67,8 +146,6 @@ HZ_ALWAYS_INLINE void hz_memcpy(void *dst, const void *src, size_t size) {
 #define hz_likely(x) (x)
 #define hz_unlikely(x) (x)
 #endif
-
-
 
 typedef int16_t hz_segment_sz_t;
 
@@ -165,51 +242,7 @@ typedef enum {
 typedef uint8_t char8_t;
 typedef uint32_t char32_t;
 
-typedef hz_uint16 F2DOT14, FWORD, UFWORD;
-
-#define DEBUG_MSG(msg) fprintf(stdout,"[DEBUG:%s:%d]: %s\n",__FILE__,__LINE__,msg)
-#define ERROR_MSG(msg) fprintf(stderr,"[ERROR: %s:%d]: %s\n",__FILE__,__LINE__,msg)
-#define QUIT_MSG(msg) { ERROR_MSG(msg); exit(-1); }
-#define ASSERT_MSG(cond, msg) assert((cond) && message)
-
-typedef enum {
-    HZ_LOG_INFO,
-    HZ_LOG_DEBUG,
-    HZ_LOG_WARNING,
-    HZ_LOG_ERROR,
-    HZ_LOG_FATAL
-} hz_severity_t;
-
-static FILE *_logfile = NULL;
-
-void hz_flog(hz_severity_t severity, const char *filename, const char *func, int linenum, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap,fmt);
-    FILE *output = stdout;
-    if (_logfile != NULL) {
-        output = _logfile;
-    }
-
-    const char *severity_titles[] = { "INFO", "DEBUG", "WARNING", "ERROR", "FATAL ERROR"};
-    fprintf(output, "[%s][%s:%d <%s>] ",severity_titles[severity], filename, linenum, func);
-    vfprintf(output, fmt, ap);
-    fflush(output);
-
-    va_end(ap);
-
-    if (severity == HZ_LOG_FATAL) {
-        exit(-1);
-    }
-}
-
-#ifdef HZ_DEBUG_LOGGING
-#define hz_logf(Severity, ...) hz_flog(Severity, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
-#define hz_logln(Severity,Msg) hz_flog(Severity,__FILE__, __FUNCTION__, __LINE__,"%s\n",Msg)
-#else
-#define hz_logf(Severity, ...) 
-#define hz_logln(Severity,Msg)
-#endif
+typedef u16 F2DOT14, FWORD, UFWORD;
 
 struct hz_lib_t {
     hz_config_t cfg;
@@ -248,7 +281,9 @@ void hz_release(hz_allocator_t *alctr)
 void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, size_t size, size_t align)
 {
     HZ_IGNORE_ARG(user); HZ_IGNORE_ARG(align);
-    
+#if defined(HZ_NOSTDLIB)
+    return NULL;
+#else
     switch (cmd) {
         case HZ_CMD_ALLOC:
             return malloc(size);
@@ -260,6 +295,7 @@ void *hz_standard_c_allocator_fn(void *user, hz_allocator_cmd_t cmd, void *ptr, 
         default: // error, cmd not handled
             return NULL;
     }
+#endif
 }
 
 HZ_ALWAYS_INLINE uint32_t hz_hash32_fnv1a(uint32_t k) {
@@ -325,9 +361,9 @@ typedef struct hz_ht_t {
 } hz_ht_t;
 
 void hz_ht_clear(hz_ht_t *ht) {
-    HZ_MEMSET(ht->flags, HZ_HT_EMPTY, ht->size);
-    HZ_MEMSET(ht->keys, 0, ht->size*sizeof(uint32_t));
-    HZ_MEMSET(ht->values, 0, ht->size*sizeof(uint32_t));
+    hz_memset(ht->flags, HZ_HT_EMPTY, ht->size);
+    hz_memset(ht->keys, 0, ht->size*sizeof(uint32_t));
+    hz_memset(ht->values, 0, ht->size*sizeof(uint32_t));
     ht->num_occupied = 0;
 }
 
@@ -475,69 +511,95 @@ void hz_free(void *pointer)
     hz_.allocator.allocfn(hz_.allocator.user,HZ_CMD_FREE,pointer,0,1);
 }
 
-HZ_ALWAYS_INLINE uint16_t hz_bswap16(uint16_t x)
-{
-    return (x << 8) | (x >> 8);
+HZ_ALWAYS_INLINE void parse_u16x4(u64 *p) {
+#ifdef HZ_ENDIAN_LITTLE
+    *p = ( (*p & 0xff00ff00ff00ff00) >> 8 )
+            | ( (*p & 0x00ff00ff00ff00ff) << 8 );
+#else
+    IGNORE(p);
+#endif
 }
 
-HZ_ALWAYS_INLINE uint32_t hz_bswap32(uint32_t x)
-{
-    uint32_t v = 0;
-    v |= (x & 0x000000ff) << 24;
-    v |= (x & 0x0000ff00) << 8;
-    v |= (x & 0x00ff0000) >> 8;
-    v |= (x & 0xff000000) >> 24;
-    return v;
-}
-
-HZ_ALWAYS_INLINE void hz_byte_swap_u16x4(uint64_t *p) {
-    uint64_t q = 0;
-    q |= (*p & 0xff00ff00ff00ff00) >> 8;
-    q |= (*p & 0x00ff00ff00ff00ff) << 8;
-    *p = q;
-}
-
-HZ_ALWAYS_INLINE void hz_byte_swap_u16x2(u32 *p) {
+HZ_ALWAYS_INLINE void parse_u16x2(u32 *p) {
+#ifdef HZ_ENDIAN_LITTLE
     *p = ((*p & 0xff00ff00) >> 8) | ((*p & 0x00ff00ff) << 8);
+#else
+    IGNORE(p);
+#endif
 }
 
-HZ_ALWAYS_INLINE void hz_byte_swap_16(uint16_t *p)
+HZ_ALWAYS_INLINE void parse_u16(u16 *p)
 {
+#ifdef HZ_ENDIAN_LITTLE
+#  if   HZ_COMPILER & HZ_COMPILER_VC
+    *p = _byteswap_ushort(*p);
+#  elif HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
+    *p = __builtin_bswap16(*p);
+#  else
     *p = (*p << 8) | (*p >> 8);
+#  endif
+#else
+    IGNORE(p);
+#endif
 }
 
-HZ_ALWAYS_INLINE void hz_byte_swap_32(uint32_t *p)
+HZ_ALWAYS_INLINE void parse_u32(u32 *p)
 {
-    uint32_t q = 0;
+#ifdef HZ_ENDIAN_LITTLE
+#  if HZ_COMPILER & HZ_COMPILER_VC
+    *p = _byteswap_uint(*p);
+#  elif HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
+    *p = __builtin_bswap32(*p);
+#  else
+    u32 q = 0;
     q |= (*p & 0xff000000UL) >> 24;
     q |= (*p & 0x00ff0000UL) >> 8;
     q |= (*p & 0x0000ff00UL) << 8;
     q |= (*p & 0x000000ffUL) << 24; 
     *p = q;
+#  endif
+#else
+    IGNORE(p);
+#endif
 }
 
-HZ_ALWAYS_INLINE void hz_byte_swap_u32x2(uint64_t *p) {
-    uint64_t q = 0;
-    q |= (*p & 0xff000000ff000000) >> 24;
-    q |= (*p & 0x00ff000000ff0000) >> 8;
-    q |= (*p & 0x0000ff000000ff00) << 8;
-    q |= (*p & 0x000000ff000000ff) << 24;
+HZ_ALWAYS_INLINE void parse_u32x2(u64 *p) {
+#ifdef HZ_ENDIAN_LITTLE
+    u64 q = 0;
+    q |= (*p & 0xff000000ff000000ULL) >> 24;
+    q |= (*p & 0x00ff000000ff0000ULL) >> 8;
+    q |= (*p & 0x0000ff000000ff00ULL) << 8;
+    q |= (*p & 0x000000ff000000ffULL) << 24;
     *p = q;
+#else
+    IGNORE(p);
+#endif
 }
 
-HZ_ALWAYS_INLINE uint64_t hz_bswap64(uint64_t x)
+HZ_ALWAYS_INLINE void parse_u64(u64 *p)
 {
-    uint64_t v = 0;
-    v |= (x & 0x00000000000000ff) << 56;
-    v |= (x & 0x000000000000ff00) << 40;
-    v |= (x & 0x0000000000ff0000) << 24;
-    v |= (x & 0x00000000ff000000) << 8;
-    v |= (x & 0x000000ff00000000) >> 8;
-    v |= (x & 0x0000ff0000000000) >> 24;
-    v |= (x & 0x00ff000000000000) >> 40;
-    v |= (x & 0xff00000000000000) >> 56;
+#ifdef HZ_ENDIAN_LITTLE
+#  if HZ_COMPILER & HZ_COMPILER_VC
+    *p = (u64) _byteswap_uint64((unsigned __int64) *p);
+#  elif HZ_COMPILER & (HZ_COMPILER_CLANG | HZ_COMPILER_GCC)
+    *p = __builtin_bswap64(*p);
+#  else
+    u64 v = 0;
+    v |= (x & 0x00000000000000ffULL) << 56;
+    v |= (x & 0x000000000000ff00ULL) << 40;
+    v |= (x & 0x0000000000ff0000ULL) << 24;
+    v |= (x & 0x00000000ff000000ULL) << 8;
+    v |= (x & 0x000000ff00000000ULL) >> 8;
+    v |= (x & 0x0000ff0000000000ULL) >> 24;
+    v |= (x & 0x00ff000000000000ULL) >> 40;
+    v |= (x & 0xff00000000000000ULL) >> 56;
     return v;
+#  endif
+#else
+    IGNORE(p);
+#endif
 }
+
 
 
 /*
@@ -673,17 +735,15 @@ typedef struct { uint32_t jump, prev_offset; } hz_parser_state_t;
 
 typedef struct {
     char *stackmem;
-    const uint8_t *mem;
-    int must_bswap;
+    uint8_t *mem;
     size_t start;
     size_t offset;
     hz_stack_allocator_t stack;
     hz_parser_state_t *curr_state;
 } hz_parser_t;
 
-void hz_parser_init(hz_parser_t *p, const uint8_t *mem) {
+void hz_parser_init(hz_parser_t *p, uint8_t *mem) {
     p->mem = mem;
-    p->must_bswap = !IS_BIG_ENDIAN;
     p->curr_state = NULL;
     p->offset = 0;
     p->start = 0;
@@ -695,7 +755,7 @@ void hz_parser_deinit(hz_parser_t *p) {
     hz_free(p->stackmem);
 }
 
-hz_parser_t hz_parser_create(const uint8_t *mem) {
+hz_parser_t hz_parser_create(uint8_t *mem) {
     hz_parser_t p;
     hz_parser_init(&p,mem);
     return p;
@@ -722,162 +782,88 @@ static inline void hz_parser_advance(hz_parser_t *p, size_t count)
     p->offset += count;
 }
 
-static inline const uint8_t* hz_parser_at_cursor(hz_parser_t *p)
+static inline void* hz_parser_at_cursor(hz_parser_t *p)
 {
     return p->mem + p->start + p->offset;
 }
 
-uint8_t hz_parser_read_u8(hz_parser_t *p)
+u8 hz_parser_read_u8(hz_parser_t *p)
 {
-    uint8_t v = *(uint8_t *)hz_parser_at_cursor(p);
-    hz_parser_advance(p, 1);
+    u8 v = *(u8*)hz_parser_at_cursor(p);
+    hz_parser_advance(p,1);
     return v;
 }
 
-uint16_t hz_parser_read_u16(hz_parser_t *p)
+u16 hz_parser_read_u16(hz_parser_t *p)
 {
-    uint16_t v = *(uint16_t *)hz_parser_at_cursor(p);
-    hz_parser_advance(p, 2);
-    return p->must_bswap ? hz_bswap16(v) : v;
+    u16 v = *(u16*)hz_parser_at_cursor(p);
+    parse_u16(&v);
+    hz_parser_advance(p,2);
+    return v;
 }
 
-uint32_t hz_parser_read_u32(hz_parser_t *p)
+u32 hz_parser_read_u32(hz_parser_t *p)
 {
-    uint32_t v = *(uint32_t *)hz_parser_at_cursor(p);
-    hz_parser_advance(p, 4);
-    return p->must_bswap ? hz_bswap32(v) : v;
+    u32 v = *(u32*)hz_parser_at_cursor(p);
+    parse_u32(&v);
+    hz_parser_advance(p,4);
+    return v;
 }
 
-uint64_t hz_parser_read_u64(hz_parser_t *p)
+u64 hz_parser_read_u64(hz_parser_t *p)
 {
-    uint64_t v = *(uint64_t *)hz_parser_at_cursor(p);
-    hz_parser_advance(p, 8);
-    return p->must_bswap ? hz_bswap64(v) : v;
+    u64 v = *(u64*)hz_parser_at_cursor(p);
+    parse_u64(&v);
+    hz_parser_advance(p,8);
+    return v;
 }
 
-void hz_parser_read_block(hz_parser_t *p, uint8_t *write_addr, size_t size)
+void hz_parser_read_block(hz_parser_t *p, u8 *write_addr, size_t size)
 {
     hz_memcpy(write_addr, hz_parser_at_cursor(p), size);
     hz_parser_advance(p, size);
 }
 
-void hz_parser_read_u16_block(hz_parser_t *p, uint16_t *write_addr, size_t size)
+void hz_parser_read_u16_block(hz_parser_t *p, u16 *write_addr, size_t size)
 {
     hz_memcpy(write_addr, hz_parser_at_cursor(p), size*2);
     p->offset += size*2;
 
-    if (p->must_bswap) {
-        size_t swap_index = 0;
-        while(swap_index+4 <= size) {
-            hz_byte_swap_u16x4((uint64_t*)&write_addr[swap_index]);
-            swap_index += 4;
-        }
+    size_t swap_index = 0;
+    while(swap_index+4 <= size) {
+        parse_u16x4((u64*)&write_addr[swap_index]);
+        swap_index += 4;
+    }
 
-        while (swap_index < size) {
-            hz_byte_swap_16(write_addr + swap_index);
-            ++swap_index;
-        }
+    while (swap_index < size) {
+        parse_u16(write_addr + swap_index);
+        ++swap_index;
     }
 }
 
-void hz_parser_read_u32_block(hz_parser_t *p, uint32_t *write_addr, size_t size)
+void hz_parser_read_u32_block(hz_parser_t *p, u32 *write_addr, size_t size)
 {
     hz_memcpy(write_addr, hz_parser_at_cursor(p), size*4);
     p->offset += size*4;
 
-    if (p->must_bswap) {
-        size_t swap_index = 0;
-        while(swap_index+2 <= size) {
-            hz_byte_swap_u32x2((uint64_t*)&write_addr[swap_index]);
-            swap_index += 2;
-        }
+    size_t swap_index = 0;
+    while(swap_index+2 <= size) {
+        parse_u32x2((u64*)&write_addr[swap_index]);
+        swap_index += 2;
+    }
 
-        while (swap_index < size) {
-            hz_byte_swap_32(write_addr + swap_index);
-            ++swap_index;
-        }
+    while (swap_index < size) {
+        parse_u32(write_addr + swap_index);
+        ++swap_index;
     }
 }
 
-void hz_parser_read_u64_block(hz_parser_t *p, uint64_t *write_addr, size_t size)
+void hz_parser_read_u64_block(hz_parser_t *p, u64 *write_addr, size_t size)
 {
     while (size > 0) {
         *write_addr++ = hz_parser_read_u64(p);
         --size;
     }
-}
-
-int hz_cmdread(hz_parser_t *p, int c_struct_align, void *dataptr, const char *cmd, ...)
-{
-    va_list va; va_start(va, cmd);
-
-    const char *curs = cmd;
-    uint8_t *mem = (uint8_t *)dataptr;
-    size_t member_offset = 0;
-    size_t member_array_count = 1;
-
-    while (*curs != '\0') {
-        switch (*curs) {
-            case '^': {
-                ++curs; // skip '^'
-                member_array_count = 0;
-                while (*curs >= '0' && *curs <= '9') {
-                    member_array_count *= 10;
-                    member_array_count += *curs - '0';
-                    ++curs;
-                }
-
-                break;
-            }
-            case 'b': {
-                ++curs;
-                hz_parser_read_block(p, (uint8_t *)mem, member_array_count);
-                member_offset += member_array_count;
-                member_array_count = 1;
-                break;
-            }
-
-            case 'w': {
-                ++curs;
-                member_offset += hz_align_forward(member_offset, c_struct_align ? 2 * member_array_count : 1);
-                hz_parser_read_u16_block(p,
-                            (uint16_t *)(mem + member_offset),
-                            member_array_count);
-                member_offset += 2 * member_array_count;
-                member_array_count = 1;
-                break;
-            }
-
-            case 'd': {
-                ++curs;
-                member_offset += hz_align_forward(member_offset, c_struct_align ? 4 * member_array_count : 1);
-                hz_parser_read_u32_block(p,
-                            (uint32_t *)(mem + member_offset),
-                            member_array_count);
-                member_offset += 4 * member_array_count;
-                member_array_count = 1;
-                break;
-            }
-
-            case 'q': {
-                ++curs;
-                member_offset += hz_align_forward(member_offset, c_struct_align ? 8 * member_array_count : 1);
-                hz_parser_read_u64_block(p,
-                            (uint64_t *)(mem + member_offset),
-                            member_array_count);
-                member_offset += 8 * member_array_count;
-                member_array_count = 1;
-                break;
-            }   
-
-            case ' ': default: {
-                ++curs;
-                break;
-            }
-        }
-    }
-
-    va_end(va);
 }
 
 typedef struct hz_array_t {
@@ -967,12 +953,12 @@ hz_array_pop_range_at(hz_array_t *array, size_t index, size_t count)
 
     size_t remaining_len = array->size - (index + count);
     uint32_t *remaining = hz_malloc(remaining_len * sizeof(uint32_t));
-    memcpy(remaining, &array->data[index + count], remaining_len * sizeof(uint32_t));
+    hz_memcpy(remaining, &array->data[index + count], remaining_len * sizeof(uint32_t));
 
     array->data = hz_realloc(array->data, new_size * sizeof(uint32_t));
     array->size = new_size;
 
-    memcpy(&array->data[index], remaining, remaining_len * sizeof(uint32_t));
+    hz_memcpy(&array->data[index], remaining, remaining_len * sizeof(uint32_t));
     hz_free(remaining);
 }
 
@@ -988,11 +974,11 @@ hz_array_insert(hz_array_t *array, size_t index, uint32_t val)
 
         size_t sec_len = array->size - (index + 1);
         uint32_t *sec = hz_malloc(sec_len * sizeof(uint32_t));
-        memcpy(sec, &array->data[index], sec_len);
+        hz_memcpy(sec, &array->data[index], sec_len);
 
         array->data = hz_realloc(array->data, new_size * sizeof(uint32_t));
         array->size = new_size;
-        memcpy(&array->data[index + 1], sec, sec_len);
+        hz_memcpy(&array->data[index + 1], sec, sec_len);
         array->data[index] = val;
 
         hz_free(sec);
@@ -1217,7 +1203,7 @@ void hz_vector_grow(void **v, int extra)
 
 hz_bool hz_vector_need_grow(void *v, size_t extra)
 {
-    assert(v != NULL);
+    HZ_ASSERT(v != NULL);
     hz_vector_hdr_t *hdr = hz_vector_header(v);
     return hdr->size + extra > hdr->capacity;
 }
@@ -1483,7 +1469,7 @@ HZ_ALWAYS_INLINE int32_t hz_coverage_scalar_search(uint16_t *array, uint16_t siz
             high = mid-1;
         } else if (val > array[mid]) {
             low = mid+1;
-        } else {
+        } else { // val == array[mid]
             return mid;
         }
 
@@ -1599,7 +1585,9 @@ typedef enum hz_joining_dir_t {
 } hz_joining_dir_t;
 
 struct hz_face_t {
+#ifdef HZ_INCLUDE_STBTT
     stbtt_fontinfo *fontinfo;
+#endif
     unsigned char *data;
     unsigned int gpos,gsub,gdef,jstf,cmap,maxp,glyf,hmtx,kern,hhea;
 
@@ -1716,53 +1704,66 @@ hz_face_load_num_glyphs(hz_face_t *face)
     face->num_glyphs = num_glyphs;
 }
 
-void
-hz_face_load_class_maps(hz_face_t *face)
+HzPack(struct HzGdefTableHdrV1 {
+    Version16Dot16  ver;
+    Offset16        glyph_class_def_offset;
+    Offset16        attach_list_offset;
+    Offset16        lig_caret_list_offset;
+    Offset16        mark_attach_class_def_offset;
+});
+
+HzPack(struct HzGdefTableHdrV1_2 {
+    struct HzGdefTableHdrV1 v1;
+    Offset16                mark_glyph_sets_def_offset;
+});
+
+hz_error_t hz_face_load_class_maps(hz_face_t *face)
 {
-    uint8_t tmp_buffer[8000];
+    uint8_t *tmp_buffer = hz_malloc(20000);
     hz_memory_arena_t tmp_arena = hz_memory_arena_create(tmp_buffer, sizeof tmp_buffer);
 
     if (face->gdef) {
         hz_parser_t p = hz_parser_create(face->data);
         hz_parser_push_state(&p, face->gdef);
 
-        struct {
-            Offset16 glyph_class_def_offset,
-                     attach_list_offset,
-                     lig_caret_list_offset,
-                     mark_attach_class_def_offset,
-                     mark_glyph_sets_def_offset; } hdr;
-
-        Version16Dot16 version = hz_parser_read_u32(&p);
-
-        switch (version) {
-            case 0x00010000: // 1.0
-                hz_cmdread(&p, 1, &hdr, "wwww");
-                break;
-            case 0x00010002: // 1.2
-                hz_cmdread(&p, 1, &hdr, "wwwww");
-                break;
-            case 0x00010003: // 1.3
-                break;
-            default: // error
-                break;
+        struct HzGdefTableHdrV1_2 *hdr = hz_parser_at_cursor(&p);
+#if IS_LITTLE_ENDIAN
+        parse_u32(&hdr->v1.ver);
+#endif
+        switch (hdr->v1.ver){
+        default: return HZ_ERROR_INVALID_TABLE_VERSION;
+        case 0x00010000: /* 1.0 */
+#if IS_LITTLE_ENDIAN
+            parse_u16x4((u64*)&hdr->v1.glyph_class_def_offset);
+#endif
+            hz_parser_advance(&p, sizeof(hdr->v1));
+            break;
+        case 0x00010002: /* 1.2 */
+#if IS_LITTLE_ENDIAN
+            parse_u16x4((u64*)&hdr->v1.glyph_class_def_offset);
+            parse_u16((u16*)&hdr->mark_glyph_sets_def_offset);
+#endif
+            hz_parser_advance(&p, sizeof(*hdr));
+            break;
+        case 0x00010003: /* 1.3 */
+            break;
         }
 
-        if (hdr.glyph_class_def_offset) {
+        if (hdr->v1.glyph_class_def_offset) {
             // glyph class def isn't nil
-            hz_parser_push_state(&p, hdr.glyph_class_def_offset);
+            hz_parser_push_state(&p, hdr->v1.glyph_class_def_offset);
             hz_read_class_def_table(&face->memory_arena, &p, &face->class_def);
             hz_parser_pop_state(&p);
         }
 
-        if (hdr.mark_attach_class_def_offset) {
-            hz_parser_push_state(&p, hdr.mark_attach_class_def_offset);
+        if (hdr->v1.mark_attach_class_def_offset) {
+            hz_parser_push_state(&p, hdr->v1.mark_attach_class_def_offset);
             hz_read_class_def_table(&face->memory_arena, &p, &face->attach_class_def);
             hz_parser_pop_state(&p);
         }
 
-        if (hdr.mark_glyph_sets_def_offset) {
-            hz_parser_push_state(&p, hdr.mark_glyph_sets_def_offset);
+        if (hdr->v1.ver >= 0x00010002 && hdr->mark_glyph_sets_def_offset) {
+            hz_parser_push_state(&p, hdr->mark_glyph_sets_def_offset);
             uint16_t format = hz_parser_read_u16(&p);
             if (format == 1) {
                 uint16_t mark_glyph_set_count = hz_parser_read_u16(&p);
@@ -1773,14 +1774,14 @@ hz_face_load_class_maps(hz_face_t *face)
                     face->mark_glyph_set = hz_memory_arena_alloc(&face->memory_arena, sizeof(hz_coverage_t)*mark_glyph_set_count);
 
                     for (int i = 0; i < mark_glyph_set_count; ++i) {
-                        hz_coverage_t *coverage = &face->mark_glyph_set[i];
                         hz_parser_push_state(&p, mark_glyph_set_offsets[i]);
-                        hz_read_coverage(&face->memory_arena, &p, coverage);
+                        hz_read_coverage(&face->memory_arena, &p, &face->mark_glyph_set[i]);
                         hz_parser_pop_state(&p);
                     }
                 }
             } else {
                 // error
+                // return HZ_ERROR_INVALID_FORMAT;
             }
 
             hz_parser_pop_state(&p);
@@ -1788,6 +1789,10 @@ hz_face_load_class_maps(hz_face_t *face)
     
         hz_parser_pop_state(&p);
     }
+
+    hz_free(tmp_buffer);
+
+    return HZ_OK;
 }
 
 typedef struct {
@@ -1826,7 +1831,7 @@ hz_face_load_kerning_pairs(hz_face_t *face)
         struct {
         uint16_t version, length;
         hz_kern_coverage_field_t coverage; } hdr;
-        hz_cmdread(&p,1,&hdr,"www");
+        // hz_cmdread(&p,1,&hdr,"www");
 
         switch (hdr.coverage.format) {
             case 0:
@@ -1926,6 +1931,7 @@ hz_font_get_face(hz_font_t *font)
     return font->face;
 }
 
+#ifdef HZ_INCLUDE_STBTT
 hz_font_t *
 hz_stbtt_font_create(stbtt_fontinfo *info)
 {
@@ -1965,7 +1971,7 @@ hz_stbtt_font_create(stbtt_fontinfo *info)
         face->metrics[g].w = cx2 - cx1;
         face->metrics[g].h = cy2 - cy1;
         face->metrics[g].xAdvance = ax;
-        face->metrics[g].yAdvance  = 0;
+        face->metrics[g].yAdvance = 0;
         face->metrics[g].xBearing = lsb;
     }
 
@@ -1982,13 +1988,14 @@ hz_stbtt_font_create(stbtt_fontinfo *info)
 
     return font;
 }
+#endif
 
 typedef struct {
     u32 data[4];
     u8 length;
 } uint_base128;
 
-struct hz_woff2_header{
+struct HzWoff2Hdr {
     u32 signature, flavor, length;
     u16 num_tables, reserved; // reserved
     u32 total_sfnt_size, total_compressed_size;
@@ -1997,7 +2004,7 @@ struct hz_woff2_header{
     u32 priv_offset, priv_length;
 };
 
-struct hz_woff2_table_dir_entry{
+struct HzWoff2TableDirEntry {
     union {
         unsigned int c;
         struct {
@@ -2049,7 +2056,7 @@ static const hz_tag_t woff2_known_table_tags[63] = {
 
 #define WOFF2_SIGNATURE 0x774F4632 /* wOF2 */
 
-struct woff2_collection_header{u32 version;u16 num_fonts;};
+struct Woff2CollectionHdr{u32 version;u16 num_fonts;};
 
 u32 read_255_uint16(u8* ptr, u16 *outval)
 {
@@ -2084,7 +2091,6 @@ struct huffman_tree {
     // u8 num_code_lengths;
 };
 
-
 // rfc7932 9.1
 // lookup table to decode WBITS field in the Brotli stream's header, this is used to determine the length of he sliding
 // window
@@ -2107,8 +2113,8 @@ static const huffman_symbol wbits_huffman_symbols[] = {
 };
 
 static const huffman_symbol nbltypes_huffman_symbols[] = {
-    {0x0 /* 0 */,    1,   1, 0},//1
-    {0x8 /* 1000 */, 2,   4, 0},//2
+    {0x0 /* 0 */,  1,   1, 0},//1
+    {0x8 /*1000*/, 2,   4, 0},//2
     {0xC /*1100*/, 3,   4, 1},// 3..4
     {0xA /*1010*/, 5,   4, 2},// 5..8
     {0xE /*1110*/, 9,   4, 3},// 9..16
@@ -2136,7 +2142,7 @@ u32 streaming_buffer_read(struct streaming_buffer *input)
 
 uint64_t streaming_buffer_read_integer(struct streaming_buffer *input, int num_bits)
 {
-    assert(num_bits <= 64);
+    HZ_ASSERT(num_bits <= 64);
     uint64_t value = 0;
 
     if (!num_bits) return 0; // don't read anything
@@ -2165,8 +2171,6 @@ uint64_t streaming_buffer_read_integer(struct streaming_buffer *input, int num_b
 
     return value;
 }
-
-
 
 uint64_t sb_read_msb_to_lsb(struct streaming_buffer* sb, int nbits)
 {
@@ -2230,7 +2234,7 @@ static void streaming_buffer_skip(struct streaming_buffer *input, int number)
     input->bit_offset += number;
 }
 
-#define HUFFMAN_ALLOCATE(A) huffman_allocate(ArraySize(A), A)
+#define HUFFMAN_ALLOCATE(A) huffman_allocate(countof(A), A)
 
 static struct huffman_tree* huffman_allocate(u16 num_symbols, const huffman_symbol* symbols)
 {
@@ -2241,7 +2245,7 @@ static struct huffman_tree* huffman_allocate(u16 num_symbols, const huffman_symb
     }
 
     u16 num_entries = 1u << max_code_length_in_bits;
-    // printf("%d\n", num_entries);
+    // DEBUG_LOG("%d\n", num_entries);
 
     huffman->entries = hz_malloc(num_entries * sizeof(huffman_symbol));//FIXME:use own allocator
     huffman->num_entries = num_entries;
@@ -2249,10 +2253,11 @@ static struct huffman_tree* huffman_allocate(u16 num_symbols, const huffman_symb
     
     hz_memset(huffman->entries, 0, num_entries * sizeof(huffman_symbol));
     
-    for (u16 symbol_index = 0; symbol_index < num_symbols; ++symbol_index) {
+    for range(u16, symbol_index, 0, num_symbols - 1) {
+// for (u16 symbol_index = 0; symbol_index < num_symbols; ++symbol_index) {
         huffman_symbol sym = symbols[symbol_index];
         u16 code = sym.code;
-        // printf("CODE: %u\n", code);
+        // DEBUG_LOG("CODE: %u\n", code);
 
         huffman->entries[code] = sym;
     }
@@ -2271,10 +2276,10 @@ static int huffman_decode(struct streaming_buffer *input, struct huffman_tree *h
         bits = (bits << 1) | bit;
         u32 code = bits;
         sym = &huffman->entries[code];
-        // printf("Reversed: 0x%02x\n", code);
+        // DEBUG_LOG("Reversed: 0x%02x\n", code);
         if (sym->code_length_in_bits == code_length) { // match length
             // if extra bits to read, read them then combine with the code
-            // printf("Sym: %u, Code length: %u, Code: %u Ext: %u\n", sym->symbol, sym->code_length_in_bits, sym->code, sym->extension_bits);
+            // DEBUG_LOG("Sym: %u, Code length: %u, Code: %u Ext: %u\n", sym->symbol, sym->code_length_in_bits, sym->code, sym->extension_bits);
             u32 ext = sb_read_msb_to_lsb(input, sym->extension_bits);//streaming_buffer_read_integer(input, sym->extension_bits);
             *output = (u32)sym->symbol + ext;
             return 1;
@@ -2317,9 +2322,9 @@ static hz_error_t brotli_decode_prefix_code(struct streaming_buffer *input,
                                             )
 {
     u32 hskip = streaming_buffer_read_integer(input,2);
-    printf("hskip (simple code if 1): %d\n", hskip);
+    DEBUG_LOG("hskip (simple code if 1): %d\n", hskip);
     if (hskip == 1) {//simple code
-        printf("simple prefix code\n");
+        DEBUG_LOG("simple prefix code\n");
         u32 nsym_minus_one = streaming_buffer_read_integer(input,2);
         u32 nsym = nsym_minus_one + 1;
         // read nsym symbols
@@ -2342,7 +2347,7 @@ static hz_error_t brotli_decode_prefix_code(struct streaming_buffer *input,
     else
     {
         // complex code
-        printf("complex prefix code\n");
+        DEBUG_LOG("complex prefix code\n");
         /* The following is more than slightly complicated...
          * The way it works is that as opposed to simple prefix codes, which encode symbols as fixed bit-length integers,
          * complex codes compress the symbol lengths themselves using a prefix code. The table for that is defined below
@@ -2351,47 +2356,49 @@ static hz_error_t brotli_decode_prefix_code(struct streaming_buffer *input,
          * provided in section 3.5 of the Brotli spec. and defined as 's_ll_symbols'.
          */
         static const huffman_symbol s_prefix_c_over_l_huffman_symbols[6] = {
-            {0x0/* 00 */, 0, 2},
-            {0xe/* 1110 */, 1, 4},
-            {0x6/* 110 */, 2, 3},
-            {0x1/* 01 */, 3, 2},
-            {0x2/* 10 */, 4, 2},
-            {0xf/* 1111 */, 5, 4}
+            {0x0/* 00 */, 0, 2, 0},
+            {0xe/* 1110 */, 1, 4, 0},
+            {0x6/* 110 */, 2, 3, 0},
+            {0x1/* 01 */, 3, 2, 0},
+            {0x2/* 10 */, 4, 2, 0},
+            {0xf/* 1111 */, 5, 4, 0}
         }; 
+
+        static const ubyte s_ll_code_order[18] = { 1,2,3,4,0,5,17,6,16,7,8,9,10,11,12,13,14,15 };
+
+        /* Read code length code lengths */
         struct huffman_tree *prefix_c_over_l_huffman = HUFFMAN_ALLOCATE(s_prefix_c_over_l_huffman_symbols);
         int code_lengths[18], code_lls[18];
 
         for(int i = 0; i < 18; ++i) {
             u32 cl = 0;
             if (!huffman_decode(input, prefix_c_over_l_huffman, &cl)){
-                printf("can't decode huffman code\n");
+                DEBUG_LOG("can't decode huffman code\n");
             }
-            printf("CL: %d\n", cl);
+            DEBUG_LOG("CL: %d\n", cl);
             code_lls[i] = cl;
         }
         
-        static const int s_ll_symbols[18] = {1,2,3,4,0,5,17,6,16,7,8,9,10,11,12,13,14,15};
+        /* check if sum of (32 >> cl) for all non-zero code-lengths is 32 to validate if 
+         * we're parsing the code lengths properly, and that the file is valid.
+         */
         {
-            /* check if sum of (32 >> cl) for all non-zero code-lengths is 32 to validate if 
-             * we're parsing the code lengths properly, and that the file is valid.
-             */
             int cl_sum = 0, nz = 0;
             for (int i = 0; i < 18; ++i) {
                 int cl = code_lls[i];
                 nz += (int){cl > 0};
                 cl_sum += cl ? 32 >> cl : 0;
             }
-            printf("nz: %u / 18\n", nz);
-            printf("cl_sum: %u\n", cl_sum);
+            DEBUG_LOG("nz: %u / 18\n", nz);
+            DEBUG_LOG("cl_sum: %u\n", cl_sum);
             if (nz >= 2 && cl_sum != 32 && code_lls[17] != 0) {
-                printf("ERROR: Invalid result for cl_sum!\n");
+                DEBUG_LOG("ERROR: Invalid result for cl_sum!\n");
                 return HZ_ERROR_BROTLI_STREAM_REJECTED;
             }
         }
 
         /* build huffman tree */
         // struct huffman_tree* code_ll_huffman = BUILD_HUFFMAN_TREE(s_ll_symbols, code_lls);
-
         /* TODO: Finish this shit */
     }
 
@@ -2399,20 +2406,20 @@ static hz_error_t brotli_decode_prefix_code(struct streaming_buffer *input,
 }
 
 // block category
-enum brotli_blcat {
-    BROTLI_BLCAT_L,
-    BROTLI_BLCAT_I,
-    BROTLI_BLCAT_D,
-    BROTLI_BLCAT_COUNT
+enum brotli_block_category {
+    BROTLI_L_BLOCK,
+    BROTLI_I_BLOCK,
+    BROTLI_D_BLOCK,
+    BROTLI_BLOCK_COUNT
 };
 
-typedef struct {
+struct brotli_block_hdr {
     u32 htree_btype;
     u32 htree_blen;
     u32 blen;
     u32 btype;
     u32 nbltypes;
-} brotli_blcat;
+};
 
 enum brotli_cmode {
     BROTLI_CMODE_LSB6,
@@ -2424,15 +2431,21 @@ enum brotli_cmode {
 
 static const char* s_brotli_cmode_name[] = {"LSB6","MSB6","UTF8","Signed"};
 
-typedef struct {
-    unsigned int is_last;
-    unsigned int is_last_empty;
-    unsigned int num_nibbles;
-    brotli_blcat blcats[BROTLI_BLCAT_COUNT];
+struct brotli_meta_block_hdr {
+    struct brotli_block_hdr blocks[BROTLI_BLOCK_COUNT];
     enum brotli_cmode* cmode;
     enum brotli_cmode* cmapl;
     enum brotli_cmode* cmapd;
-} brotli_meta_block;
+    u32 is_last;
+    u32 is_last_empty;
+    u32 wbits;
+    u32 window_size;
+    u32 m_nibbles;
+    u32 m_len;
+    u32 is_uncompressed;
+    u32 ntreesl, ntreesd;
+    u32 npostfix, ndirect;
+};
 
 void woff2_brotli_decompress(struct streaming_buffer *input) {
     // parse wbits, 1-7 bits variable length
@@ -2441,30 +2454,30 @@ void woff2_brotli_decompress(struct streaming_buffer *input) {
 
     u32 wbits;
     if (!huffman_decode(input, wbits_huffman, &wbits)) {
-        printf("Failed to decode huffman!\n");
+        DEBUG_LOG("Failed to decode huffman!\n");
     }
     u32 window_size = (1u << wbits) - 16u;
 
-    printf("wbits: %u\n", wbits);
-    printf("sliding window: %u bytes\n\n", window_size);
+    DEBUG_LOG("wbits: %u\n", wbits);
+    DEBUG_LOG("sliding window: %u bytes\n\n", window_size);
     for(;;) {
-        brotli_meta_block blk = {0};
+        struct brotli_meta_block_hdr h = {0};
 
         // read meta block header
-        u32 is_last = streaming_buffer_read(input);
-        if (is_last){
-            u32 is_last_empty = streaming_buffer_read(input);
-            if (is_last_empty)
+        h.is_last = streaming_buffer_read(input);
+        if (h.is_last){
+            h.is_last_empty = streaming_buffer_read(input);
+            if (h.is_last_empty)
                 break;
         }
 
-        printf("is_last: %d\n", is_last);
+        DEBUG_LOG("is_last: %d\n", h.is_last);
 
         // read fixed-length mnibbles
-        u32 m_nibbles = ((int[]){4,5,6,0})[streaming_buffer_read_integer(input, 2)];
-        printf("m_nibbles: %d\n", m_nibbles);
+        h.m_nibbles = ((int[]){4,5,6,0})[streaming_buffer_read_integer(input, 2)];
+        DEBUG_LOG("m_nibbles: %d\n", h.m_nibbles);
         
-        if (!m_nibbles){
+        if (!h.m_nibbles){
 #if 1
             u32 reserved = streaming_buffer_read(input);
             HZ_ASSERT(reserved == 0);
@@ -2472,7 +2485,7 @@ void woff2_brotli_decompress(struct streaming_buffer *input) {
             streaming_buffer_skip(input, 1);
 #endif
             u32 m_skip_bytes = streaming_buffer_read_integer(input, 2);
-            printf("skip bytes: %d\n", m_skip_bytes);
+            DEBUG_LOG("skip bytes: %d\n", m_skip_bytes);
             u32 m_skip_len = 0;
             if (m_skip_bytes) {
                 for (u32 i = 0; i < m_skip_bytes; ++i) {
@@ -2484,31 +2497,30 @@ void woff2_brotli_decompress(struct streaming_buffer *input) {
                 m_skip_len += 1;
             }
 
-            printf("skip length: %d\n", m_skip_len);
+            DEBUG_LOG("skip length: %d\n", m_skip_len);
             streaming_buffer_align_to_next_byte(input);
             if (m_skip_len){
                 
             }
         }
 
-        u32 m_len_minus_one = streaming_buffer_read_integer(input, 4 * m_nibbles);
+        u32 m_len_minus_one = streaming_buffer_read_integer(input, 4 * h.m_nibbles);
         u32 m_len = m_len_minus_one + 1;
 
-        u32 is_uncompressed;
-        if (!is_last) {
-            is_uncompressed = streaming_buffer_read(input);
+        if (!h.is_last) {
+            h.is_uncompressed = streaming_buffer_read(input);
         }
 
-        printf("m_len: %u\n", m_len);
-        printf("is_uncompressed: %u\n", is_uncompressed);
+        DEBUG_LOG("m_len: %u\n", h.m_len);
+        DEBUG_LOG("is_uncompressed: %u\n", h.is_uncompressed);
 
-        for (u32 i = 0; i < BROTLI_BLCAT_COUNT; ++i) {//iterate I,L,D
-            brotli_blcat* c = &blk.blcats[i];
+        for (u32 i = 0; i < BROTLI_BLOCK_COUNT; ++i) {//iterate I,L,D
+            struct brotli_block_hdr* c = &h.blocks[i];
             
             if (!huffman_decode(input, nbltypes_huffman, &c->nbltypes)) {
-                printf("Failed to decode huffman symbol.\n");
+                DEBUG_LOG("Failed to decode huffman symbol.\n");
             }
-            printf("nbltypes_i: %u\n", c->nbltypes);
+            DEBUG_LOG("nbltypes_i: %u\n", c->nbltypes);
             
             if (c->nbltypes >= 2){
 
@@ -2517,51 +2529,50 @@ void woff2_brotli_decompress(struct streaming_buffer *input) {
             }
         }
 
-        u32 nbltypesi = blk.blcats[BROTLI_BLCAT_I].nbltypes;
-        u32 nbltypesl = blk.blcats[BROTLI_BLCAT_L].nbltypes;
-        u32 nbltypesd = blk.blcats[BROTLI_BLCAT_D].nbltypes;
+        u32 nbltypesi = h.blocks[BROTLI_I_BLOCK].nbltypes;
+        u32 nbltypesl = h.blocks[BROTLI_L_BLOCK].nbltypes;
+        u32 nbltypesd = h.blocks[BROTLI_D_BLOCK].nbltypes;
 
-        u32 npostfix = streaming_buffer_read_integer(input, 2);
-        printf("npostfix: %u\n", npostfix);
+        h.npostfix = streaming_buffer_read_integer(input, 2);
+        DEBUG_LOG("npostfix: %u\n", h.npostfix);
         
         u32 ndirect_four_msb_bits = streaming_buffer_read_integer(input, 4);
-        u32 ndirect = ndirect_four_msb_bits << npostfix;
-        printf("ndirect: %u\n", ndirect);
+        h.ndirect = ndirect_four_msb_bits << h.npostfix;
+        DEBUG_LOG("ndirect: %u\n", h.ndirect);
         
         // read cmode[]
         // read context mode for each literal block type
-        blk.cmode = hz_malloc(sizeof(blk.cmode[0]) * nbltypesl); 
+        h.cmode = hz_malloc(sizeof(h.cmode[0]) * nbltypesl); 
         for (u32 i = 0; i < nbltypesl; ++i) {
             u32 cmode = streaming_buffer_read_integer(input, 2);
-            printf("cmode: %s\n", s_brotli_cmode_name[cmode]);
-            blk.cmode[i] = cmode;
+            DEBUG_LOG("cmode: %s\n", s_brotli_cmode_name[cmode]);
+            h.cmode[i] = cmode;
         }
 
-        u32 ntreesl, ntreesd;
-        huffman_decode(input, nbltypes_huffman, &ntreesl);
-        if (ntreesl >= 2) { // read context map, CMAPL[]
+        huffman_decode(input, nbltypes_huffman, &h.ntreesl);
+        if (h.ntreesl >= 2) { // read context map, CMAPL[]
 
         } else {
             // fill CMAPL[] with zeros
         }
-        huffman_decode(input, nbltypes_huffman, &ntreesd);
-        if (ntreesd >= 2) { // read context map, CMAPD[]
+        huffman_decode(input, nbltypes_huffman, &h.ntreesd);
+        if (h.ntreesd >= 2) { // read context map, CMAPD[]
 
         } else {
             // fill CMAPD[] with zeros
         }
 
-        printf("ntreesl: %u\n", ntreesl);
-        printf("ntreesd: %u\n", ntreesd);
+        DEBUG_LOG("ntreesl: %u\n", h.ntreesl);
+        DEBUG_LOG("ntreesd: %u\n", h.ntreesd);
         
-        u32 alphabet_size_distance = 16 + ndirect + (48 << npostfix);
+        u32 alphabet_size_distance = 16 + h.ndirect + (48 << h.npostfix);
         u32 alphabet_size_distance_bits = fit_bits_for_max_value(alphabet_size_distance);
         
         brotli_prefix_code *literal_codes = hz_malloc(sizeof(brotli_prefix_code)*nbltypesl);
         brotli_prefix_code *insert_and_copy_length_codes = hz_malloc(sizeof(brotli_prefix_code)*nbltypesi);
         brotli_prefix_code *distance_codes = hz_malloc(sizeof(brotli_prefix_code)*nbltypesd);
 
-        for (u32 i = 0; i<ntreesl; ++i) {
+        for (u32 i = 0; i<h.ntreesl; ++i) {
             if (HZ_OK != brotli_decode_prefix_code(input, ALPHABET_SIZE_LITERAL, 8, &literal_codes[i])) {
                 // reject stream
                 break;
@@ -2575,7 +2586,7 @@ void woff2_brotli_decompress(struct streaming_buffer *input) {
             }
         }
 
-        for (u32 i = 0; i<ntreesd; ++i) {
+        for (u32 i = 0; i<h.ntreesd; ++i) {
             if (HZ_OK != brotli_decode_prefix_code(input, alphabet_size_distance, alphabet_size_distance_bits, &distance_codes[i])) {
                 // reject stream
                 break;
@@ -2597,45 +2608,43 @@ hz_font_t *hz_font_load_woff2_from_memory(u8 *mem, size_t sz) {
     HZ_ASSERT((mem != NULL) && "Passed in null value");
     HZ_ASSERT(sz > 0); // ensure size is non-zero
 
-    struct hz_woff2_header *hdr = (struct hz_woff2_header*)mem;
+    struct HzWoff2Hdr *hdr = (struct HzWoff2Hdr *) mem;
     mem += 48;
-    if (!IS_BIG_ENDIAN){
-        hz_byte_swap_u32x2((u64*)&hdr->signature);
-        hz_byte_swap_32(&hdr->length);
-        hz_byte_swap_16(&hdr->num_tables);
-        hz_byte_swap_u32x2((u64*)&hdr->total_sfnt_size);
-        hz_byte_swap_u16x2((u32*)&hdr->major_version);
-        hz_byte_swap_u32x2((u64*)&hdr->meta_offset);
-        hz_byte_swap_u32x2((u64*)&hdr->meta_orig_length);
-        hz_byte_swap_32((u32*)&hdr->priv_length);
-    }
+    parse_u32x2((u64*)&hdr->signature);
+    parse_u32(&hdr->length);
+    parse_u16(&hdr->num_tables);
+    parse_u32x2((u64*)&hdr->total_sfnt_size);
+    parse_u16x2((u32*)&hdr->major_version);
+    parse_u32x2((u64*)&hdr->meta_offset);
+    parse_u32x2((u64*)&hdr->meta_orig_length);
+    parse_u32((u32*)&hdr->priv_length);
 
     if (hdr->signature != 0x774F4632) { //'wOF2'
         return NULL; // error, signature mismatch
     }
-    printf("Woff2 Header:\n");
-    printf("\tFlavor: 0x%08x\n", hdr->flavor);
-    printf("\tLength: %u\n", hdr->length);
-    printf("\tVer: %hu.%hu\n", hdr->major_version, hdr->minor_version);
-    printf("\tNumber Of Tables: %u\n", hdr->num_tables);
-    printf("\tTotal Compressed Size: %u\n", hdr->total_compressed_size);
-    printf("\tTotal Snft Size: %u\n", hdr->total_sfnt_size);
-    printf("\tMeta Offset: %u\n", hdr->meta_offset);
-    printf("\tMeta Length: %u\n", hdr->meta_length);
-    printf("\tMeta Original Length: %u\n", hdr->meta_orig_length);
+    DEBUG_LOG("Woff2 Header:\n");
+    DEBUG_LOG("\tFlavor: 0x%08x\n", hdr->flavor);
+    DEBUG_LOG("\tLength: %u\n", hdr->length);
+    DEBUG_LOG("\tVer: %hu.%hu\n", hdr->major_version, hdr->minor_version);
+    DEBUG_LOG("\tNumber Of Tables: %u\n", hdr->num_tables);
+    DEBUG_LOG("\tTotal Compressed Size: %u\n", hdr->total_compressed_size);
+    DEBUG_LOG("\tTotal Snft Size: %u\n", hdr->total_sfnt_size);
+    DEBUG_LOG("\tMeta Offset: %u\n", hdr->meta_offset);
+    DEBUG_LOG("\tMeta Length: %u\n", hdr->meta_length);
+    DEBUG_LOG("\tMeta Original Length: %u\n", hdr->meta_orig_length);
 
     if (sz != hdr->total_compressed_size) {
-        printf("warning: total compressed size mismatch, sz: %u, total_compressed_size: %u\n",
+        DEBUG_LOG("warning: total compressed size mismatch, sz: %u, total_compressed_size: %u\n",
         (u32)sz, hdr->total_compressed_size);
     }
 
-    printf("table directory:\n");
+    DEBUG_LOG("table directory:\n");
     for (u32 i = 0; i < hdr->num_tables; ++i){
-        struct hz_woff2_table_dir_entry d = {0};
+        struct HzWoff2TableDirEntry d = {0};
         d.flags.c = (unsigned int) *mem++;
         if (d.flags.s.known_tag == 63) {//arbitrary tag
             d.tag = *(u32*)(mem); mem += 4;
-            if (!IS_BIG_ENDIAN) hz_byte_swap_32(&d.tag);
+            parse_u32(&d.tag);
         } else {
             d.tag = woff2_known_table_tags[d.flags.s.known_tag];
         }
@@ -2644,18 +2653,18 @@ hz_font_t *hz_font_load_woff2_from_memory(u8 *mem, size_t sz) {
         if (d.flags.s.preprocessing_transformation_version_number != 3) {
             mem += hz_read_base_uint128(&d.transform_length, mem);
         }
-        printf("flags: 0x%02x, orig_length: %u, transform_length: %u, tag: '%c%c%c%c', transform: %u\n",
+        DEBUG_LOG("flags: 0x%02x, orig_length: %u, transform_length: %u, tag: '%c%c%c%c', transform: %u\n",
             (u32)d.flags.c&0x3f, d.orig_length, d.transform_length, HZ_UNTAG(d.tag), d.flags.s.preprocessing_transformation_version_number);
     }
 
     if (hdr->flavor == 0x74746366){//ttcf
         // read collection directory format
-        struct woff2_collection_header collection_hdr = {0}; 
+        struct Woff2CollectionHdr collection_hdr = {0}; 
         collection_hdr.version = *(u32*)mem;
         mem += 4;
-        if (!IS_BIG_ENDIAN) hz_byte_swap_32(&collection_hdr.version);
+        parse_u32(&collection_hdr.version);
         mem += read_255_uint16(mem, &collection_hdr.num_fonts);
-        printf("version: %d, num_fonts: %d\n", collection_hdr.version, collection_hdr.num_fonts);
+        DEBUG_LOG("version: %d, num_fonts: %d\n", collection_hdr.version, collection_hdr.num_fonts);
     }
 
     // decompress brotli stream
@@ -2686,16 +2695,14 @@ enum base85_error {
     BASE85_INVALID_CHARS = -2,
 };
 
-s32 hz_base85_max_size(const s8 *const inp, s32 *restrict max_outp_sz)
+u32 HZ_STATIC hz_base85_max_size(const char *const inp, u32 sz)
 {
-    s32 inp_sz = strlen(inp);
-    *max_outp_sz = ((inp_sz + 3) / 4) * 5;
-    return inp_sz;
+    return ((sz + 3) / 4) * 5;
 }
 
 s32 base85_char_ng(s8 c)
 {
-    return ((c < 33u) || (c > 117u));
+    return ((c < 33) || (c > 117));
 }
 
 static s32 decode_base85_adobe(u8 *restrict outp, s32 max_outp_sz, const s8 *const inp, s32 inp_sz)
@@ -2779,24 +2786,24 @@ static s32 decode_base85_adobe(u8 *restrict outp, s32 max_outp_sz, const s8 *con
     return outp_sz;
 }
 
-hz_font_t *hz_font_load_woff2_from_memory_base85(enum hz_base85_encoding encoding, const char *base85_string)
+hz_font_t *hz_font_load_woff2_from_memory_base85(enum hz_base85_encoding encoding, const char *base85_string, unsigned int input_size)
 {
-    s32 max_outp_sz, inp_sz, sz;
-    inp_sz = hz_base85_max_size((const s8* const)base85_string, &max_outp_sz);
-    u8 *decoded = hz_malloc(max_outp_sz);
+    u32 sz_decoded;
+    u32 max_decoded_size = hz_base85_max_size((const s8* const)base85_string, input_size);
+    u8 *decoded = hz_malloc(max_decoded_size);
     switch (encoding) {
         default:break;
         case HZ_BASE85_ENCODING_ADOBE:
-        sz = decode_base85_adobe(decoded, max_outp_sz, (const s8* const) base85_string, inp_sz);
+        sz_decoded = decode_base85_adobe(decoded, max_decoded_size, (const s8* const) base85_string, input_size);
         break;
         case HZ_BASE85_ENCODING_Z85:/*No Impl*/
         break;
         case HZ_BASE85_ENCODING_IPV6: /*No Impl*/
         break;
     }
-    printf("%d\n", sz);//danger!
+    DEBUG_LOG("%d\n", sz_decoded);//danger!
     
-    hz_font_load_woff2_from_memory(decoded, sz);
+    hz_font_load_woff2_from_memory(decoded, sz_decoded);
     hz_free(decoded);
     return NULL;
 }
@@ -3453,8 +3460,10 @@ hz_index_t hz_map_unicode_to_id(hz_cmap_format4_subtable_t *subtable, hz_unicode
 
         if (codepoint >= start_code && codepoint <= end_code) {
             if (id_range_offset != 0) {
-                uint16_t offset = *(subtable->glyphIdArray + (id_range_offset / 2 + (codepoint - start_code) - (segCount - i)));
-                id = IS_BIG_ENDIAN ? offset : hz_bswap16(offset);
+                id = *(subtable->glyphIdArray + (id_range_offset / 2 + (codepoint - start_code) - (segCount - i)));
+#if IS_LITTLE_ENDIAN
+                parse_u16(&id);
+#endif
                 if (id != 0) id += id_delta;
             } else {
                 id = codepoint + id_delta;
@@ -3834,7 +3843,6 @@ typedef struct {
 } hz_gsub_table_t;
 
 typedef struct {
-    Version16Dot16 version;
     uint32_t num_lookups;
     hz_lookup_table_t *lookups;
     uint32_t num_features;
@@ -3865,7 +3873,7 @@ struct hz_shaper_t {
     hz_shaper_flags_t flags;
 };
 
-hz_shaper_t *hz_shaper_create() {
+hz_shaper_t *hz_shaper_create(void) {
     hz_shaper_t *s = hz_malloc(sizeof(*s));
     *s = (hz_shaper_t){
         .direction = HZ_DIRECTION_LTR,
@@ -3887,7 +3895,7 @@ void hz_shaper_set_features(hz_shaper_t *shaper, size_t sz,
     hz_memory_arena_reset(&shaper->memory_arena);
     shaper->features = hz_memory_arena_alloc(&shaper->memory_arena, sizeof(hz_feature_t)*sz);
     shaper->num_features = sz;
-    memcpy(shaper->features, features, sizeof(hz_feature_t)*sz);
+    hz_memcpy(shaper->features, features, sizeof(hz_feature_t)*sz);
 }
 
 void hz_shaper_set_flags(hz_shaper_t *shaper, hz_shaper_flags_t flags)
@@ -4168,14 +4176,6 @@ hz_read_gsub_multiple_substitution_subtable(hz_memory_arena_t *memory_arena,
     lookup->subtables[subtable_index] = (hz_lookup_subtable_t *)subtable;
     return HZ_OK;
 }
-
-void hz_error_and_quit(const char *msg, const char *filename, int linenum)
-{
-    fprintf(stderr, "[ERROR in %s:%d]: %s\n", filename, linenum, msg);
-    exit(EXIT_FAILURE);
-}
-
-#define HZ_EXIT_WITH_MSG(msg) hz_error_and_quit(msg, __FILE__, __LINE__)
 
 HZ_STATIC hz_error_t
 hz_read_gsub_lookup_subtable(hz_memory_arena_t *memory_arena,
@@ -4870,43 +4870,63 @@ hz_load_gpos_lookup_table(hz_memory_arena_t *memory_arena,
     return HZ_OK;
 }
 
+struct TableVersion {
+    u16 major, minor;
+};
+
+struct GsubTableHdrV1 {
+    struct TableVersion ver;
+    Offset16            script_list_offset;
+    Offset16            feature_list_offset;
+    Offset16            lookup_list_offset;
+};
+
+struct GsubTableHdrV1_1 {
+    struct GsubTableHdrV1 v1;
+    Offset16              feature_variations_offset;
+};
+
+union TableVersionUnion {
+    struct TableVersion ver;
+    u32 val32;
+};
+
 HZ_STATIC hz_error_t hz_load_gsub_table(hz_parser_t *p, hz_font_data_t *font_data)
 {
-    char tmp[4096];
+    unsigned char tmp[4096];
     hz_memory_arena_t arena_tmp = hz_memory_arena_create(tmp, sizeof tmp);
-    hz_face_t *face = font_data->face; 
+    hz_face_t *face = font_data->face;
 
     if (!face->gsub) {
         return HZ_ERROR_TABLE_DOES_NOT_EXIST;
     }
 
-    hz_parser_push_state(p, face->gsub);
     hz_gsub_table_t *gsub_table = &font_data->gsub_table;
+    hz_parser_push_state(p, face->gsub);
+    struct GsubTableHdrV1_1 *hdr = hz_parser_at_cursor(p);
+    parse_u16x2((u32*)&hdr);
 
-    struct { uint16_t script_list_offset,
-                      feature_list_offset,
-                      lookup_list_offset,
-                      feature_variations_offset; } hdr;
-
-    gsub_table->version = hz_parser_read_u32(p);
-
-    switch (gsub_table->version) {
-    default: return HZ_ERROR_INVALID_TABLE_VERSION;
-    case 0x00010000: // 1.0
-        hz_cmdread(p, 1, &hdr, "www");
+    switch (hdr->v1.ver.minor) {
+    default:
+        return HZ_ERROR_INVALID_TABLE_VERSION;
+    case 0:
+        parse_u16x2((u64*)&hdr->v1.script_list_offset);
+        parse_u16(&hdr->v1.lookup_list_offset);
+        hz_parser_advance(p, sizeof hdr->v1);
         break;
-    case 0x00010001: // 1.1
-        hz_cmdread(p, 1, &hdr, "wwww");
+    case 1:
+        parse_u16x4((u64*)&hdr->v1.script_list_offset);
+        hz_parser_advance(p, sizeof *hdr);
         break;
     }
 
     {
         // parse feature list table
-        hz_parser_push_state(p, hdr.feature_list_offset);
+        hz_parser_push_state(p, hdr->v1.feature_list_offset);
         gsub_table->num_features = hz_parser_read_u16(p);
         gsub_table->features = hz_memory_arena_alloc(&font_data->memory_arena, sizeof(hz_feature_list_item_t) * gsub_table->num_features);
         
-        for (int i = 0; i < gsub_table->num_features; ++i) {
+        for range(u16, i, 0, gsub_table->num_features) {
             hz_feature_list_item_t *it = &gsub_table->features[i];
             it->tag = hz_parser_read_u32(p);
             Offset16 offset = hz_parser_read_u16(p);
@@ -4920,13 +4940,13 @@ HZ_STATIC hz_error_t hz_load_gsub_table(hz_parser_t *p, hz_font_data_t *font_dat
 
     {
         // parse lookup list table
-        hz_parser_push_state(p, hdr.lookup_list_offset);
+        hz_parser_push_state(p, hdr->v1.lookup_list_offset);
         gsub_table->num_lookups = hz_parser_read_u16(p);
         gsub_table->lookups = hz_memory_arena_alloc(&font_data->memory_arena, sizeof(hz_lookup_table_t) * gsub_table->num_lookups);
         Offset16* offsets = hz_memory_arena_alloc(&arena_tmp, sizeof(Offset16) * gsub_table->num_lookups);
         hz_parser_read_u16_block(p, offsets, gsub_table->num_lookups);
 
-        for (uint16_t i = 0; i < gsub_table->num_lookups; ++i) {
+        for range(u16, i, 0, gsub_table->num_lookups) {
             hz_parser_push_state(p, offsets[i]);
             hz_load_gsub_lookup_table(&font_data->memory_arena, p, face, &gsub_table->lookups[i]);
             hz_parser_pop_state(p);
@@ -4940,6 +4960,12 @@ HZ_STATIC hz_error_t hz_load_gsub_table(hz_parser_t *p, hz_font_data_t *font_dat
     return HZ_OK;
 }
 
+struct hz_gpos_table_hdr_v10 {
+    Offset16 script_list_offset,
+             feature_list_offset,
+             lookup_list_offset,
+             feature_variations_offset;
+};
 
 HZ_STATIC hz_error_t hz_load_gpos_table(hz_parser_t *p, hz_font_data_t *font_data)
 {
@@ -4954,27 +4980,24 @@ HZ_STATIC hz_error_t hz_load_gpos_table(hz_parser_t *p, hz_font_data_t *font_dat
     hz_parser_push_state(p, face->gpos);
     hz_gpos_table_t *gpos_table = &font_data->gpos_table;
 
-    struct { uint16_t script_list_offset,
-                      feature_list_offset,
-                      lookup_list_offset,
-                      feature_variations_offset; } hdr;
-    
-    gpos_table->version = hz_parser_read_u32(p);
-
-    switch (gpos_table->version) {
-    case 0x00010000: // 1.0
-        hz_cmdread(p, 1, &hdr, "www");
-        break;
-    case 0x00010001: // 1.1
-        hz_cmdread(p, 1, &hdr, "wwww");
-        break;
-    default: // error
+    struct hz_gpos_table_hdr_v10 *hdr;
+    Version16Dot16 ver = hz_parser_read_u32(p);
+    switch (ver) {
+    default:
         return HZ_ERROR_INVALID_TABLE_VERSION;
+    case 0x00010000:
+        hdr = hz_parser_at_cursor(p);
+        hz_parser_advance(p, sizeof(*hdr));
+#if IS_LITTLE_ENDIAN
+        parse_u16x4((u64*)&hdr->script_list_offset);
+#endif
+        break;
     }
+
 
     {
         // parse feature list table
-        hz_parser_push_state(p, hdr.feature_list_offset);
+        hz_parser_push_state(p, hdr->feature_list_offset);
         gpos_table->num_features = hz_parser_read_u16(p);
         gpos_table->features = hz_memory_arena_alloc(&font_data->memory_arena, sizeof(hz_feature_list_item_t) * gpos_table->num_features);
         
@@ -4992,7 +5015,7 @@ HZ_STATIC hz_error_t hz_load_gpos_table(hz_parser_t *p, hz_font_data_t *font_dat
 
     {
         // parse lookup list table
-        hz_parser_push_state(p, hdr.lookup_list_offset);
+        hz_parser_push_state(p, hdr->lookup_list_offset);
         gpos_table->num_lookups = hz_parser_read_u16(p);
         gpos_table->lookups = hz_memory_arena_alloc(&font_data->memory_arena, sizeof(hz_lookup_table_t) * gpos_table->num_lookups);
         Offset16* offsets = hz_memory_arena_alloc(&tmp_arena, sizeof(Offset16) * gpos_table->num_lookups);
@@ -5297,6 +5320,32 @@ HZ_STATIC int hz_search_prev_glyph(hz_buffer_t *buffer, int index, uint16_t m1, 
     return -1;
 }
 
+struct HzRange {
+    int minIndex, maxIndex; 
+};
+
+struct HzMarker {
+    u64 user_identifier;
+    s32 x1, y1;
+    s32 x2, y2;
+    u16 x2_shift, y2_shift;
+};
+
+typedef void (*HzApplyLookupFn) (hz_lookup_table_t *table);
+struct HzShaper {
+    int num_threads;
+    _Atomic int joined_threads;
+
+};
+
+
+void apply_gsub_lookup_threaded_win(int num_threads, struct HzBuffer* in_buffer, struct HzBuffer* out_buffer, struct HzMarker* markers, size_t num_markers, struct HzRange r, int depth) {
+    if (depth >= HZ_MAX_RECURSE_DEPTH) {
+        // hit max recurse depth, wind back up the call stack
+        return;
+    }
+}
+
 HZ_STATIC void
 hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
                             hz_font_data_t *font_data,
@@ -5489,7 +5538,7 @@ hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
                                                         block[k] = b1->glyph_indices[range_list->unignored_indices[s1 + k + 1]];
                                                     }
 
-                                                    test = !memcmp(ligature->component_glyph_ids, block, (component_count-1)*2);
+                                                    test = !hz_memcmp(ligature->component_glyph_ids, block, (component_count-1)*2);
                                                 }
 
                                                 if (test) {
@@ -5560,7 +5609,7 @@ hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
                                         for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                             hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
                                             for (uint16_t n = 0; n < rs->count; ++n) {
-                                                // fill both context and sequence buffers, use memcmp to quickly check if they are matching
+                                                // fill both context and sequence buffers, use hz_memcmp to quickly check if they are matching
                                                 // context
                                                 hz_chained_sequence_rule_t *rule = &rs->rules[n];
                                                 int u = range->base + (g - range->mn);
@@ -5588,7 +5637,7 @@ hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
                                                             context[k++] = rule->prefix_sequence[c];
                                                         }
 
-                                                        // load current glyph so memcmp doesn't fail
+                                                        // load current glyph so hz_memcmp doesn't fail
                                                         context[k++] = b1->glyph_indices[range_list->unignored_indices[u]];
 
                                                         for (uint16_t c = 0; c < rule->input_count-1; ++c) {
@@ -5601,7 +5650,7 @@ hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
                                                     }
 
                                                     // compare context with current glyph sequence
-                                                    if (!memcmp(context, sequence, context_len*2)) {
+                                                    if (!hz_memcmp(context, sequence, context_len*2)) {
                                                         // if match, apply nested lookups
                                                         hz_segment_sz_t context_low = range_list->unignored_indices[u];
                                                         hz_segment_sz_t context_high = range_list->unignored_indices[u + rule->input_count];
@@ -5771,7 +5820,7 @@ hz_shaper_apply_gsub_lookup(hz_shaper_t *shaper,
 
                         break;
                     }
-                    default:  assert(0);
+                    default:  HZ_ASSERT(0);
                 }
                 break;
             }
@@ -6186,7 +6235,7 @@ hz_shaper_apply_gpos_lookup(hz_shaper_t *shaper,
                                         for (uint16_t m = 0; m < subtable->rule_set_count; ++m) {
                                             hz_chained_sequence_rule_set_t *rs = &subtable->rule_sets[m];
                                             for (uint16_t n = 0; n < rs->count; ++n) {
-                                                // fill both context and sequence buffers, use memcmp to quickly check if they are matching
+                                                // fill both context and sequence buffers, use hz_memcmp to quickly check if they are matching
                                                 // context
                                                 hz_chained_sequence_rule_t *rule = &rs->rules[n];
                                                 int u = range->base + (g - range->mn);
@@ -6214,7 +6263,7 @@ hz_shaper_apply_gpos_lookup(hz_shaper_t *shaper,
                                                             context[k++] = rule->prefix_sequence[c];
                                                         }
 
-                                                        // load current glyph so memcmp doesn't fail
+                                                        // load current glyph so hz_memcmp doesn't fail
                                                         context[k++] = b1->glyph_indices[range_list->unignored_indices[u]];
 
                                                         for (uint16_t c = 0; c < rule->input_count-1; ++c) {
@@ -6227,7 +6276,7 @@ hz_shaper_apply_gpos_lookup(hz_shaper_t *shaper,
                                                     }
 
                                                     // compare context with current glyph sequence
-                                                    if (!memcmp(context, sequence, context_len*2)) {
+                                                    if (!hz_memcmp(context, sequence, context_len*2)) {
                                                         // if match, apply nested lookups
                                                         int context_low = range_list->unignored_indices[u];
                                                         int context_high = range_list->unignored_indices[u + rule->input_count];
@@ -6400,7 +6449,7 @@ hz_shaper_apply_gpos_lookup(hz_shaper_t *shaper,
 
                         break;
                     }
-                    default:  assert(0);
+                    default:  HZ_ASSERT(0);
                 }
                 break;
             }
@@ -6440,7 +6489,6 @@ hz_feature_list_search(hz_feature_list_item_t *features, uint16_t num_features, 
     return -1;
 }
 
-
 HZ_STATIC void hz_buffer_setup_metrics(hz_buffer_t *buffer, hz_face_t *face)
 {
     if (buffer != NULL) {
@@ -6474,6 +6522,10 @@ int cmp_lookup_ref(const void *a, const void *b)
     return (int)((const hz_lookup_reference_t *)a)->index - (int)((const hz_lookup_reference_t *)b)->index;
 }
 
+void QuickSort(void* A, size_t length, size_t elemsize, int (*pfnCompare)(const void*, const void*))
+{
+}
+
 HZ_STATIC void hz_shaper_apply_gsub_features(hz_shaper_t *shaper, hz_font_data_t *font_data, hz_buffer_t *in_buffer, hz_buffer_t *out_buffer)
 {
     hz_face_t *face = font_data->face;
@@ -6490,13 +6542,13 @@ HZ_STATIC void hz_shaper_apply_gsub_features(hz_shaper_t *shaper, hz_font_data_t
             hz_feature_table_t *feature_table = &gsub->features[feature_index].table;
 
             for (uint16_t j = 0; j < feature_table->lookup_index_count; ++j) {
-                hz_lookup_reference_t lookup_ref = (hz_lookup_reference_t){feature_table->lookup_list_indices[j],feature};
+                hz_lookup_reference_t lookup_ref = {feature_table->lookup_list_indices[j], feature};
                 hz_vector_push_back(lookup_refs,lookup_ref);
             }
         }
     }
 
-    qsort(lookup_refs,
+    QuickSort((void*)lookup_refs,
           hz_vector_size(lookup_refs),
           sizeof(hz_lookup_reference_t),
           &cmp_lookup_ref);
@@ -6532,7 +6584,7 @@ HZ_STATIC void hz_shaper_apply_gpos_features(hz_shaper_t *shaper, hz_font_data_t
         }
     }
 
-    qsort(lookup_refs,
+    QuickSort((void*)lookup_refs,
           hz_vector_size(lookup_refs),
           sizeof(hz_lookup_reference_t),
           &cmp_lookup_ref);
@@ -6567,7 +6619,7 @@ HZ_STATIC void hz_shape_buffer(hz_shaper_t *shaper, hz_font_data_t *font_data, h
         hz_buffer_compute_info(in_buffer, font_data->face);
         hz_buffer_correct_metrics(in_buffer);
 
-        if (shaper->direction == HZ_DIRECTION_RTL || shaper->direction == HZ_DIRECTION_BTT) {
+        if (shaper->direction & (HZ_DIRECTION_RTL | HZ_DIRECTION_BTT)) {
             hz_buffer_flip_direction(in_buffer);
         }
     }
@@ -6586,6 +6638,7 @@ hz_get_language_map(hz_language_t lang) {
     return NULL;
 }
 
+#if 0
 hz_language_t hz_lang(const char *tag)
 {
     const hz_language_map_t *currlang, *foundlang;
@@ -6608,7 +6661,7 @@ hz_language_t hz_lang(const char *tag)
             while (*p != ':' && *p != '\0')
                 code[n++] = *p++;
 
-            if (hz_unlikely(!memcmp(code, tag, 3))) {
+            if (hz_unlikely(!hz_memcmp(code, tag, 3))) {
                 foundlang = currlang;
                 goto done_searching;
             }
@@ -6624,6 +6677,8 @@ hz_language_t hz_lang(const char *tag)
 
     return foundlang->language;
 }
+#endif
+
 
 #define UTF_START 0
 
@@ -6814,9 +6869,9 @@ HZ_STATIC void hz_buffer_load_utf8_unaligned(hz_buffer_t *buffer, hz_memory_aren
 
             for (int k = 0; k < 32; ++k) {
                 uint8_t *p = (uint8_t *)&data_mask;
-                printf("0x%0x ",p[k]);
+                DEBUG_LOG("0x%0x ",p[k]);
             }
-            printf("\n");
+            DEBUG_LOG("\n");
         }
     }
 #endif
@@ -7272,11 +7327,13 @@ typedef struct {
     char r,g,b,a;
 } hz_color_t;
 
+#if 0
 float hz_face_scale_for_pixel_h(hz_face_t *face, float height)
 {
    // return (float) height / (float) face->fheight;
     return stbtt_ScaleForPixelHeight(face->fontinfo, height);
 }
+#endif
 
 uint32_t hz_vec4_to_u32(hz_vec4 *v)
 {
@@ -7288,6 +7345,7 @@ uint32_t hz_vec4_to_u32(hz_vec4 *v)
     return r;
 }
 
+#if 0
 void hz_draw_buffer(hz_context_t *ctx, hz_buffer_t *buffer, uint16_t font_id,
                     hz_vec3 pos, hz_buffer_style_t *style,
                     float px_size)
@@ -7349,6 +7407,7 @@ void hz_draw_buffer(hz_context_t *ctx, hz_buffer_t *buffer, uint16_t font_id,
         pen_x += metrics.xAdvance * v_scale;
     }
 }
+#endif
 
 hz_command_list_t *hz_get_frame_commands(hz_context_t *ctx) {
     return &ctx->frame_cmds;
@@ -7379,6 +7438,8 @@ hz_vec2 hz_vec2_mult_s(hz_vec2 v1, float scale) {
     return (hz_vec2){v1.x*scale,v1.y*scale};
 }
 
+
+#ifdef HZ_INCLUDE_STBTT
 int hz_face_get_glyph_shape(hz_face_t *face, hz_shape_draw_data_t *draw_data, hz_vec2 translate, float y_scale, hz_index_t glyph_index)
 {
     #define PUSH_CURVE() do{hz_contour_t _contour = {hz_vector_size(draw_data->verts),0,pen}; hz_vector_push_back(draw_data->contours, _contour); c = hz_vector_top(draw_data->contours); } while(0)
@@ -7459,6 +7520,8 @@ void hz_face_get_scaled_glyph
                             y_scale, y_scale,
                             &b->x0, &b->y0, &b->x1, &b->y1);
 }
+
+#endif /* HZ_INCLUDE_STBTT */
 
 void hz_camera_begin_ortho(hz_context_t *ctx, float l, float r, float b, float t)
 {

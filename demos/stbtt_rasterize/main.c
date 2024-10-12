@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <hz/hz_ucd_5_2_0.h>
-#define HZ_IMPLEMENTATION
 #include <hz/hz.h>
 
 #include <errno.h>

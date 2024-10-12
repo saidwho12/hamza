@@ -6,21 +6,36 @@
     You should have received a copy of the GNU Lesser General Public License along with Hamza. If not, see <https://www.gnu.org/licenses/>. 
 */
 
-#ifndef HZ_H
-#define HZ_H
+#ifndef _HZ_H_
+#define _HZ_H_
 
 #define HZ_MAKE_VERSION(major, minor, patch) (uint32_t)((major<<16)|(minor<<8)|(patch))
 
-#define HZ_VERSION HZ_MAKE_VERSION(0,4,0)
-#define HZ_UCD_VERSION HZ_MAKE_VERSION(5,2,0)
+#define HZ_VERSION HZ_MAKE_VERSION(0,4,1)
 #define HZ_STRINGIFY(S) HZ_STRINGIFY_(S)
 #define HZ_STRINGIFY_(S) #S
 #define HZ_UCD_HEADER_NAME(major,minor,patch) HZ_STRINGIFY(HZ_UCD_HEADER_NAME_(major,minor,patch))
 #define HZ_UCD_HEADER_NAME_(major,minor,patch) hz_ucd_##major##_##minor##_##patch.h
-#include HZ_UCD_HEADER_NAME(5,2,0)
+
+#include "hz_config.h"
+#ifdef HZ_INCLUDE_STBTT
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+#endif /* HZ_INCLUDE_STBTT */
+
+#if !defined(HZ_UCD_VERSIONS_LIST)
+#warning "Must define required UCD versions in hz_config.h"
+#endif
+
+enum hz_ucd_version {
+#define X(A, B, C) HZ_UCD_VERSION_ ## A ## _ ## B ## _ ## C = HZ_MAKE_VERSION(A,B,C),
+HZ_UCD_VERSIONS_LIST(X)
+#undef X
+};
 
 #define HZ_COMPILER_UNKNOWN 0ul
-#define HZ_COMPILER_GCC 0x00000001ul
+#define HZ_COMPILER_GCC 0x00000001ul 
 #define HZ_COMPILER_CLANG 0x00000002ul
 #define HZ_COMPILER_TURBOC 0x00000004ul
 #define HZ_COMPILER_VC 0x00000008ul
@@ -28,7 +43,7 @@
 #define HZ_COMPILER_BORLAND 0x00000020ul
 #define HZ_COMPILER_EMBARCADERO 0x00000040ul
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 #   define HZ_COMPILER HZ_COMPILER_VC
 #elif defined(__GNUC__) || defined(__GCC__)
 #   define HZ_COMPILER HZ_COMPILER_GCC
@@ -43,14 +58,11 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+#if !defined(HZ_NOSTDLIB)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <math.h>
-
-#define STBTT_STATIC
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+#endif
 
 #define HZ_ARCH_X86_BIT        0x00010000ul
 #define HZ_ARCH_ARM_BIT        0x00020000ul
@@ -145,16 +157,23 @@
 #define HZ_DECL
 #endif
 
-#if HZ_COMPILER & HZ_COMPILER_VC
-#define HZ_BREAKPOINT __debugbreak()
+#if HZ_COMPILER & (HZ_COMPILER_VC | HZ_COMPILER_CLANG)
+#define HZ_DBG_BREAK __debugbreak
 #elif HZ_COMPILER & HZ_COMPILER_GCC
-#define HZ_BREAKPOINT __builtin_trap()
+#define HZ_DBG_BREAK __builtin_trap
 #else
 #endif
 
 #define HZ_ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
 #define HZ_UNARR(x) x, (sizeof(x)/sizeof((x)[0]))
+
+#if defined(HZ_NOSTDLIB)
+#define HZ_ASSERT(cond) if (!(cond)) { HZ_DBG_BREAK(); }
+#else
+#include <assert.h>
 #define HZ_ASSERT(cond) assert((cond))
+#endif
+
 #define HZ_TAG(a, b, c, d) ((hz_tag_t)d | ((hz_tag_t)c << 8) | ((hz_tag_t)b << 16) | ((hz_tag_t)a << 24U))
 #define HZ_STRTAG(str) ((hz_tag_t)(str[3]) | ((hz_tag_t)(str[2]) << 8) | ((hz_tag_t)(str[1]) << 16) | ((hz_tag_t)(str[0]) << 24U))
 #define HZ_UNTAG(tag) (char) ((tag >> 24) & 0xFF), (char)((tag >> 16) & 0xFF), (char)((tag >> 8) & 0xFF), (char)(tag & 0xFF)
@@ -175,10 +194,6 @@ uint64_t HZ_ALWAYS_INLINE hz__clzll(uint64_t x) {
 typedef uint32_t hz_version_t;
 
 typedef enum {
-    HZ_CONFIG_FLAG_DEFAULT,
-} hz_config_flags_t;
-
-typedef enum {
     HZ_LOG_SEVERITY_ERROR,
     HZ_LOG_SEVERITY_WARNING,
     HZ_LOG_SEVERITY_DEBUG,
@@ -188,8 +203,7 @@ typedef enum {
 
 typedef struct {
     hz_log_severity_t log_severity;
-    hz_version_t ucd_version;
-    hz_config_flags_t flags;
+    enum hz_ucd_version ucd_version;
 } hz_config_t;
 
 typedef enum {
@@ -267,7 +281,7 @@ hz_vector_init((void **)&(__ARR), sizeof(*(__ARR)));\
 if (!(__ARR) || ((__ARR) && hz_vector_need_grow(__ARR, __LEN))) {\
 hz_vector_grow((void **)&(__ARR), __LEN);\
 }\
-memcpy((__ARR) + hz_vector_header(__ARR)->size, __PTR, (__LEN) * sizeof((__ARR)[0]));\
+hz_memcpy((__ARR) + hz_vector_header(__ARR)->size, __PTR, (__LEN) * sizeof((__ARR)[0]));\
 hz_vector_header(__ARR)->size += (__LEN);\
 } while(0)
 
@@ -283,15 +297,14 @@ typedef struct {
     uintptr_t pos;
 } hz_memory_arena_t;
 
-
 HZ_STATIC HZ_INLINE hz_memory_arena_t hz_memory_arena_create(uint8_t *mem, size_t sz)
 {
-    return (hz_memory_arena_t){.mem = mem, .size = sz};
+    return (hz_memory_arena_t){.mem = mem, .size = sz, .pos = 0};
 }
 
 HZ_STATIC HZ_INLINE void hz_memory_arena_init(hz_memory_arena_t *a, uint8_t *p, size_t sz)
 {
-    *a = (hz_memory_arena_t){.mem = p, .size = sz };
+    *a = (hz_memory_arena_t){.mem = p, .size = sz, .pos = 0 };
 }
 
 // align must be a power of two
@@ -527,10 +540,12 @@ HZ_DECL void hz_face_get_scaled_glyph(hz_face_t *face, hz_uint16 glyph_id, float
 HZ_DECL
 void hz_face_get_glyph_box(hz_face_t *face, uint16_t glyph_id, hz_bbox_t *b);
 
+#ifdef HZ_INCLUDE_STBTT
 /*  function: hz_stbtt_font_create
  *      Loads a font from a stbtt_fontinfo structure.
  */
 HZ_DECL hz_font_t* hz_stbtt_font_create(stbtt_fontinfo *info);
+#endif /* HZ_INCLUDE_STBTT */
 
 // enum: hz_base85_encoding 
 enum hz_base85_encoding {
@@ -539,7 +554,7 @@ enum hz_base85_encoding {
 
 // function: hz_font_load_woff2_from_memory_base85
 //   Creates a font from a Ascii85 string with user-requested encoding.
-HZ_DECL hz_font_t *hz_font_load_woff2_from_memory_base85(enum hz_base85_encoding encoding, const char *base85_string);
+HZ_DECL hz_font_t *hz_font_load_woff2_from_memory_base85(enum hz_base85_encoding encoding, const char *base85_string, unsigned int input_size);
 
 typedef struct hz_shaper_t hz_shaper_t;
 typedef struct hz_font_data_t hz_font_data_t;
@@ -583,7 +598,7 @@ HZ_DECL void hz_set_allocator_user_pointer(void *user);
 HZ_DECL hz_font_data_t *hz_font_data_create(hz_font_t *font);
 HZ_DECL void hz_font_data_release(hz_font_data_t *fd);
 
-HZ_DECL hz_shaper_t *hz_shaper_create();
+HZ_DECL hz_shaper_t *hz_shaper_create(void);
 HZ_DECL void hz_shaper_destroy(hz_shaper_t *shaper);
 HZ_DECL void hz_shaper_set_features(hz_shaper_t *shaper, size_t sz,
                                     const hz_feature_t features[]);
@@ -862,4 +877,4 @@ void hz_camera_set_zoom(hz_context_t *ctx, float zoomlvl);
 };
 #endif
 
-#endif // HZ_H
+#endif /*_HZ_H_*/

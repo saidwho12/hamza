@@ -86,16 +86,37 @@ hz_font_data_release(&font_data);
 hz_font_destroy(font);
 hz_deinit();
 ```
+## Building
 
-## Tested Compilers
-  - GCC 10.3.0 x86_64-w64-wingw32
-  - GCC 10.3.0 x86_64-w64-wingw32 (mingw64)
-  - MSVC 19.35.32217.1
-  - MSVC 19.29.30148.0
-  - Clang 16.0.0 x86_64-pc-windows-msvc
+### Meson
+  - `meson setup ./builddir/ --cross-file amd64-clang-windows.ini`
+  - `meson compile -C builddir --verbose`
+
+Unfortunately, if you want to use the `amd64-tcc-windows.ini` file _right now_ (as of 10/12/2024) to compile with [TCC](https://bellard.org/tcc/), you're out of luck as meson doesn't yet support TCC compiler, see [supported compilers](https://mesonbuild.com/Reference-tables.html#compiler-ids). For more information check the links:
+
+  - [PR 8248](https://github.com/mesonbuild/meson/pull/8248)
+  - [Issue 5406](https://github.com/mesonbuild/meson/issues/5406)
+
+The following flags can be added to `meson configure` to control compilation:
+ 
+  - `nostdlib` makes a nostdlib/freestanding build.
+  - `enable-opencl` enables use of OpenCL with parallelized-shaper.
 
 
-  ## Features
+As an example, we can build in the following way:
+```
+meson configure ./build/ -Denable-opencl=true -Dnostdlib=true
+```
+
+## Binary footprint
+|                                                   |     .a      |    .dll     | 
+|---------------------------------------------------|-------------|-------------| 
+|             default (release)                     |   9.82 KB   |   305 KB    |
+|  build-tiny & crt-less & strip (release)          |   4.59 KB   |    53 KB    |
+|             default (debugoptimized)              |   4.59 KB   |   642 KB    |
+|   build-tiny & crt-less & strip (debugoptimized)  |   4.59 KB   |   53.5 KB   |
+
+## Features
 - [x] Joining script support and RTL writing
 - [x] Kerning
 - [x] Ligatures
@@ -109,4 +130,4 @@ hz_deinit();
 
 
 ## LICENSE
-Hamza is licensed under LGPLv3.
+Hamza is licensed under MIT.

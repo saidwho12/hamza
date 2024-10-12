@@ -1,0 +1,6 @@
+option('build-shared', type : 'boolean', value : true)
+option('build-tiny', type : 'boolean', value : false)
+option('crt-less', type : 'boolean', value : false)
+# option('gpu-render', type: 'boolean', value : false, description: 'Enables use of OpenCL accelerated.')
+# option('enable-ucd-helper', type : 'boolean', value : false)
+option('opencl-render', type : 'boolean', value : true, description : 'Enables use of OpenCL optimizations.')

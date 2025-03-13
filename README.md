@@ -109,4 +109,4 @@ hz_deinit();
 
 
 ## LICENSE
-Hamza is licensed under LGPLv3.
+Hamza is licensed under MIT license.
